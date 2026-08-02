@@ -1,7 +1,7 @@
 "use client";
 import { PageShell } from "@/components/shared/page-shell";
 import { Button } from "@/components/ui/button";
-import { Plus, Award, Search } from "lucide-react";
+import { Plus, Award, Search, Sparkles } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
