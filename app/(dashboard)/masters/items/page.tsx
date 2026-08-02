@@ -22,36 +22,48 @@ import { Label } from "@/components/ui/label";
 import { formatCurrency, downloadCSV } from "@/lib/utils";
 
 // ─── DUMMY DATA ────────────────────────────────────────────────
-const CATEGORIES = ["Electronics", "Furniture", "Office Supplies", "Computer Accessories", "Networking", "Storage", "Peripherals"];
-const BRANDS = ["Dell", "HP", "Samsung", "Logitech", "Belkin", "APC", "Seagate", "WD", "TP-Link", "Lenovo"];
-const WAREHOUSES = ["Main Warehouse - Mumbai", "Pune Branch", "Delhi Hub", "Bengaluru Store"];
+const CATEGORIES = [
+  "Smartphones & Feature Phones",
+  "Mobile Accessories",
+  "Smartwatches & Wearables",
+  "Audio & Sound",
+  "Laptops & Computers",
+  "Computer Accessories",
+  "Storage & Memory",
+  "Televisions & Display",
+  "Home Appliances",
+  "Networking & Smart Home"
+];
+
+const BRANDS = ["Apple", "Samsung", "Vivo", "Oppo", "OnePlus", "Xiaomi", "Realme", "boAt", "Sony", "LG", "Dell", "HP", "Lenovo", "Asus", "Noise", "SanDisk"];
+const WAREHOUSES = ["Main Store - Mumbai", "Pune Branch", "Delhi Hub", "Bengaluru Store"];
 
 function generateItems() {
   const items = [
-    { name: "Laptop Stand Pro 360", code: "ITM-0001", category: "Computer Accessories", brand: "Generic", unit: "PCS", hsn: "73269099", gstRate: 18, purchasePrice: 1200, sellingPrice: 2499, mrp: 2999, currentStock: 342, reorderLevel: 50, warehouse: "Main Warehouse - Mumbai", status: "active" },
-    { name: "Wireless Keyboard MK750", code: "ITM-0002", category: "Peripherals", brand: "Logitech", unit: "PCS", hsn: "84716090", gstRate: 18, purchasePrice: 2800, sellingPrice: 4299, mrp: 4999, currentStock: 187, reorderLevel: 30, warehouse: "Main Warehouse - Mumbai", status: "active" },
-    { name: "USB-C Hub 7-in-1", code: "ITM-0003", category: "Computer Accessories", brand: "Belkin", unit: "PCS", hsn: "85176990", gstRate: 18, purchasePrice: 890, sellingPrice: 1799, mrp: 2199, currentStock: 24, reorderLevel: 40, warehouse: "Pune Branch", status: "active" },
-    { name: "Monitor Light Bar M1", code: "ITM-0004", category: "Electronics", brand: "Generic", unit: "PCS", hsn: "94054090", gstRate: 12, purchasePrice: 1500, sellingPrice: 2999, mrp: 3499, currentStock: 8, reorderLevel: 20, warehouse: "Main Warehouse - Mumbai", status: "active" },
-    { name: "Ergonomic Mouse EM Pro", code: "ITM-0005", category: "Peripherals", brand: "Logitech", unit: "PCS", hsn: "84716010", gstRate: 18, purchasePrice: 2200, sellingPrice: 3899, mrp: 4499, currentStock: 156, reorderLevel: 25, warehouse: "Delhi Hub", status: "active" },
-    { name: "27 inch 4K Monitor", code: "ITM-0006", category: "Electronics", brand: "Samsung", unit: "PCS", hsn: "85285990", gstRate: 18, purchasePrice: 24000, sellingPrice: 35999, mrp: 42000, currentStock: 45, reorderLevel: 10, warehouse: "Main Warehouse - Mumbai", status: "active" },
-    { name: "Executive Office Chair", code: "ITM-0007", category: "Furniture", brand: "Generic", unit: "PCS", hsn: "94013090", gstRate: 18, purchasePrice: 8500, sellingPrice: 14999, mrp: 18000, currentStock: 22, reorderLevel: 5, warehouse: "Bengaluru Store", status: "active" },
-    { name: "Thermal Label Printer", code: "ITM-0008", category: "Office Supplies", brand: "HP", unit: "PCS", hsn: "84433290", gstRate: 18, purchasePrice: 5200, sellingPrice: 8499, mrp: 9999, currentStock: 0, reorderLevel: 5, warehouse: "Main Warehouse - Mumbai", status: "inactive" },
-    { name: "1TB External SSD", code: "ITM-0009", category: "Storage", brand: "Seagate", unit: "PCS", hsn: "84717090", gstRate: 18, purchasePrice: 6800, sellingPrice: 9999, mrp: 12000, currentStock: 93, reorderLevel: 15, warehouse: "Main Warehouse - Mumbai", status: "active" },
-    { name: "WiFi 6 Router AX5400", code: "ITM-0010", category: "Networking", brand: "TP-Link", unit: "PCS", hsn: "85176210", gstRate: 18, purchasePrice: 7200, sellingPrice: 11999, mrp: 13999, currentStock: 34, reorderLevel: 10, warehouse: "Delhi Hub", status: "active" },
-    { name: "Mechanical Keyboard TKL", code: "ITM-0011", category: "Peripherals", brand: "Logitech", unit: "PCS", hsn: "84716090", gstRate: 18, purchasePrice: 4500, sellingPrice: 7499, mrp: 8999, currentStock: 67, reorderLevel: 20, warehouse: "Pune Branch", status: "active" },
-    { name: "Webcam Full HD 1080p", code: "ITM-0012", category: "Electronics", brand: "Logitech", unit: "PCS", hsn: "85258011", gstRate: 18, purchasePrice: 3200, sellingPrice: 4999, mrp: 5999, currentStock: 12, reorderLevel: 15, warehouse: "Main Warehouse - Mumbai", status: "active" },
-    { name: "Standing Desk Converter", code: "ITM-0013", category: "Furniture", brand: "Generic", unit: "PCS", hsn: "94033090", gstRate: 18, purchasePrice: 6800, sellingPrice: 11999, mrp: 13999, currentStock: 28, reorderLevel: 8, warehouse: "Bengaluru Store", status: "active" },
-    { name: "Laptop Bag 15.6 inch", code: "ITM-0014", category: "Computer Accessories", brand: "Generic", unit: "PCS", hsn: "42021290", gstRate: 18, purchasePrice: 850, sellingPrice: 1499, mrp: 1999, currentStock: 234, reorderLevel: 50, warehouse: "Main Warehouse - Mumbai", status: "active" },
-    { name: "4-Port USB Hub 3.0", code: "ITM-0015", category: "Computer Accessories", brand: "Belkin", unit: "PCS", hsn: "85176990", gstRate: 18, purchasePrice: 450, sellingPrice: 899, mrp: 1199, currentStock: 5, reorderLevel: 30, warehouse: "Pune Branch", status: "active" },
+    { name: "iPhone 15 Pro Max 256GB", code: "ITM-0001", category: "Smartphones & Feature Phones", brand: "Apple", unit: "PCS", hsn: "85171300", gstRate: 18, purchasePrice: 125000, sellingPrice: 144900, mrp: 149900, currentStock: 24, reorderLevel: 5, warehouse: "Main Store - Mumbai", status: "active" },
+    { name: "Samsung Galaxy S24 Ultra 512GB", code: "ITM-0002", category: "Smartphones & Feature Phones", brand: "Samsung", unit: "PCS", hsn: "85171300", gstRate: 18, purchasePrice: 110000, sellingPrice: 129999, mrp: 139999, currentStock: 18, reorderLevel: 4, warehouse: "Main Store - Mumbai", status: "active" },
+    { name: "MacBook Air M3 16GB/512GB", code: "ITM-0003", category: "Laptops & Computers", brand: "Apple", unit: "PCS", hsn: "84713010", gstRate: 18, purchasePrice: 105000, sellingPrice: 124900, mrp: 134900, currentStock: 12, reorderLevel: 3, warehouse: "Main Store - Mumbai", status: "active" },
+    { name: "Sony Bravia 55 inch 4K Ultra HD Smart LED TV", code: "ITM-0004", category: "Televisions & Display", brand: "Sony", unit: "PCS", hsn: "85285900", gstRate: 28, purchasePrice: 52000, sellingPrice: 64990, mrp: 74900, currentStock: 8, reorderLevel: 2, warehouse: "Main Store - Mumbai", status: "active" },
+    { name: "AirPods Pro (2nd Gen) USB-C", code: "ITM-0005", category: "Audio & Sound", brand: "Apple", unit: "PR", hsn: "85183000", gstRate: 18, purchasePrice: 18500, sellingPrice: 22900, mrp: 24900, currentStock: 45, reorderLevel: 10, warehouse: "Delhi Hub", status: "active" },
+    { name: "boAt Airdopes 141 TWS Earbuds", code: "ITM-0006", category: "Audio & Sound", brand: "boAt", unit: "PR", hsn: "85183000", gstRate: 18, purchasePrice: 750, sellingPrice: 1299, mrp: 4490, currentStock: 120, reorderLevel: 25, warehouse: "Pune Branch", status: "active" },
+    { name: "OnePlus 12 5G 16GB/512GB", code: "ITM-0007", category: "Smartphones & Feature Phones", brand: "OnePlus", unit: "PCS", hsn: "85171300", gstRate: 18, purchasePrice: 58000, sellingPrice: 64999, mrp: 69999, currentStock: 15, reorderLevel: 5, warehouse: "Bengaluru Store", status: "active" },
+    { name: "Apple 20W USB-C Power Adapter", code: "ITM-0008", category: "Mobile Accessories", brand: "Apple", unit: "PCS", hsn: "85044090", gstRate: 18, purchasePrice: 1300, sellingPrice: 1799, mrp: 1900, currentStock: 85, reorderLevel: 20, warehouse: "Main Store - Mumbai", status: "active" },
+    { name: "SanDisk Extreme 1TB Portable SSD", code: "ITM-0009", category: "Storage & Memory", brand: "SanDisk", unit: "PCS", hsn: "85235100", gstRate: 18, purchasePrice: 8200, sellingPrice: 10999, mrp: 14500, currentStock: 32, reorderLevel: 8, warehouse: "Main Store - Mumbai", status: "active" },
+    { name: "TP-Link Archer AX5400 WiFi 6 Router", code: "ITM-0010", category: "Networking & Smart Home", brand: "Asus", unit: "PCS", hsn: "85176290", gstRate: 18, purchasePrice: 7200, sellingPrice: 9999, mrp: 12999, currentStock: 14, reorderLevel: 5, warehouse: "Delhi Hub", status: "active" },
+    { name: "Logitech MX Master 3S Wireless Mouse", code: "ITM-0011", category: "Computer Accessories", brand: "Asus", unit: "PCS", hsn: "84716060", gstRate: 18, purchasePrice: 6800, sellingPrice: 8995, mrp: 10995, currentStock: 22, reorderLevel: 6, warehouse: "Pune Branch", status: "active" },
+    { name: "LG 1.5 Ton 5 Star AI Dual Inverter Split AC", code: "ITM-0012", category: "Home Appliances", brand: "LG", unit: "UNT", hsn: "84151010", gstRate: 28, purchasePrice: 36500, sellingPrice: 44490, mrp: 54990, currentStock: 6, reorderLevel: 2, warehouse: "Main Store - Mumbai", status: "active" },
+    { name: "Samsung 253L 3 Star Frost Free Refrigerator", code: "ITM-0013", category: "Home Appliances", brand: "Samsung", unit: "UNT", hsn: "84182100", gstRate: 18, purchasePrice: 21500, sellingPrice: 26490, mrp: 31990, currentStock: 9, reorderLevel: 3, warehouse: "Bengaluru Store", status: "active" },
+    { name: "Realme 12 Pro+ 5G 256GB", code: "ITM-0014", category: "Smartphones & Feature Phones", brand: "Realme", unit: "PCS", hsn: "85171300", gstRate: 18, purchasePrice: 24500, sellingPrice: 29999, mrp: 33999, currentStock: 40, reorderLevel: 10, warehouse: "Main Store - Mumbai", status: "active" },
+    { name: "Anker 10000mAh Magnetic Power Bank", code: "ITM-0015", category: "Mobile Accessories", brand: "Apple", unit: "PCS", hsn: "85044090", gstRate: 18, purchasePrice: 2800, sellingPrice: 3999, mrp: 4999, currentStock: 50, reorderLevel: 15, warehouse: "Pune Branch", status: "active" },
   ];
 
-  // Generate more items
+  // Generate more mobile & electronics items
   const extraNames = [
-    "Noise Cancelling Headphones", "Gaming Chair Pro", "Cable Management Kit",
-    "Dual Monitor Arm", "USB-C Charging Cable 3m", "HDMI Switch 4K",
-    "Portable SSD 500GB", "Wireless Charging Pad", "Blue Light Glasses",
-    "Screen Cleaner Kit", "Keyboard Wrist Rest", "Mouse Pad XL",
-    "Surge Protector 8-Port", "Network Switch 8-Port", "CAT6 Ethernet Cable 10m",
+    "Vivo V30 Pro 5G 256GB", "Xiaomi 14 Ultra 512GB", "Noise ColorFit Pulse 3 Smartwatch",
+    "Dell XPS 13 Core i7 16GB/1TB", "HP LaserJet Pro Wireless Printer", "Asus ROG Strix Gaming Monitor 27\"",
+    "Samsung Galaxy Tab S9 Ultra", "boAt Stone 1200 Bluetooth Speaker", "Sony WH-1000XM5 Wireless Headphones",
+    "Tempered Glass Screen Protector 9H", "Silicone Protective Phone Case", "Braided Type-C Fast Charging Cable 2m",
+    "Mi Smart Wi-Fi Security Camera 360", "SanDisk 128GB MicroSDXC Card Class 10", "Logitech K380 Multi-Device Bluetooth Keyboard",
   ];
 
   for (let i = 0; i < extraNames.length; i++) {
@@ -424,134 +436,174 @@ export default function ItemsPage() {
 
       {/* Add/Edit Modal */}
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editingItem ? "Edit Item" : "Add New Item"}</DialogTitle>
-            <DialogDescription>
-              {editingItem ? "Update the item details below" : "Fill in the details to add a new item to your catalog"}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-4 py-2">
-            <div className="col-span-2 space-y-1.5">
-              <Label>Item Name *</Label>
-              <Input
-                placeholder="Enter item name"
-                value={formData.name}
-                onChange={(e) => setFormData((f) => ({ ...f, name: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Item Code</Label>
-              <Input
-                placeholder="Auto-generated"
-                value={formData.code}
-                onChange={(e) => setFormData((f) => ({ ...f, code: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>HSN Code</Label>
-              <Input
-                placeholder="8471..."
-                value={formData.hsn}
-                onChange={(e) => setFormData((f) => ({ ...f, hsn: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Category</Label>
-              <Select value={formData.category} onValueChange={(v) => setFormData((f) => ({ ...f, category: v }))}>
-                <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
-                <SelectContent>
-                  {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Brand</Label>
-              <Select value={formData.brand} onValueChange={(v) => setFormData((f) => ({ ...f, brand: v }))}>
-                <SelectTrigger><SelectValue placeholder="Select brand" /></SelectTrigger>
-                <SelectContent>
-                  {BRANDS.map((b) => <SelectItem key={b} value={b}>{b}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>GST Rate</Label>
-              <Select value={formData.gstRate} onValueChange={(v) => setFormData((f) => ({ ...f, gstRate: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {[0, 5, 12, 18, 28].map((r) => <SelectItem key={r} value={String(r)}>{r}%</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Warehouse</Label>
-              <Select value={formData.warehouse} onValueChange={(v) => setFormData((f) => ({ ...f, warehouse: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {WAREHOUSES.map((w) => <SelectItem key={w} value={w}>{w}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Purchase Price (₹) *</Label>
-              <Input
-                type="number"
-                placeholder="0.00"
-                value={formData.purchasePrice}
-                onChange={(e) => setFormData((f) => ({ ...f, purchasePrice: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Selling Price (₹) *</Label>
-              <Input
-                type="number"
-                placeholder="0.00"
-                value={formData.sellingPrice}
-                onChange={(e) => setFormData((f) => ({ ...f, sellingPrice: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>MRP (₹)</Label>
-              <Input
-                type="number"
-                placeholder="0.00"
-                value={formData.mrp}
-                onChange={(e) => setFormData((f) => ({ ...f, mrp: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Opening Stock</Label>
-              <Input
-                type="number"
-                placeholder="0"
-                value={formData.currentStock}
-                onChange={(e) => setFormData((f) => ({ ...f, currentStock: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Reorder Level</Label>
-              <Input
-                type="number"
-                placeholder="10"
-                value={formData.reorderLevel}
-                onChange={(e) => setFormData((f) => ({ ...f, reorderLevel: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Status</Label>
-              <Select value={formData.status} onValueChange={(v) => setFormData((f) => ({ ...f, status: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                </SelectContent>
-              </Select>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0 rounded-2xl border-none shadow-2xl">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-6 rounded-t-2xl flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/20">
+                <Package className="w-6 h-6 text-[#76C043]" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold tracking-tight">
+                  {editingItem ? "Edit Product Catalog Item" : "Add Mobile & Electronics Item"}
+                </h3>
+                <p className="text-xs text-slate-300 mt-0.5">
+                  Specify product particulars, pricing, GST tax slate & warehouse stock levels
+                </p>
+              </div>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsFormOpen(false)}>Cancel</Button>
-            <Button onClick={handleSave}>{editingItem ? "Save Changes" : "Add Item"}</Button>
-          </DialogFooter>
+
+          <div className="p-6 space-y-6 bg-slate-50/50">
+            {/* Section 1: General Product Particulars */}
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+              <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#3F63AD] flex items-center gap-2">
+                <Package className="w-4 h-4 text-[#3F63AD]" /> 1. Product Identification & Categorization
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="md:col-span-2 space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">Product Name & Model *</Label>
+                  <Input
+                    placeholder="e.g. iPhone 15 Pro Max 256GB"
+                    value={formData.name}
+                    onChange={(e) => setFormData((f) => ({ ...f, name: e.target.value }))}
+                    className="bg-slate-50 border-slate-300"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">Item Code (SKU)</Label>
+                  <Input
+                    placeholder="Auto-generated (e.g. ITM-0016)"
+                    value={formData.code}
+                    onChange={(e) => setFormData((f) => ({ ...f, code: e.target.value }))}
+                    className="bg-slate-50 border-slate-300 font-mono"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">Category *</Label>
+                  <Select value={formData.category} onValueChange={(v) => setFormData((f) => ({ ...f, category: v }))}>
+                    <SelectTrigger className="bg-slate-50 border-slate-300"><SelectValue placeholder="Select category" /></SelectTrigger>
+                    <SelectContent>
+                      {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">Brand *</Label>
+                  <Select value={formData.brand} onValueChange={(v) => setFormData((f) => ({ ...f, brand: v }))}>
+                    <SelectTrigger className="bg-slate-50 border-slate-300"><SelectValue placeholder="Select brand" /></SelectTrigger>
+                    <SelectContent>
+                      {BRANDS.map((b) => <SelectItem key={b} value={b}>{b}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">HSN Code</Label>
+                  <Input
+                    placeholder="85171300"
+                    value={formData.hsn}
+                    onChange={(e) => setFormData((f) => ({ ...f, hsn: e.target.value }))}
+                    className="bg-slate-50 border-slate-300 font-mono"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Section 2: Pricing & GST Tax */}
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+              <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#3F63AD] flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-[#3F63AD]" /> 2. Pricing & GST Tax Slabs
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">Purchase Cost (₹) *</Label>
+                  <Input
+                    type="number"
+                    placeholder="125000"
+                    value={formData.purchasePrice}
+                    onChange={(e) => setFormData((f) => ({ ...f, purchasePrice: e.target.value }))}
+                    className="bg-slate-50 border-slate-300"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">Selling Price (₹) *</Label>
+                  <Input
+                    type="number"
+                    placeholder="144900"
+                    value={formData.sellingPrice}
+                    onChange={(e) => setFormData((f) => ({ ...f, sellingPrice: e.target.value }))}
+                    className="bg-slate-50 border-slate-300 font-semibold"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">MRP (₹)</Label>
+                  <Input
+                    type="number"
+                    placeholder="149900"
+                    value={formData.mrp}
+                    onChange={(e) => setFormData((f) => ({ ...f, mrp: e.target.value }))}
+                    className="bg-slate-50 border-slate-300"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">GST Rate (%)</Label>
+                  <Select value={formData.gstRate} onValueChange={(v) => setFormData((f) => ({ ...f, gstRate: v }))}>
+                    <SelectTrigger className="bg-slate-50 border-slate-300"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {[0, 5, 12, 18, 28].map((r) => <SelectItem key={r} value={String(r)}>{r}% GST</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+
+            {/* Section 3: Inventory & Warehouse Allocation */}
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+              <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#3F63AD] flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-[#3F63AD]" /> 3. Stock Level & Warehouse Allocation
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">Fulfillment Store / Warehouse</Label>
+                  <Select value={formData.warehouse} onValueChange={(v) => setFormData((f) => ({ ...f, warehouse: v }))}>
+                    <SelectTrigger className="bg-slate-50 border-slate-300"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {WAREHOUSES.map((w) => <SelectItem key={w} value={w}>{w}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">Opening Stock Quantity</Label>
+                  <Input
+                    type="number"
+                    placeholder="25"
+                    value={formData.currentStock}
+                    onChange={(e) => setFormData((f) => ({ ...f, currentStock: e.target.value }))}
+                    className="bg-slate-50 border-slate-300"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">Low Stock Reorder Alert</Label>
+                  <Input
+                    type="number"
+                    placeholder="5"
+                    value={formData.reorderLevel}
+                    onChange={(e) => setFormData((f) => ({ ...f, reorderLevel: e.target.value }))}
+                    className="bg-slate-50 border-slate-300"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-slate-100 px-6 py-4 rounded-b-2xl border-t border-slate-200 flex items-center justify-end gap-3">
+            <Button variant="outline" onClick={() => setIsFormOpen(false)} className="px-5">
+              Cancel
+            </Button>
+            <Button onClick={handleSave} className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white px-6 font-bold shadow-lg shadow-[#3F63AD]/20">
+              {editingItem ? "Update Catalog Item" : "Save & Add to Catalog"}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
