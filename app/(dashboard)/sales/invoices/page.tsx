@@ -34,7 +34,7 @@ const STATUS_CONFIG = {
   draft: { variant: "secondary" as const, icon: Receipt, label: "Draft" },
 };
 
-export default function SalesInvoicesPage() {
+function SalesInvoicesContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
@@ -552,5 +552,14 @@ export default function SalesInvoicesPage() {
         </DialogContent>
       </Dialog>
     </PageShell>
+  );
+}
+
+import { Suspense } from "react";
+export default function SalesInvoicesPage() {
+  return (
+    <Suspense fallback={<div className="p-12 text-center text-muted-foreground">Loading...</div>}>
+      <SalesInvoicesContent />
+    </Suspense>
   );
 }

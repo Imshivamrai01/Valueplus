@@ -16,7 +16,7 @@ import { formatCurrency, formatDate, downloadCSV } from "@/lib/utils";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
-export default function CreditNotesPage() {
+function CreditNotesContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
@@ -168,5 +168,14 @@ export default function CreditNotesPage() {
         mode="credit-note"
       />
     </PageShell>
+  );
+}
+
+import { Suspense } from "react";
+export default function CreditNotesPage() {
+  return (
+    <Suspense fallback={<div className="p-12 text-center text-muted-foreground">Loading...</div>}>
+      <CreditNotesContent />
+    </Suspense>
   );
 }
