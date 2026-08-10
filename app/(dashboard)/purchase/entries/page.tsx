@@ -6,10 +6,14 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, Search, ClipboardList } from "lucide-react";
+import { Plus, Search, ClipboardList, Trash2, AlertTriangle, MoreHorizontal, XCircle } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { PurchaseCreationModal } from "@/components/PurchaseCreationModal";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface PurchaseEntryItem {
   id: string;
@@ -25,60 +29,55 @@ interface PurchaseEntryItem {
   status: "paid" | "pending" | "partial" | "overdue";
 }
 
-const INITIAL_ENTRIES: PurchaseEntryItem[] = [
-  { id: "1", billNo: "BILL-APL-9081", supplierName: "Apple India Pvt Ltd", billDate: "2026-08-01", dueDate: "2026-08-31", subtotal: 1500000, gst: 270000, total: 1770000, paid: 1770000, balance: 0, status: "paid" },
-  { id: "2", billNo: "BILL-SMG-7712", supplierName: "Samsung Electronics India", billDate: "2026-07-28", dueDate: "2026-08-27", subtotal: 1000000, gst: 180000, total: 1180000, paid: 500000, balance: 680000, status: "partial" },
-  { id: "3", billNo: "BILL-BAT-4412", supplierName: "boAt Lifestyle Audio", billDate: "2026-07-25", dueDate: "2026-08-24", subtotal: 380000, gst: 68400, total: 448400, paid: 448400, balance: 0, status: "paid" },
-  { id: "4", billNo: "BILL-SNY-3319", supplierName: "Sony India Distribution", billDate: "2026-07-20", dueDate: "2026-08-19", subtotal: 750000, gst: 135000, total: 885000, paid: 0, balance: 885000, status: "pending" },
-];
-
 export default function PurchaseEntriesPage() {
-  const [entries, setEntries] = useState<PurchaseEntryItem[]>(INITIAL_ENTRIES);
+  const queryClient = useQueryClient();
+  const { data: entries = [], isLoading: loading } = useQuery({
+    queryKey: ["purchase-entries"],
+    queryFn: async () => {
+      const res = await fetch("/api/purchase-entries");
+      const json = await res.json();
+      return json.success ? json.data : [];
+    }
+  });
+
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ["suppliers"],
+    queryFn: async () => {
+      const res = await fetch("/api/suppliers");
+      const json = await res.json();
+      return json.success ? json.data : [];
+    }
+  });
+
   const [search, setSearch] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [formData, setFormData] = useState({
-    billNo: "",
-    supplierName: "",
-    totalAmount: "",
+  const [entryToDelete, setEntryToDelete] = useState<string | null>(null);
+
+  const deleteMutation = useMutation({
+    mutationFn: async (billNo: string) => {
+      const res = await fetch(`/api/purchase-entries?billNo=${encodeURIComponent(billNo)}`, { method: "DELETE" });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || "Failed to delete entry");
+      return json;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["purchase-entries"] });
+      toast.success("Purchase entry deleted successfully");
+      setEntryToDelete(null);
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "An error occurred while deleting");
+    }
   });
 
   const filtered = useMemo(() => {
     return entries.filter(
-      (e) =>
+      (e: any) =>
         !search ||
         e.billNo.toLowerCase().includes(search.toLowerCase()) ||
         e.supplierName.toLowerCase().includes(search.toLowerCase())
     );
   }, [entries, search]);
-
-  const handleSave = () => {
-    if (!formData.supplierName || !formData.totalAmount) {
-      toast.error("Please fill Supplier Name and Bill Amount");
-      return;
-    }
-
-    const total = Number(formData.totalAmount) || 0;
-    const subtotal = Math.round(total / 1.18);
-    const gst = total - subtotal;
-
-    const newEntry: PurchaseEntryItem = {
-      id: String(Date.now()),
-      billNo: formData.billNo || `BILL-2026-${String(entries.length + 88).padStart(4, "0")}`,
-      supplierName: formData.supplierName,
-      billDate: new Date().toISOString().split("T")[0],
-      dueDate: "2026-08-30",
-      subtotal,
-      gst,
-      total,
-      paid: total,
-      balance: 0,
-      status: "paid",
-    };
-
-    setEntries([newEntry, ...entries]);
-    toast.success(`Purchase Entry ${newEntry.billNo} recorded!`);
-    setIsFormOpen(false);
-  };
 
   return (
     <PageShell
@@ -119,91 +118,64 @@ export default function PurchaseEntriesPage() {
                 <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">GST</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Total Amount</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Status</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase"></th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {filtered.map((e) => (
-                <tr key={e.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3 font-mono font-bold text-[#3F63AD]">{e.billNo}</td>
-                  <td className="px-4 py-3 font-medium text-foreground">{e.supplierName}</td>
-                  <td className="px-4 py-3 text-muted-foreground text-xs">{formatDate(e.billDate)}</td>
-                  <td className="px-4 py-3 text-right">{formatCurrency(e.subtotal)}</td>
-                  <td className="px-4 py-3 text-right text-muted-foreground">{formatCurrency(e.gst)}</td>
-                  <td className="px-4 py-3 text-right font-semibold">{formatCurrency(e.total)}</td>
-                  <td className="px-4 py-3 text-center">
-                    <Badge variant={e.status === "paid" ? "success" : e.status === "partial" ? "info" : "warning"}>{e.status}</Badge>
-                  </td>
+              {loading ? (
+                <tr>
+                  <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">Loading...</td>
                 </tr>
-              ))}
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">No purchase entries found</td>
+                </tr>
+              ) : (
+                filtered.map((e) => (
+                  <tr key={e._id || e.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-3 font-mono font-bold text-[#3F63AD]">{e.billNo}</td>
+                    <td className="px-4 py-3 font-medium text-foreground">{e.supplierName}</td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs">{formatDate(e.date || e.billDate)}</td>
+                    <td className="px-4 py-3 text-right">{formatCurrency(e.amount || e.subtotal)}</td>
+                    <td className="px-4 py-3 text-right text-muted-foreground">{formatCurrency(e.totalTax || e.gst)}</td>
+                    <td className="px-4 py-3 text-right font-semibold">{formatCurrency((e.amount || e.subtotal) + (e.totalTax || e.gst))}</td>
+                    <td className="px-4 py-3 text-center">
+                      <Badge variant={e.status === "paid" ? "success" : e.status === "partial" ? "info" : "warning"}>{e.status}</Badge>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuItem 
+                            className="gap-2 text-red-600 focus:bg-red-50 focus:text-red-700 cursor-pointer"
+                            onClick={() => {
+                              if(confirm(`Are you sure you want to delete bill ${e.billNo}?`)) {
+                                deleteMutation.mutate(e.billNo);
+                              }
+                            }}
+                          >
+                            <XCircle className="w-4 h-4" /> Delete Entry
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent className="max-w-2xl p-0 rounded-2xl border-none shadow-2xl overflow-hidden">
-          {/* Header */}
-          <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-6 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/20">
-                <ClipboardList className="w-6 h-6 text-[#76C043]" />
-              </div>
-              <div>
-                <h3 className="text-xl font-bold tracking-tight">Record Supplier Purchase Bill</h3>
-                <p className="text-xs text-slate-300 mt-0.5">
-                  Input incoming purchase invoice, GST breakdown and supplier payables
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="p-6 space-y-4 bg-slate-50/50">
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Supplier Bill / Invoice No.</Label>
-                  <Input
-                    placeholder="BILL-APL-9081"
-                    value={formData.billNo}
-                    onChange={(e) => setFormData({ ...formData, billNo: e.target.value })}
-                    className="bg-slate-50 border-slate-300 font-mono"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Supplier Name *</Label>
-                  <Input
-                    placeholder="e.g. Apple India Pvt Ltd"
-                    value={formData.supplierName}
-                    onChange={(e) => setFormData({ ...formData, supplierName: e.target.value })}
-                    className="bg-slate-50 border-slate-300"
-                  />
-                </div>
-
-                <div className="space-y-1.5 md:col-span-2">
-                  <Label className="text-xs font-semibold text-slate-700">Total Purchase Bill Amount (incl. GST) ₹ *</Label>
-                  <Input
-                    type="number"
-                    placeholder="250000"
-                    value={formData.totalAmount}
-                    onChange={(e) => setFormData({ ...formData, totalAmount: e.target.value })}
-                    className="bg-slate-50 border-slate-300 font-semibold"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-slate-100 px-6 py-4 rounded-b-2xl border-t border-slate-200 flex items-center justify-end gap-3">
-            <Button variant="outline" onClick={() => setIsFormOpen(false)} className="px-5">
-              Cancel
-            </Button>
-            <Button onClick={handleSave} className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white px-6 font-bold shadow-lg shadow-[#3F63AD]/20">
-              Save Purchase Entry
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <PurchaseCreationModal 
+        isOpen={isFormOpen} 
+        onClose={() => setIsFormOpen(false)} 
+        mode="entry" 
+      />
     </PageShell>
   );
 }

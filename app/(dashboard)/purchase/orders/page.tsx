@@ -6,10 +6,12 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, Search, ShoppingBag, Truck } from "lucide-react";
+import { Plus, Search, ShoppingBag, Truck, Trash2, AlertTriangle } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { PurchaseCreationModal } from "@/components/PurchaseCreationModal";
 
 interface POItem {
   id: string;
@@ -29,48 +31,54 @@ const INITIAL_POS: POItem[] = [
 ];
 
 export default function PurchaseOrdersPage() {
-  const [pos, setPos] = useState<POItem[]>(INITIAL_POS);
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [formData, setFormData] = useState({
-    supplierName: "",
-    expectedDate: "",
-    totalAmount: "",
+  const [poToDelete, setPoToDelete] = useState<string | null>(null);
+
+  const { data: pos = [], isLoading: loading } = useQuery({
+    queryKey: ["purchase-orders"],
+    queryFn: async () => {
+      const res = await fetch("/api/purchase-orders");
+      const json = await res.json();
+      return json.success ? json.data : [];
+    }
   });
 
   const filtered = useMemo(() => {
     return pos.filter(
       (p) =>
         !search ||
-        p.poNo.toLowerCase().includes(search.toLowerCase()) ||
-        p.supplierName.toLowerCase().includes(search.toLowerCase())
+        (p.poNo && p.poNo.toLowerCase().includes(search.toLowerCase())) ||
+        (p.supplierName && p.supplierName.toLowerCase().includes(search.toLowerCase()))
     );
   }, [pos, search]);
 
-  const handleSave = () => {
-    if (!formData.supplierName || !formData.totalAmount) {
-      toast.error("Please fill Supplier Name and Total Amount");
-      return;
+
+
+  const deletePOMutation = useMutation({
+    mutationFn: async (poNo: string) => {
+      const res = await fetch(`/api/purchase-orders?poNo=${encodeURIComponent(poNo)}`, { method: "DELETE" });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || "Failed to delete PO");
+      return json;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["purchase-orders"] });
+      toast.success("Purchase Order deleted successfully");
+      setPoToDelete(null);
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "An error occurred while deleting");
     }
+  });
 
-    const newPO: POItem = {
-      id: String(Date.now()),
-      poNo: `PO-2026-${String(pos.length + 113).padStart(4, "0")}`,
-      supplierName: formData.supplierName,
-      date: new Date().toISOString().split("T")[0],
-      expectedDate: formData.expectedDate || "2026-08-10",
-      totalAmount: Number(formData.totalAmount) || 0,
-      status: "sent",
-    };
 
-    setPos([newPO, ...pos]);
-    toast.success(`Purchase Order ${newPO.poNo} sent to ${newPO.supplierName}`);
-    setIsFormOpen(false);
-  };
 
   return (
-    <PageShell
-      title="Purchase Orders"
+    <>
+      <PageShell
+        title="Purchase Orders"
       subtitle="Manage inventory restock purchase orders to suppliers"
       breadcrumbs={[{ label: "Purchase" }, { label: "Purchase Orders" }]}
       actions={
@@ -106,10 +114,20 @@ export default function PurchaseOrdersPage() {
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Expected Date</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">PO Amount</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Status</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase w-10"></th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {filtered.map((p) => (
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">Loading...</td>
+                </tr>
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No purchase orders found</td>
+                </tr>
+              ) : (
+                filtered.map((p: any) => (
                 <tr key={p.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-3 font-mono font-bold text-[#3F63AD]">{p.poNo}</td>
                   <td className="px-4 py-3 font-medium text-foreground">{p.supplierName}</td>
@@ -119,78 +137,59 @@ export default function PurchaseOrdersPage() {
                   <td className="px-4 py-3 text-center">
                     <Badge variant={p.status === "received" ? "success" : p.status === "partial" ? "info" : "warning"}>{p.status}</Badge>
                   </td>
+                  <td className="px-4 py-3 text-center">
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                      onClick={() => setPoToDelete(p.poNo)}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </td>
                 </tr>
-              ))}
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent className="max-w-2xl p-0 rounded-2xl border-none shadow-2xl overflow-hidden">
-          {/* Header */}
-          <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-6 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/20">
-                <ShoppingBag className="w-6 h-6 text-[#76C043]" />
-              </div>
-              <div>
-                <h3 className="text-xl font-bold tracking-tight">Create Purchase Order (PO)</h3>
-                <p className="text-xs text-slate-300 mt-0.5">
-                  Issue inventory restocking order to electronics manufacturer or distributor
-                </p>
-              </div>
-            </div>
-          </div>
+      <PurchaseCreationModal 
+        isOpen={isFormOpen} 
+        onClose={() => setIsFormOpen(false)} 
+        mode="order" 
+      />
 
-          <div className="p-6 space-y-4 bg-slate-50/50">
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5 md:col-span-2">
-                  <Label className="text-xs font-semibold text-slate-700">Supplier / Vendor Name *</Label>
-                  <Input
-                    placeholder="e.g. Apple India Pvt Ltd"
-                    value={formData.supplierName}
-                    onChange={(e) => setFormData({ ...formData, supplierName: e.target.value })}
-                    className="bg-slate-50 border-slate-300"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Expected Delivery Date</Label>
-                  <Input
-                    type="date"
-                    value={formData.expectedDate}
-                    onChange={(e) => setFormData({ ...formData, expectedDate: e.target.value })}
-                    className="bg-slate-50 border-slate-300"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Estimated Total Order Value (₹) *</Label>
-                  <Input
-                    type="number"
-                    placeholder="500000"
-                    value={formData.totalAmount}
-                    onChange={(e) => setFormData({ ...formData, totalAmount: e.target.value })}
-                    className="bg-slate-50 border-slate-300 font-semibold"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-slate-100 px-6 py-4 rounded-b-2xl border-t border-slate-200 flex items-center justify-end gap-3">
-            <Button variant="outline" onClick={() => setIsFormOpen(false)} className="px-5">
+      {/* DELETE CONFIRMATION MODAL */}
+      <Dialog open={!!poToDelete} onOpenChange={(open) => !open && setPoToDelete(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-red-600 flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5" />
+              Confirm Deletion
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete purchase order <span className="font-bold">{poToDelete}</span>? 
+              This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setPoToDelete(null)} disabled={deletePOMutation.isPending}>
               Cancel
             </Button>
-            <Button onClick={handleSave} className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white px-6 font-bold shadow-lg shadow-[#3F63AD]/20">
-              Send Purchase Order
+            <Button 
+              variant="destructive" 
+              onClick={() => poToDelete && deletePOMutation.mutate(poToDelete)}
+              disabled={deletePOMutation.isPending}
+            >
+              {deletePOMutation.isPending ? "Deleting..." : "Delete PO"}
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
-    </PageShell>
+      </PageShell>
+    </>
   );
 }
 

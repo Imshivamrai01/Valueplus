@@ -5,22 +5,27 @@ import { Plus, Building2, CreditCard, IndianRupee } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils";
-
-const ACCOUNTS = [
-  { id:"1", name:"HDFC Current Account", bank:"HDFC Bank", number:"XXXX XXXX 4521", type:"current", balance:2845000, status:"active" },
-  { id:"2", name:"SBI Savings Account", bank:"State Bank of India", number:"XXXX XXXX 8734", type:"savings", balance:856000, status:"active" },
-  { id:"3", name:"ICICI Business Account", bank:"ICICI Bank", number:"XXXX XXXX 2198", type:"current", balance:1234000, status:"active" },
-  { id:"4", name:"Cash Account", bank:"—", number:"—", type:"cash", balance:125000, status:"active" },
-  { id:"5", name:"Petty Cash", bank:"—", number:"—", type:"cash", balance:15000, status:"active" },
-];
+import { useQuery } from "@tanstack/react-query";
 
 export default function BankAccountsPage() {
+  const { data: accounts = [], isLoading } = useQuery({
+    queryKey: ["bank-accounts"],
+    queryFn: async () => {
+      const res = await fetch("/api/bank-accounts");
+      const json = await res.json();
+      return json.success ? json.data : [];
+    }
+  });
   return (
     <PageShell title="Bank Accounts" subtitle="Manage bank & cash accounts" breadcrumbs={[{ label: "Banking" }, { label: "Bank Accounts" }]}
       actions={<Button size="sm" onClick={() => toast.success("Add account form opened")}><Plus className="w-4 h-4 mr-1.5" /> Add Account</Button>}>
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-        {ACCOUNTS.map(acc => (
-          <div key={acc.id} className="metric-card">
+        {isLoading ? (
+          <div className="col-span-full py-12 text-center text-muted-foreground">Loading bank accounts...</div>
+        ) : accounts.length === 0 ? (
+          <div className="col-span-full py-12 text-center text-muted-foreground">No bank accounts found</div>
+        ) : accounts.map((acc: any) => (
+          <div key={acc._id || acc.id} className="metric-card">
             <div className="flex items-start justify-between mb-4">
               <div className="w-11 h-11 rounded-2xl bg-[#3F63AD]/10 flex items-center justify-center">
                 {acc.type === "cash" ? <IndianRupee className="w-5 h-5 text-[#3F63AD]" /> : <Building2 className="w-5 h-5 text-[#3F63AD]" />}

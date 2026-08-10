@@ -2,46 +2,65 @@
 import { PageShell } from "@/components/shared/page-shell";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 
-const INITIAL_UNITS = [
-  { id: "1", name: "Pieces", abbr: "PCS", type: "count", status: "active" },
-  { id: "2", name: "Numbers", abbr: "NOS", type: "count", status: "active" },
-  { id: "3", name: "Box", abbr: "BOX", type: "count", status: "active" },
-  { id: "4", name: "Set", abbr: "SET", type: "count", status: "active" },
-  { id: "5", name: "Pack / Packet", abbr: "PKT", type: "count", status: "active" },
-  { id: "6", name: "Pair", abbr: "PR", type: "count", status: "active" },
-  { id: "7", name: "Unit", abbr: "UNT", type: "count", status: "active" },
-  { id: "8", name: "Meter", abbr: "MTR", type: "length", status: "active" },
-];
-
 export default function UnitsPage() {
-  const [units, setUnits] = useState(INITIAL_UNITS);
+  const [units, setUnits] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [formData, setFormData] = useState({ name: "", abbr: "", type: "count" });
 
-  const handleSave = () => {
+  const fetchUnits = async () => {
+    try {
+      const res = await fetch("/api/units");
+      const json = await res.json();
+      if (json.success) {
+        setUnits(json.data);
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchUnits();
+  }, []);
+
+  const handleSave = async () => {
     if (!formData.name || !formData.abbr) {
       toast.error("Please fill Unit Name and Abbreviation");
       return;
     }
 
-    const newUnit = {
-      id: String(Date.now()),
-      name: formData.name,
-      abbr: formData.abbr.toUpperCase(),
-      type: formData.type,
-      status: "active",
-    };
-
-    setUnits([...units, newUnit]);
-    toast.success(`Unit "${newUnit.name}" added successfully!`);
-    setIsFormOpen(false);
+    try {
+      const res = await fetch("/api/units", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: formData.name,
+          shortName: formData.abbr.toUpperCase(),
+          type: formData.type,
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        toast.success(`Unit "${json.data.name}" added successfully!`);
+        setIsFormOpen(false);
+        fetchUnits();
+      } else {
+        toast.error(json.error || "Failed to save unit");
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("An error occurred");
+    }
   };
 
   return (
@@ -53,14 +72,18 @@ export default function UnitsPage() {
             <tr>{["Unit Name","Abbreviation","Type","Status","Actions"].map(h => <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">{h}</th>)}</tr>
           </thead>
           <tbody className="divide-y">
-            {units.map(u => (
-              <tr key={u.id} className="hover:bg-slate-50 transition-colors">
+            {loading ? (
+              <tr><td colSpan={5} className="text-center p-8 text-muted-foreground">Loading...</td></tr>
+            ) : units.length === 0 ? (
+              <tr><td colSpan={5} className="text-center p-8 text-muted-foreground">No units found</td></tr>
+            ) : units.map(u => (
+              <tr key={u._id || u.id} className="hover:bg-slate-50 transition-colors">
                 <td className="px-4 py-3 font-medium">{u.name}</td>
-                <td className="px-4 py-3 font-mono font-semibold text-[#3F63AD]">{u.abbr}</td>
+                <td className="px-4 py-3 font-mono font-semibold text-[#3F63AD]">{u.shortName || u.abbr}</td>
                 <td className="px-4 py-3 capitalize text-muted-foreground">{u.type}</td>
-                <td className="px-4 py-3"><Badge variant="success">Active</Badge></td>
+                <td className="px-4 py-3"><Badge variant={u.status === "active" ? "success" : "secondary"}>{u.status}</Badge></td>
                 <td className="px-4 py-3 flex gap-2">
-                  <Button variant="ghost" size="sm" className="text-red-500" onClick={() => { setUnits(prev => prev.filter(x => x.id !== u.id)); toast.success("Unit deleted"); }}>Delete</Button>
+                  <Button variant="ghost" size="sm" className="text-red-500" onClick={() => { setUnits(prev => prev.filter(x => (x._id || x.id) !== (u._id || u.id))); toast.success("Unit deleted"); }}>Delete</Button>
                 </td>
               </tr>
             ))}

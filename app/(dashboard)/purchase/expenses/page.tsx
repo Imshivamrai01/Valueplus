@@ -7,10 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, Search, DollarSign, Receipt } from "lucide-react";
+import { Plus, Search, DollarSign, Receipt, Trash2, AlertTriangle } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 interface ExpenseItem {
   id: string;
@@ -23,23 +24,25 @@ interface ExpenseItem {
   status: "paid" | "approved" | "pending";
 }
 
-const INITIAL_EXPENSES: ExpenseItem[] = [
-  { id: "1", expenseNo: "EXP-2026-0091", category: "Store Rent", description: "Monthly Showroom Rent — Prayagraj Branch", amount: 65000, date: "2026-08-01", paymentMode: "Bank Transfer", status: "paid" },
-  { id: "2", expenseNo: "EXP-2026-0090", category: "Electricity & Utilities", description: "UPPCL Electricity Bill — Noida Hub", amount: 28400, date: "2026-07-30", paymentMode: "UPI", status: "paid" },
-  { id: "3", expenseNo: "EXP-2026-0089", category: "Courier & Freight", description: "Bluedart express delivery for customer returns", amount: 14500, date: "2026-07-28", paymentMode: "UPI", status: "paid" },
-  { id: "4", expenseNo: "EXP-2026-0088", category: "Staff Salary & Wages", description: "Sales Executives Incentive Bonus Q1", amount: 120000, date: "2026-07-25", paymentMode: "Bank Transfer", status: "paid" },
-  { id: "5", expenseNo: "EXP-2026-0087", category: "Marketing & Promotions", description: "Local Newspaper & Flex Banner Ads", amount: 35000, date: "2026-07-20", paymentMode: "Cash", status: "approved" },
-];
-
 export default function ExpensesPage() {
-  const [expenses, setExpenses] = useState<ExpenseItem[]>(INITIAL_EXPENSES);
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [expenseToDelete, setExpenseToDelete] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     category: "Store Rent",
     description: "",
     amount: "",
     paymentMode: "UPI",
+  });
+
+  const { data: expenses = [], isLoading: loading } = useQuery({
+    queryKey: ["expenses"],
+    queryFn: async () => {
+      const res = await fetch("/api/expenses");
+      const json = await res.json();
+      return json.success ? json.data : [];
+    }
   });
 
   const filtered = useMemo(() => {
@@ -52,26 +55,62 @@ export default function ExpensesPage() {
     );
   }, [expenses, search]);
 
+  const createExpenseMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      const res = await fetch("/api/expenses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || "Failed to create expense");
+      return json.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      toast.success(`Expense ${data.expenseNo || ""} recorded!`);
+      setIsFormOpen(false);
+      setFormData({ category: "Store Rent", description: "", amount: "", paymentMode: "UPI" });
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "An error occurred");
+    }
+  });
+
+  const deleteExpenseMutation = useMutation({
+    mutationFn: async (expenseNo: string) => {
+      const res = await fetch(`/api/expenses?expenseNo=${encodeURIComponent(expenseNo)}`, { method: "DELETE" });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || "Failed to delete expense");
+      return json;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      toast.success("Expense deleted successfully");
+      setExpenseToDelete(null);
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "An error occurred while deleting");
+    }
+  });
+
   const handleSave = () => {
     if (!formData.description || !formData.amount) {
       toast.error("Please fill Description and Expense Amount");
       return;
     }
 
-    const newExp: ExpenseItem = {
-      id: String(Date.now()),
-      expenseNo: `EXP-2026-${String(expenses.length + 92).padStart(4, "0")}`,
+    const payload = {
+      expenseNo: `EXP-${new Date().getFullYear()}-${String(expenses.length + 92).padStart(4, "0")}`,
       category: formData.category,
       description: formData.description,
       amount: Number(formData.amount) || 0,
       date: new Date().toISOString().split("T")[0],
-      paymentMode: formData.paymentMode as any,
+      paymentMode: formData.paymentMode,
       status: "paid",
     };
 
-    setExpenses([newExp, ...expenses]);
-    toast.success(`Expense ${newExp.expenseNo} recorded!`);
-    setIsFormOpen(false);
+    createExpenseMutation.mutate(payload);
   };
 
   return (
@@ -113,10 +152,20 @@ export default function ExpensesPage() {
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Payment Mode</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Amount</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Status</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase w-10"></th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {filtered.map((e) => (
+              {loading ? (
+                <tr>
+                  <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">Loading...</td>
+                </tr>
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">No expenses found</td>
+                </tr>
+              ) : (
+                filtered.map((e: any) => (
                 <tr key={e.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-3 font-mono font-bold text-[#3F63AD]">{e.expenseNo}</td>
                   <td className="px-4 py-3 font-semibold text-foreground">{e.category}</td>
@@ -127,8 +176,19 @@ export default function ExpensesPage() {
                   <td className="px-4 py-3 text-center">
                     <Badge variant={e.status === "paid" ? "success" : "warning"}>{e.status}</Badge>
                   </td>
+                  <td className="px-4 py-3 text-center">
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                      onClick={() => setExpenseToDelete(e.expenseNo)}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </td>
                 </tr>
-              ))}
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -214,6 +274,34 @@ export default function ExpensesPage() {
               Record Expense
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* DELETE CONFIRMATION MODAL */}
+      <Dialog open={!!expenseToDelete} onOpenChange={(open) => !open && setExpenseToDelete(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-red-600 flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5" />
+              Confirm Deletion
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete expense <span className="font-bold">{expenseToDelete}</span>? 
+              This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setExpenseToDelete(null)} disabled={deleteExpenseMutation.isPending}>
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={() => expenseToDelete && deleteExpenseMutation.mutate(expenseToDelete)}
+              disabled={deleteExpenseMutation.isPending}
+            >
+              {deleteExpenseMutation.isPending ? "Deleting..." : "Delete Expense"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </PageShell>

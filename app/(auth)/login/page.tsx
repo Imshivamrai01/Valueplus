@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Eye, EyeOff, ArrowRight, Shield, Zap, BarChart2, Lock } from "lucide-react";
@@ -39,12 +40,23 @@ export default function LoginPage() {
     setError("");
     setIsLoading(true);
 
-    await new Promise((r) => setTimeout(r, 1000));
+    try {
+      const res = await signIn("credentials", {
+        redirect: false,
+        email: username,
+        password: password,
+      });
 
-    if (username === "admin" && password === "123456") {
-      router.push("/dashboard");
-    } else {
-      setError("Invalid credentials. Use admin / 123456");
+      if (res?.error) {
+        setError("Login failed: " + res.error);
+      } else if (res?.ok) {
+        window.location.href = "/dashboard";
+      } else {
+        setError("Unknown error: " + JSON.stringify(res));
+      }
+    } catch (err) {
+      setError("Something went wrong");
+    } finally {
       setIsLoading(false);
     }
   };

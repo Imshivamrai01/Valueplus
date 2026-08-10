@@ -2,64 +2,89 @@
 import { PageShell } from "@/components/shared/page-shell";
 import { Button } from "@/components/ui/button";
 import { Plus, Layers } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 
-const INITIAL_VARIANTS = [
-  { id: "1", name: "Color", values: ["Black", "White", "Silver", "Space Grey", "Midnight", "Starlight"], status: "active" },
-  { id: "2", name: "Storage", values: ["64GB", "128GB", "256GB", "512GB", "1TB", "2TB"], status: "active" },
-  { id: "3", name: "RAM", values: ["4GB", "8GB", "16GB", "32GB", "64GB"], status: "active" },
-  { id: "4", name: "Screen Size", values: ["13\"", "14\"", "15.6\"", "17\"", "55\"", "65\""], status: "active" },
-  { id: "5", name: "Processor", values: ["Apple M3", "Intel i5", "Intel i7", "Intel i9", "Ryzen 7"], status: "active" },
-  { id: "6", name: "Warranty", values: ["1 Year Brand Warranty", "2 Years Extended Warranty", "6 Months Seller Warranty"], status: "active" },
-];
-
 export default function VariantsPage() {
-  const [variants, setVariants] = useState(INITIAL_VARIANTS);
+  const [variants, setVariants] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [formData, setFormData] = useState({ name: "", values: "" });
 
-  const handleSave = () => {
+  const fetchVariants = async () => {
+    try {
+      const res = await fetch("/api/variants");
+      const json = await res.json();
+      if (json.success) {
+        setVariants(json.data);
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchVariants();
+  }, []);
+
+  const handleSave = async () => {
     if (!formData.name || !formData.values) {
       toast.error("Please fill Variant Name and Values");
       return;
     }
 
-    const newVar = {
-      id: String(Date.now()),
-      name: formData.name,
-      values: formData.values.split(",").map((s) => s.trim()).filter(Boolean),
-      status: "active",
-    };
-
-    setVariants([...variants, newVar]);
-    toast.success(`Variant "${newVar.name}" added successfully!`);
-    setIsFormOpen(false);
+    try {
+      const res = await fetch("/api/variants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: formData.name,
+          values: formData.values.split(",").map((s) => s.trim()).filter(Boolean),
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        toast.success(`Variant "${json.data.name}" added successfully!`);
+        setIsFormOpen(false);
+        fetchVariants();
+      } else {
+        toast.error(json.error || "Failed to save variant");
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("An error occurred");
+    }
   };
 
   return (
     <PageShell title="Variants" subtitle="Manage electronics product attributes & variants" breadcrumbs={[{ label: "Masters" }, { label: "Variants" }]}
       actions={<Button size="sm" onClick={() => setIsFormOpen(true)}><Plus className="w-4 h-4 mr-1.5" /> Add Variant</Button>}>
       <div className="data-table-container divide-y">
-        {variants.map(v => (
-          <div key={v.id} className="flex items-center gap-4 px-4 py-4 hover:bg-slate-50 transition-colors">
+        {loading ? (
+          <div className="p-8 text-center text-muted-foreground">Loading...</div>
+        ) : variants.length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground">No variants found</div>
+        ) : variants.map(v => (
+          <div key={v._id || v.id} className="flex items-center gap-4 px-4 py-4 hover:bg-slate-50 transition-colors">
             <div className="w-10 h-10 rounded-xl bg-[#3F63AD]/10 flex items-center justify-center flex-shrink-0">
               <Layers className="w-5 h-5 text-[#3F63AD]" />
             </div>
             <div className="flex-1">
               <p className="font-semibold text-foreground">{v.name}</p>
               <div className="flex flex-wrap gap-1.5 mt-1.5">
-                {v.values.map(val => (
+                {v.values.map((val: string) => (
                   <span key={val} className="px-2.5 py-0.5 rounded-full bg-slate-100 text-xs font-medium text-slate-700">{val}</span>
                 ))}
               </div>
             </div>
             <Badge variant={v.status === "active" ? "success" : "secondary"}>{v.status}</Badge>
-            <Button variant="ghost" size="sm" className="text-red-500" onClick={() => { setVariants(prev => prev.filter(x => x.id !== v.id)); toast.success("Variant deleted"); }}>Delete</Button>
+            <Button variant="ghost" size="sm" className="text-red-500" onClick={() => { setVariants(prev => prev.filter(x => (x._id || x.id) !== (v._id || v.id))); toast.success("Variant deleted"); }}>Delete</Button>
           </div>
         ))}
       </div>

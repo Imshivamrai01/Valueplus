@@ -5,11 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Plus, Search, FileText, Send, CheckCircle, Clock } from "lucide-react";
+import { Plus, Search, FileText, Send, CheckCircle, Clock, Trash2, AlertTriangle, Eye, User, CalendarDays, WalletCards } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { InvoiceCreationModal } from "@/components/InvoiceCreationModal";
+import ValueplusInvoice from "@/app/invoice/page";
 
 interface EstimateItem {
   id: string;
@@ -21,17 +24,33 @@ interface EstimateItem {
   status: "sent" | "accepted" | "expired" | "draft";
 }
 
-const INITIAL_ESTIMATES: EstimateItem[] = [
-  { id: "1", estimateNo: "EST-2026-0045", customerName: "Gupta Electronics Ltd", date: "2026-08-01", expiryDate: "2026-08-15", totalAmount: 185000, status: "sent" },
-  { id: "2", estimateNo: "EST-2026-0044", customerName: "Verma Exports Pvt Ltd", date: "2026-07-29", expiryDate: "2026-08-12", totalAmount: 320000, status: "accepted" },
-  { id: "3", estimateNo: "EST-2026-0043", customerName: "Singh & Sons Retailers", date: "2026-07-25", expiryDate: "2026-08-08", totalAmount: 95000, status: "sent" },
-  { id: "4", estimateNo: "EST-2026-0042", customerName: "Agarwal Mobile Hub", date: "2026-07-20", expiryDate: "2026-08-03", totalAmount: 145000, status: "expired" },
-];
-
 export default function EstimatesPage() {
-  const [estimates, setEstimates] = useState<EstimateItem[]>(INITIAL_ESTIMATES);
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [estimateToDelete, setEstimateToDelete] = useState<string | null>(null);
+  const [activePrintEstimate, setActivePrintEstimate] = useState<any>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [selectedEstimate, setSelectedEstimate] = useState<any | null>(null);
+
+  const { data: estimates = [], isLoading } = useQuery({
+    queryKey: ["estimates"],
+    queryFn: async () => {
+      const res = await fetch("/api/estimates");
+      const json = await res.json();
+      return json.success ? json.data : [];
+    }
+  });
+
+  const { data: customers = [] } = useQuery({
+    queryKey: ["customers"],
+    queryFn: async () => {
+      const res = await fetch("/api/customers");
+      const json = await res.json();
+      return json.success ? json.data : [];
+    }
+  });
+
   const [formData, setFormData] = useState({
     customerName: "",
     expiryDate: "",
@@ -40,32 +59,67 @@ export default function EstimatesPage() {
 
   const filtered = useMemo(() => {
     return estimates.filter(
-      (e) =>
+      (e: any) =>
         !search ||
-        e.estimateNo.toLowerCase().includes(search.toLowerCase()) ||
-        e.customerName.toLowerCase().includes(search.toLowerCase())
+        (e.estimateNumber || e.estimateNo)?.toLowerCase().includes(search.toLowerCase()) ||
+        e.customerName?.toLowerCase().includes(search.toLowerCase())
     );
   }, [estimates, search]);
 
-  const handleSave = () => {
+  const createEstimateMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      const res = await fetch("/api/estimates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || "Failed to create estimate");
+      return json.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["estimates"] });
+      toast.success(`Estimate ${data.estimateNumber || ""} created & sent!`);
+      setIsFormOpen(false);
+      setFormData({ customerName: "", expiryDate: "", totalAmount: "" });
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "An error occurred");
+    }
+  });
+
+  const deleteEstimateMutation = useMutation({
+    mutationFn: async (estimateNumber: string) => {
+      const res = await fetch(`/api/estimates?estimateNumber=${encodeURIComponent(estimateNumber)}`, { method: "DELETE" });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || "Failed to delete estimate");
+      return json;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["estimates"] });
+      toast.success("Estimate deleted successfully");
+      setEstimateToDelete(null);
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "An error occurred while deleting");
+    }
+  });
+
+  const handleSave = async () => {
     if (!formData.customerName || !formData.totalAmount) {
       toast.error("Please fill Customer Name and Amount");
       return;
     }
 
-    const newEst: EstimateItem = {
-      id: String(Date.now()),
-      estimateNo: `EST-2026-${String(estimates.length + 46).padStart(4, "0")}`,
+    const payload = {
+      estimateNumber: `EST-${new Date().getFullYear()}-${String(estimates.length + 1).padStart(4, "0")}`,
       customerName: formData.customerName,
-      date: new Date().toISOString().split("T")[0],
-      expiryDate: formData.expiryDate || "2026-08-20",
-      totalAmount: Number(formData.totalAmount) || 0,
-      status: "sent",
+      expiryDate: formData.expiryDate || new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString(),
+      total: Number(formData.totalAmount) || 0,
+      status: "Sent",
     };
 
-    setEstimates([newEst, ...estimates]);
-    toast.success(`Estimate ${newEst.estimateNo} created & sent!`);
-    setIsFormOpen(false);
+    createEstimateMutation.mutate(payload);
   };
 
   return (
@@ -80,7 +134,7 @@ export default function EstimatesPage() {
       }
     >
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[{ label: "Total Estimates", value: estimates.length }, { label: "Accepted", value: estimates.filter(e => e.status === "accepted").length }, { label: "Sent / Pending", value: estimates.filter(e => e.status === "sent").length }, { label: "Quoted Value", value: formatCurrency(estimates.reduce((a, b) => a + b.totalAmount, 0)) }].map((s) => (
+        {[{ label: "Total Estimates", value: estimates.length }, { label: "Accepted", value: estimates.filter((e: any) => e.status === "accepted").length }, { label: "Pending", value: estimates.filter((e: any) => e.status === "sent").length }, { label: "Total Value", value: formatCurrency(estimates.reduce((a: any, b: any) => a + (b.total || b.totalAmount || 0), 0)) }].map((s) => (
           <div key={s.label} className="metric-card">
             <p className="text-2xl font-bold">{s.value}</p>
             <p className="text-xs text-muted-foreground mt-1">{s.label}</p>
@@ -106,18 +160,38 @@ export default function EstimatesPage() {
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Valid Until</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Amount</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Status</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase w-10"></th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {filtered.map((e) => (
-                <tr key={e.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3 font-mono font-bold text-[#3F63AD]">{e.estimateNo}</td>
+              {isLoading ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">Loading estimates...</td>
+                </tr>
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No estimates found</td>
+                </tr>
+              ) : filtered.map((e: any) => (
+                <tr key={e._id || e.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-4 py-3 font-mono font-bold text-[#3F63AD]">{e.estimateNumber || e.estimateNo}</td>
                   <td className="px-4 py-3 font-medium text-foreground">{e.customerName}</td>
                   <td className="px-4 py-3 text-muted-foreground text-xs">{formatDate(e.date)}</td>
                   <td className="px-4 py-3 text-muted-foreground text-xs">{formatDate(e.expiryDate)}</td>
-                  <td className="px-4 py-3 text-right font-semibold">{formatCurrency(e.totalAmount)}</td>
+                  <td className="px-4 py-3 text-right font-semibold">{formatCurrency(e.total || e.totalAmount)}</td>
                   <td className="px-4 py-3 text-center">
-                    <Badge variant={e.status === "accepted" ? "success" : e.status === "sent" ? "info" : "secondary"}>{e.status}</Badge>
+                    <Badge variant={e.status === "Accepted" ? "success" : e.status === "Sent" ? "info" : e.status === "Converted" ? "default" : "secondary"}>{e.status}</Badge>
+                  </td>
+                  <td className="px-4 py-3 text-right flex items-center justify-end gap-1">
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-[#3F63AD] hover:bg-blue-50" onClick={() => setSelectedEstimate(e)}>
+                      <Eye className="w-4 h-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-500 hover:text-blue-700 hover:bg-blue-50" onClick={() => { setActivePrintEstimate(e); setIsPreviewOpen(true); }}>
+                      <FileText className="w-4 h-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => setEstimateToDelete(e.estimateNumber || e.estimateNo)}>
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
                   </td>
                 </tr>
               ))}
@@ -126,68 +200,155 @@ export default function EstimatesPage() {
         </div>
       </div>
 
-      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent className="max-w-2xl p-0 rounded-2xl border-none shadow-2xl overflow-hidden">
-          {/* Header */}
-          <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-6 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/20">
-                <FileText className="w-6 h-6 text-[#76C043]" />
+      <InvoiceCreationModal 
+        isOpen={isFormOpen} 
+        onClose={() => setIsFormOpen(false)} 
+        mode="estimate" 
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ["estimates"] });
+          setIsFormOpen(false);
+        }} 
+      />
+
+      {selectedEstimate && (
+        <Dialog open={!!selectedEstimate} onOpenChange={() => setSelectedEstimate(null)}>
+          <DialogContent className="max-w-4xl p-0 rounded-2xl border-none shadow-2xl overflow-hidden bg-slate-50/50">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-6 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/20">
+                  <FileText className="w-6 h-6 text-yellow-400" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold tracking-tight">Estimate: {selectedEstimate.estimateNumber || selectedEstimate.estimateNo}</h3>
+                  <p className="text-xs text-slate-300 mt-0.5 flex items-center gap-2">
+                    <CalendarDays className="w-3.5 h-3.5" /> Date: {formatDate(selectedEstimate.date)} 
+                    <span className="opacity-50">|</span> 
+                    Valid Until: {formatDate(selectedEstimate.expiryDate)}
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-xl font-bold tracking-tight">Create Quotation / Estimate</h3>
-                <p className="text-xs text-slate-300 mt-0.5">
-                  Generate price estimate and commercial quotation for client approval
-                </p>
+              <Badge variant="outline" className={`text-sm py-1 px-3 border-white/30 ${selectedEstimate.status === "Converted" ? "bg-emerald-500 text-white" : "bg-white/10 text-white"}`}>
+                {selectedEstimate.status ? selectedEstimate.status.toUpperCase() : "DRAFT"}
+              </Badge>
+            </div>
+
+            <div className="p-6 space-y-6 overflow-y-auto max-h-[70vh]">
+              {/* Customer Details */}
+              <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-start gap-4">
+                <div className="w-10 h-10 rounded-full bg-blue-100 flex flex-none items-center justify-center">
+                  <User className="w-5 h-5 text-[#3F63AD]" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-bold text-slate-900">{selectedEstimate.customerName}</h4>
+                </div>
+              </div>
+
+              {/* Line Items */}
+              <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="bg-slate-100 p-3 border-b flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-slate-500" />
+                  <span className="font-bold text-slate-700 text-sm uppercase">Estimated Items</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 border-b">
+                      <tr>
+                        <th className="px-4 py-2 text-left font-semibold text-slate-500">Item Details</th>
+                        <th className="px-4 py-2 text-center font-semibold text-slate-500">Qty</th>
+                        <th className="px-4 py-2 text-right font-semibold text-slate-500">Rate (₹)</th>
+                        <th className="px-4 py-2 text-right font-semibold text-slate-500">Total (₹)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {selectedEstimate.items?.map((item: any, idx: number) => (
+                        <tr key={idx} className="hover:bg-slate-50">
+                          <td className="px-4 py-3">
+                            <p className="font-bold text-slate-900">{item.name || item.itemName}</p>
+                          </td>
+                          <td className="px-4 py-3 text-center font-semibold">{item.quantity || item.qty || 1}</td>
+                          <td className="px-4 py-3 text-right text-slate-600">{formatCurrency(item.rate || 0)}</td>
+                          <td className="px-4 py-3 text-right font-bold text-slate-800">{formatCurrency((item.rate || 0) * (item.quantity || item.qty || 1))}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Payment Summary */}
+              <div className="bg-gradient-to-br from-blue-50 to-indigo-50/30 p-5 rounded-xl border border-blue-100 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
+                    <WalletCards className="w-6 h-6 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-blue-900">Total Estimate Value</p>
+                    <p className="text-xs text-blue-700/80 mt-0.5">Including taxes</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="font-black text-blue-600 text-2xl">{formatCurrency(selectedEstimate.total || selectedEstimate.totalAmount || 0)}</p>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="p-6 space-y-4 bg-slate-50/50">
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5 md:col-span-2">
-                  <Label className="text-xs font-semibold text-slate-700">Customer / Client Name *</Label>
-                  <Input
-                    placeholder="e.g. Gupta Electronics Ltd"
-                    value={formData.customerName}
-                    onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
-                    className="bg-slate-50 border-slate-300"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Quote Expiry Date</Label>
-                  <Input
-                    type="date"
-                    value={formData.expiryDate}
-                    onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
-                    className="bg-slate-50 border-slate-300"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Total Estimated Amount (₹) *</Label>
-                  <Input
-                    type="number"
-                    placeholder="185000"
-                    value={formData.totalAmount}
-                    onChange={(e) => setFormData({ ...formData, totalAmount: e.target.value })}
-                    className="bg-slate-50 border-slate-300 font-semibold"
-                  />
-                </div>
+            <DialogFooter className="bg-slate-100 px-6 py-4 rounded-b-2xl border-t border-slate-200 flex items-center justify-between">
+              <div className="text-xs text-slate-500 font-medium">
+                {selectedEstimate.notes && <span>{selectedEstimate.notes}</span>}
               </div>
-            </div>
-          </div>
+              <Button onClick={() => setSelectedEstimate(null)} className="bg-slate-800 hover:bg-slate-900 text-white px-8 font-bold">
+                Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
-          <div className="bg-slate-100 px-6 py-4 rounded-b-2xl border-t border-slate-200 flex items-center justify-end gap-3">
-            <Button variant="outline" onClick={() => setIsFormOpen(false)} className="px-5">
+      {/* DELETE CONFIRMATION MODAL */}
+      <Dialog open={!!estimateToDelete} onOpenChange={(open) => !open && setEstimateToDelete(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-red-600 flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5" />
+              Confirm Deletion
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete estimate <span className="font-bold">{estimateToDelete}</span>? 
+              This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setEstimateToDelete(null)} disabled={deleteEstimateMutation.isPending}>
               Cancel
             </Button>
-            <Button onClick={handleSave} className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white px-6 font-bold shadow-lg shadow-[#3F63AD]/20">
-              Create & Send Estimate
+            <Button 
+              variant="destructive" 
+              onClick={() => estimateToDelete && deleteEstimateMutation.mutate(estimateToDelete)}
+              disabled={deleteEstimateMutation.isPending}
+            >
+              {deleteEstimateMutation.isPending ? "Deleting..." : "Delete Estimate"}
             </Button>
-          </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* FULL ESTIMATE PREVIEW MODAL */}
+      <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
+        <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto p-2">
+          {activePrintEstimate && (() => {
+            const customer = customers.find((c: any) => c.name === activePrintEstimate.customerName);
+            const enrichedData = { ...activePrintEstimate };
+            if (customer) {
+              if (!enrichedData.customerAddress) enrichedData.customerAddress = customer.billingAddress?.line1 || customer.address || "";
+              if (!enrichedData.customerCity) enrichedData.customerCity = customer.billingAddress?.city || customer.city || "";
+              if (!enrichedData.customerState) enrichedData.customerState = customer.billingAddress?.state || customer.state || "";
+              if (!enrichedData.customerPin) enrichedData.customerPin = customer.billingAddress?.pincode || customer.pincode || customer.pin || "";
+              if (!enrichedData.customerPhone) enrichedData.customerPhone = customer.phone || "";
+              if (!enrichedData.customerEmail) enrichedData.customerEmail = customer.email || "";
+            }
+            return <ValueplusInvoice invoiceData={enrichedData} />;
+          })()}
         </DialogContent>
       </Dialog>
     </PageShell>

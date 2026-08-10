@@ -7,10 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, Search, ArrowLeftRight, Warehouse } from "lucide-react";
+import { Plus, Search, ArrowLeftRight, Warehouse, Trash2, AlertTriangle } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { formatDate } from "@/lib/utils";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 interface TransferItem {
   id: string;
@@ -24,23 +25,26 @@ interface TransferItem {
   status: "received" | "in-transit" | "draft";
 }
 
-const INITIAL_TRANSFERS: TransferItem[] = [
-  { id: "1", transferNo: "STR-2026-0034", fromWarehouse: "Main Store - Mumbai", toWarehouse: "Pune Branch", itemName: "iPhone 15 Pro Max 256GB", quantity: 5, unit: "PCS", date: "2026-08-01", status: "in-transit" },
-  { id: "2", transferNo: "STR-2026-0033", fromWarehouse: "Main Store - Mumbai", toWarehouse: "Delhi Hub", itemName: "AirPods Pro Gen 2", quantity: 15, unit: "PR", date: "2026-07-29", status: "received" },
-  { id: "3", transferNo: "STR-2026-0032", fromWarehouse: "Delhi Hub", toWarehouse: "Bengaluru Store", itemName: "Sony Bravia 55\" 4K Smart TV", quantity: 3, unit: "PCS", date: "2026-07-25", status: "received" },
-  { id: "4", transferNo: "STR-2026-0031", fromWarehouse: "Main Store - Mumbai", toWarehouse: "Bengaluru Store", itemName: "MacBook Air M3 16GB/512GB", quantity: 4, unit: "PCS", date: "2026-07-20", status: "received" },
-];
-
 export default function StockTransferPage() {
-  const [transfers, setTransfers] = useState<TransferItem[]>(INITIAL_TRANSFERS);
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [transferToDelete, setTransferToDelete] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     fromWarehouse: "Main Store - Mumbai",
     toWarehouse: "Pune Branch",
     itemName: "",
     quantity: "1",
     unit: "PCS",
+  });
+
+  const { data: transfers = [], isLoading: loading } = useQuery({
+    queryKey: ["stock-transfers"],
+    queryFn: async () => {
+      const res = await fetch("/api/stock-transfers");
+      const json = await res.json();
+      return json.success ? json.data : [];
+    }
   });
 
   const filtered = useMemo(() => {
@@ -54,15 +58,53 @@ export default function StockTransferPage() {
     );
   }, [transfers, search]);
 
+  const createTransferMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      const res = await fetch("/api/stock-transfers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || "Failed to create stock transfer");
+      return json.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["stock-transfers"] });
+      toast.success(`Stock Transfer ${data.transferNo || ""} initiated!`);
+      setIsFormOpen(false);
+      setFormData({ fromWarehouse: "Main Store - Mumbai", toWarehouse: "Pune Branch", itemName: "", quantity: "1", unit: "PCS" });
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "An error occurred");
+    }
+  });
+
+  const deleteTransferMutation = useMutation({
+    mutationFn: async (transferNo: string) => {
+      const res = await fetch(`/api/stock-transfers?transferNo=${encodeURIComponent(transferNo)}`, { method: "DELETE" });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || "Failed to delete stock transfer");
+      return json;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["stock-transfers"] });
+      toast.success("Stock Transfer deleted successfully");
+      setTransferToDelete(null);
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "An error occurred while deleting");
+    }
+  });
+
   const handleSave = () => {
     if (!formData.itemName || !formData.quantity) {
       toast.error("Please fill Item Name and Quantity");
       return;
     }
 
-    const newTransfer: TransferItem = {
-      id: String(Date.now()),
-      transferNo: `STR-2026-${String(transfers.length + 35).padStart(4, "0")}`,
+    const payload = {
+      transferNo: `STR-${new Date().getFullYear()}-${String(transfers.length + 35).padStart(4, "0")}`,
       fromWarehouse: formData.fromWarehouse,
       toWarehouse: formData.toWarehouse,
       itemName: formData.itemName,
@@ -72,9 +114,7 @@ export default function StockTransferPage() {
       status: "in-transit",
     };
 
-    setTransfers([newTransfer, ...transfers]);
-    toast.success(`Stock Transfer ${newTransfer.transferNo} initiated!`);
-    setIsFormOpen(false);
+    createTransferMutation.mutate(payload);
   };
 
   return (
@@ -115,10 +155,20 @@ export default function StockTransferPage() {
                 <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Quantity</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Date</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Status</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase w-10"></th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {filtered.map((t) => (
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">Loading...</td>
+                </tr>
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No stock transfers found</td>
+                </tr>
+              ) : (
+                filtered.map((t: any) => (
                 <tr key={t.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-3 font-mono font-bold text-[#3F63AD]">{t.transferNo}</td>
                   <td className="px-4 py-3">
@@ -131,8 +181,19 @@ export default function StockTransferPage() {
                   <td className="px-4 py-3 text-center">
                     <Badge variant={t.status === "received" ? "success" : "info"}>{t.status}</Badge>
                   </td>
+                  <td className="px-4 py-3 text-center">
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                      onClick={() => setTransferToDelete(t.transferNo)}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </td>
                 </tr>
-              ))}
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -228,6 +289,34 @@ export default function StockTransferPage() {
               Initiate Stock Transfer
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* DELETE CONFIRMATION MODAL */}
+      <Dialog open={!!transferToDelete} onOpenChange={(open) => !open && setTransferToDelete(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-red-600 flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5" />
+              Confirm Deletion
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete transfer <span className="font-bold">{transferToDelete}</span>? 
+              This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setTransferToDelete(null)} disabled={deleteTransferMutation.isPending}>
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={() => transferToDelete && deleteTransferMutation.mutate(transferToDelete)}
+              disabled={deleteTransferMutation.isPending}
+            >
+              {deleteTransferMutation.isPending ? "Deleting..." : "Delete Transfer"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </PageShell>

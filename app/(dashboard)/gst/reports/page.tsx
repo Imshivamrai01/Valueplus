@@ -6,30 +6,35 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Download, FileText, ArrowUpRight, ArrowDownRight, Calculator } from "lucide-react";
 import { format } from "date-fns";
-
-const DUMMY_GSTR1 = [
-  { id: "INV-001", date: "2026-08-01", customer: "Rahul Sharma", gstin: "27AABCV1234A1Z5", amount: 45000, igst: 0, cgst: 4050, sgst: 4050, total_tax: 8100 },
-  { id: "INV-002", date: "2026-08-02", customer: "TechVision Solutions", gstin: "29BBBCV9876B1Z2", amount: 120000, igst: 21600, cgst: 0, sgst: 0, total_tax: 21600 },
-  { id: "INV-003", date: "2026-08-05", customer: "Amit Kumar", gstin: "", amount: 15000, igst: 0, cgst: 1350, sgst: 1350, total_tax: 2700 },
-  { id: "INV-004", date: "2026-08-10", customer: "Global Enterprises", gstin: "07CCDCV4567C1Z3", amount: 250000, igst: 45000, cgst: 0, sgst: 0, total_tax: 45000 },
-  { id: "INV-005", date: "2026-08-15", customer: "Sneha Patel", gstin: "27DDECV5555D1Z4", amount: 32000, igst: 0, cgst: 2880, sgst: 2880, total_tax: 5760 },
-];
-
-const DUMMY_GSTR2 = [
-  { id: "PUR-101", date: "2026-08-03", supplier: "Samsung India", gstin: "27SAMCV9999S1Z9", amount: 300000, igst: 0, cgst: 27000, sgst: 27000, total_tax: 54000 },
-  { id: "PUR-102", date: "2026-08-08", supplier: "Dell Distributors", gstin: "29DELCV8888D1Z8", amount: 150000, igst: 27000, cgst: 0, sgst: 0, total_tax: 27000 },
-  { id: "PUR-103", date: "2026-08-12", supplier: "Apple India Pvt Ltd", gstin: "27APPCV7777A1Z7", amount: 500000, igst: 0, cgst: 45000, sgst: 45000, total_tax: 90000 },
-];
+import { useQuery } from "@tanstack/react-query";
 
 export default function GSTReportsPage() {
   const [period, setPeriod] = useState("August 2026");
 
+  const { data: gstr1 = [] } = useQuery({
+    queryKey: ["gstr-reports", "GSTR1"],
+    queryFn: async () => {
+      const res = await fetch("/api/gstr-reports?type=GSTR1");
+      const json = await res.json();
+      return json.success ? json.data : [];
+    }
+  });
+
+  const { data: gstr2 = [] } = useQuery({
+    queryKey: ["gstr-reports", "GSTR2"],
+    queryFn: async () => {
+      const res = await fetch("/api/gstr-reports?type=GSTR2");
+      const json = await res.json();
+      return json.success ? json.data : [];
+    }
+  });
+
   // Calculations for GSTR-3B
-  const totalSalesAmount = DUMMY_GSTR1.reduce((acc, curr) => acc + curr.amount, 0);
-  const totalOutputTax = DUMMY_GSTR1.reduce((acc, curr) => acc + curr.total_tax, 0);
+  const totalSalesAmount = gstr1.reduce((acc: any, curr: any) => acc + curr.amount, 0);
+  const totalOutputTax = gstr1.reduce((acc: any, curr: any) => acc + curr.totalTax, 0);
   
-  const totalPurchaseAmount = DUMMY_GSTR2.reduce((acc, curr) => acc + curr.amount, 0);
-  const totalInputTax = DUMMY_GSTR2.reduce((acc, curr) => acc + curr.total_tax, 0);
+  const totalPurchaseAmount = gstr2.reduce((acc: any, curr: any) => acc + curr.amount, 0);
+  const totalInputTax = gstr2.reduce((acc: any, curr: any) => acc + curr.totalTax, 0);
 
   const netGstPayable = totalOutputTax - totalInputTax;
 
@@ -118,17 +123,17 @@ export default function GSTReportsPage() {
               <div className="flex justify-between p-4 hover:bg-slate-50 transition-colors">
                 <span className="font-medium">3.1 Outward supplies (GSTR-1)</span>
                 <span>₹{totalSalesAmount.toLocaleString('en-IN')}</span>
-                <span>₹{DUMMY_GSTR1.reduce((a, c) => a + c.igst, 0).toLocaleString('en-IN')}</span>
-                <span>₹{DUMMY_GSTR1.reduce((a, c) => a + c.cgst, 0).toLocaleString('en-IN')}</span>
-                <span>₹{DUMMY_GSTR1.reduce((a, c) => a + c.sgst, 0).toLocaleString('en-IN')}</span>
+                <span>₹{gstr1.reduce((a: any, c: any) => a + (c.igst || 0), 0).toLocaleString('en-IN')}</span>
+                <span>₹{gstr1.reduce((a: any, c: any) => a + (c.cgst || 0), 0).toLocaleString('en-IN')}</span>
+                <span>₹{gstr1.reduce((a: any, c: any) => a + (c.sgst || 0), 0).toLocaleString('en-IN')}</span>
                 <span className="font-semibold">₹{totalOutputTax.toLocaleString('en-IN')}</span>
               </div>
               <div className="flex justify-between p-4 hover:bg-slate-50 transition-colors">
                 <span className="font-medium">4. Eligible ITC (GSTR-2)</span>
                 <span>₹{totalPurchaseAmount.toLocaleString('en-IN')}</span>
-                <span>₹{DUMMY_GSTR2.reduce((a, c) => a + c.igst, 0).toLocaleString('en-IN')}</span>
-                <span>₹{DUMMY_GSTR2.reduce((a, c) => a + c.cgst, 0).toLocaleString('en-IN')}</span>
-                <span>₹{DUMMY_GSTR2.reduce((a, c) => a + c.sgst, 0).toLocaleString('en-IN')}</span>
+                <span>₹{gstr2.reduce((a: any, c: any) => a + (c.igst || 0), 0).toLocaleString('en-IN')}</span>
+                <span>₹{gstr2.reduce((a: any, c: any) => a + (c.cgst || 0), 0).toLocaleString('en-IN')}</span>
+                <span>₹{gstr2.reduce((a: any, c: any) => a + (c.sgst || 0), 0).toLocaleString('en-IN')}</span>
                 <span className="font-semibold text-emerald-600">₹{totalInputTax.toLocaleString('en-IN')}</span>
               </div>
               <div className="flex justify-between p-5 bg-slate-100/50 font-semibold text-base">
@@ -167,17 +172,17 @@ export default function GSTReportsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {DUMMY_GSTR1.map((row) => (
-                    <tr key={row.id} className="hover:bg-slate-50/50">
-                      <td className="px-4 py-3 font-medium text-blue-600">{row.id}</td>
+                  {gstr1.map((row: any) => (
+                    <tr key={row._id || row.id || row.reportId} className="hover:bg-slate-50/50">
+                      <td className="px-4 py-3 font-medium text-blue-600">{row.reportId}</td>
                       <td className="px-4 py-3">{format(new Date(row.date), "dd MMM, yyyy")}</td>
-                      <td className="px-4 py-3">{row.customer}</td>
+                      <td className="px-4 py-3">{row.partyName}</td>
                       <td className="px-4 py-3 text-xs">{row.gstin || "URD"}</td>
-                      <td className="px-4 py-3 text-right font-medium">₹{row.amount.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right">₹{row.cgst.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right">₹{row.sgst.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right">₹{row.igst.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right font-semibold">₹{row.total_tax.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right font-medium">₹{row.amount?.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right">₹{row.cgst?.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right">₹{row.sgst?.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right">₹{row.igst?.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right font-semibold">₹{row.totalTax?.toLocaleString()}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -208,17 +213,17 @@ export default function GSTReportsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {DUMMY_GSTR2.map((row) => (
-                    <tr key={row.id} className="hover:bg-slate-50/50">
-                      <td className="px-4 py-3 font-medium">{row.id}</td>
+                  {gstr2.map((row: any) => (
+                    <tr key={row._id || row.id || row.reportId} className="hover:bg-slate-50/50">
+                      <td className="px-4 py-3 font-medium">{row.reportId}</td>
                       <td className="px-4 py-3">{format(new Date(row.date), "dd MMM, yyyy")}</td>
-                      <td className="px-4 py-3">{row.supplier}</td>
+                      <td className="px-4 py-3">{row.partyName}</td>
                       <td className="px-4 py-3 text-xs">{row.gstin}</td>
-                      <td className="px-4 py-3 text-right font-medium">₹{row.amount.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right">₹{row.cgst.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right">₹{row.sgst.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right">₹{row.igst.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-emerald-600">₹{row.total_tax.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right font-medium">₹{row.amount?.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right">₹{row.cgst?.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right">₹{row.sgst?.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right">₹{row.igst?.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-emerald-600">₹{row.totalTax?.toLocaleString()}</td>
                     </tr>
                   ))}
                 </tbody>

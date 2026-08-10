@@ -1,38 +1,46 @@
 "use client";
 import { PageShell } from "@/components/shared/page-shell";
 import { Button } from "@/components/ui/button";
-import { Plus, Tag, Search } from "lucide-react";
+import { Plus, Tag, Search, Trash2, Edit } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogFooter, DialogDescription
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-
-const INITIAL_CATEGORIES = [
-  { id: "1", name: "Smartphones & Feature Phones", description: "Android, iOS, 5G smartphones & keypad feature phones", items: 145, status: "active" },
-  { id: "2", name: "Mobile Accessories", description: "Chargers, cables, power banks, cases & screen protectors", items: 230, status: "active" },
-  { id: "3", name: "Smartwatches & Wearables", description: "Fitness bands, smartwatches & smart rings", items: 48, status: "active" },
-  { id: "4", name: "Audio & Sound", description: "TWS earbuds, headphones, bluetooth speakers & soundbars", items: 96, status: "active" },
-  { id: "5", name: "Laptops & Computers", description: "Laptops, MacBooks, gaming PCs & all-in-one desktops", items: 64, status: "active" },
-  { id: "6", name: "Computer Accessories", description: "Keyboards, mice, webcams, laptop stands & USB hubs", items: 112, status: "active" },
-  { id: "7", name: "Storage & Memory", description: "Memory cards, pen drives, external SSDs & HDDs", items: 78, status: "active" },
-  { id: "8", name: "Televisions & Display", description: "Smart TVs, 4K OLED/QLED TVs, monitors & projectors", items: 42, status: "active" },
-  { id: "9", name: "Home Appliances", description: "Air conditioners, refrigerators, microwave ovens & washing machines", items: 55, status: "active" },
-  { id: "10", name: "Networking & Smart Home", description: "Wi-Fi 6 routers, security cameras & smart home devices", items: 39, status: "active" },
-];
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 export default function CategoriesPage() {
-  const [categories, setCategories] = useState(INITIAL_CATEGORIES);
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingCategory, setEditingCategory] = useState<typeof INITIAL_CATEGORIES[0] | null>(null);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<any | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({ name: "", description: "", status: "active" });
 
+  const { data: categories = [], isLoading: loading, isError } = useQuery({
+    queryKey: ["categories"],
+    queryFn: async () => {
+      const res = await fetch("/api/categories");
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || "Failed to fetch categories");
+      return json.data;
+    },
+    retry: 2,
+  });
+
   const filtered = useMemo(() => {
-    return categories.filter(c =>
-      !search || c.name.toLowerCase().includes(search.toLowerCase()) || c.description.toLowerCase().includes(search.toLowerCase())
+    if (!Array.isArray(categories)) return [];
+    return categories.filter((c: any) =>
+      !search ||
+      c.name?.toLowerCase().includes(search.toLowerCase()) ||
+      (c.description && c.description.toLowerCase().includes(search.toLowerCase()))
     );
   }, [categories, search]);
 
@@ -42,34 +50,77 @@ export default function CategoriesPage() {
     setIsFormOpen(true);
   };
 
-  const openEdit = (cat: typeof INITIAL_CATEGORIES[0]) => {
+  const openEdit = (cat: any) => {
     setEditingCategory(cat);
-    setFormData({ name: cat.name, description: cat.description, status: cat.status });
+    setFormData({ name: cat.name, description: cat.description || "", status: cat.status });
     setIsFormOpen(true);
   };
 
+  const saveMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      const isEditing = !!editingCategory;
+      const method = isEditing ? "PUT" : "POST";
+      const url = isEditing
+        ? `/api/categories?id=${editingCategory._id || editingCategory.id}`
+        : "/api/categories";
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || "Failed to save category");
+      return json.data;
+    },
+    onSuccess: () => {
+      toast.success(editingCategory
+        ? "Category updated successfully"
+        : `Category "${formData.name}" added successfully`
+      );
+      setIsFormOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "An error occurred");
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/categories?id=${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || "Failed to delete category");
+      return json;
+    },
+    onSuccess: () => {
+      toast.success("Category deleted");
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
+      setIsDeleteOpen(false);
+      setDeletingId(null);
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "An error occurred");
+      setIsDeleteOpen(false);
+      setDeletingId(null);
+    },
+  });
+
   const handleSave = () => {
-    if (!formData.name) {
+    if (!formData.name.trim()) {
       toast.error("Category name is required");
       return;
     }
-
-    if (editingCategory) {
-      setCategories(prev => prev.map(c => c.id === editingCategory.id ? { ...c, ...formData } : c));
-      toast.success("Category updated successfully");
-    } else {
-      const newCategory = {
-        id: String(Date.now()),
-        name: formData.name,
-        description: formData.description || "Electronics product category",
-        items: Math.floor(Math.random() * 20) + 1,
-        status: formData.status as "active" | "inactive",
-      };
-      setCategories(prev => [newCategory, ...prev]);
-      toast.success(`Category "${formData.name}" added successfully`);
-    }
-    setIsFormOpen(false);
+    saveMutation.mutate(formData);
   };
+
+  const confirmDelete = (id: string) => {
+    setDeletingId(id);
+    setIsDeleteOpen(true);
+  };
+
+  const safeCategories = Array.isArray(categories) ? categories : [];
 
   return (
     <PageShell
@@ -82,8 +133,14 @@ export default function CategoriesPage() {
         </Button>
       }
     >
+      {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[{ label: "Total Categories", value: categories.length }, { label: "Active", value: categories.filter(c => c.status === "active").length }, { label: "Total Items", value: categories.reduce((a, c) => a + c.items, 0) }, { label: "Inactive", value: categories.filter(c => c.status === "inactive").length }].map((s) => (
+        {[
+          { label: "Total Categories", value: safeCategories.length },
+          { label: "Active", value: safeCategories.filter((c: any) => c.status === "active").length },
+          { label: "Total Items", value: safeCategories.reduce((a: number, c: any) => a + (c.items || 0), 0) },
+          { label: "Inactive", value: safeCategories.filter((c: any) => c.status === "inactive").length },
+        ].map((s) => (
           <div key={s.label} className="metric-card">
             <p className="text-2xl font-bold">{s.value}</p>
             <p className="text-xs text-muted-foreground mt-1">{s.label}</p>
@@ -91,6 +148,7 @@ export default function CategoriesPage() {
         ))}
       </div>
 
+      {/* Table */}
       <div className="data-table-container">
         <div className="flex items-center justify-between p-4 border-b">
           <div className="relative flex-1 max-w-sm">
@@ -106,11 +164,22 @@ export default function CategoriesPage() {
         </div>
 
         <div className="divide-y">
-          {filtered.length === 0 ? (
-            <div className="p-8 text-center text-muted-foreground">No categories found</div>
+          {loading ? (
+            <div className="p-8 text-center text-muted-foreground">Loading...</div>
+          ) : isError ? (
+            <div className="p-8 text-center text-red-500">
+              Failed to load categories. Please refresh.
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground">
+              {search ? "No categories match your search." : "No categories found. Click \"Add Category\" to create one."}
+            </div>
           ) : (
-            filtered.map((cat) => (
-              <div key={cat.id} className="flex items-center gap-4 px-4 py-3.5 hover:bg-slate-50 transition-colors">
+            filtered.map((cat: any) => (
+              <div
+                key={cat._id || cat.id}
+                className="flex items-center gap-4 px-4 py-3.5 hover:bg-slate-50 transition-colors"
+              >
                 <div className="w-10 h-10 rounded-xl bg-[#3F63AD]/10 flex items-center justify-center flex-shrink-0">
                   <Tag className="w-5 h-5 text-[#3F63AD]" />
                 </div>
@@ -118,13 +187,22 @@ export default function CategoriesPage() {
                   <p className="font-semibold text-foreground">{cat.name}</p>
                   <p className="text-xs text-muted-foreground">{cat.description}</p>
                 </div>
-                <div className="text-sm text-muted-foreground font-medium">{cat.items} items</div>
+                <div className="text-sm text-muted-foreground font-medium">{cat.items || 0} items</div>
                 <Badge variant={cat.status === "active" ? "success" : "secondary"}>
                   {cat.status === "active" ? "Active" : "Inactive"}
                 </Badge>
                 <div className="flex gap-1">
-                  <Button variant="ghost" size="sm" onClick={() => openEdit(cat)}>Edit</Button>
-                  <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => { setCategories(c => c.filter(x => x.id !== cat.id)); toast.success("Category deleted"); }}>Delete</Button>
+                  <Button variant="ghost" size="sm" onClick={() => openEdit(cat)}>
+                    <Edit className="w-4 h-4 mr-1" /> Edit
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-red-500 hover:text-red-600 hover:bg-red-50"
+                    onClick={() => confirmDelete(cat._id || cat.id)}
+                  >
+                    <Trash2 className="w-4 h-4 mr-1" /> Delete
+                  </Button>
                 </div>
               </div>
             ))
@@ -132,23 +210,26 @@ export default function CategoriesPage() {
         </div>
       </div>
 
-      {/* Add / Edit Category Dialog */}
+      {/* Add / Edit Dialog */}
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
         <DialogContent className="max-w-2xl p-0 rounded-2xl border-none shadow-2xl overflow-hidden">
-          {/* Header */}
-          <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-6 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/20">
-                <Tag className="w-6 h-6 text-[#76C043]" />
-              </div>
-              <div>
-                <h3 className="text-xl font-bold tracking-tight">
-                  {editingCategory ? "Edit Product Category" : "Add Product Category"}
-                </h3>
-                <p className="text-xs text-slate-300 mt-0.5">
-                  Organize your mobile & electronics stock items into categories
-                </p>
-              </div>
+          <DialogHeader className="sr-only">
+            <DialogTitle>
+              {editingCategory ? "Edit Product Category" : "Add Product Category"}
+            </DialogTitle>
+          </DialogHeader>
+          {/* Visual Header */}
+          <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-6 flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/20">
+              <Tag className="w-6 h-6 text-[#76C043]" />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold tracking-tight">
+                {editingCategory ? "Edit Product Category" : "Add Product Category"}
+              </h3>
+              <p className="text-xs text-slate-300 mt-0.5">
+                Organize your mobile &amp; electronics stock items into categories
+              </p>
             </div>
           </div>
 
@@ -167,7 +248,7 @@ export default function CategoriesPage() {
                 <div className="space-y-1.5 md:col-span-2">
                   <Label className="text-xs font-semibold text-slate-700">Description</Label>
                   <Input
-                    placeholder="Brief description of products in this category (e.g. Smartbands, Apple Watches)"
+                    placeholder="Brief description of products in this category"
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                     className="bg-slate-50 border-slate-300"
@@ -175,8 +256,13 @@ export default function CategoriesPage() {
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold text-slate-700">Status</Label>
-                  <Select value={formData.status} onValueChange={(v) => setFormData({ ...formData, status: v })}>
-                    <SelectTrigger className="bg-slate-50 border-slate-300"><SelectValue /></SelectTrigger>
+                  <Select
+                    value={formData.status}
+                    onValueChange={(v) => setFormData({ ...formData, status: v })}
+                  >
+                    <SelectTrigger className="bg-slate-50 border-slate-300">
+                      <SelectValue />
+                    </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="active">Active</SelectItem>
                       <SelectItem value="inactive">Inactive</SelectItem>
@@ -191,13 +277,46 @@ export default function CategoriesPage() {
             <Button variant="outline" onClick={() => setIsFormOpen(false)} className="px-5">
               Cancel
             </Button>
-            <Button onClick={handleSave} className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white px-6 font-bold shadow-lg shadow-[#3F63AD]/20">
-              {editingCategory ? "Save Changes" : "Create Category"}
+            <Button
+              onClick={handleSave}
+              disabled={saveMutation.isPending}
+              className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white px-6 font-bold shadow-lg shadow-[#3F63AD]/20"
+            >
+              {saveMutation.isPending
+                ? "Saving..."
+                : editingCategory ? "Save Changes" : "Create Category"}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation */}
+      <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete Category</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this category? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsDeleteOpen(false)}
+              disabled={deleteMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => deletingId && deleteMutation.mutate(deletingId)}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </PageShell>
   );
 }
-

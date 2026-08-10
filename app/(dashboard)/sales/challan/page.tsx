@@ -15,7 +15,7 @@ import {
   Plus, Search, Truck, ArrowLeftRight, PackageCheck, Printer, Download, Eye, RotateCcw, 
   Building, Sparkles, FileText, CheckCircle2, ShieldCheck, FileCheck, ArrowRight, UserCheck, PhoneCall
 } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { toast } from "sonner";
 import { formatDate } from "@/lib/utils";
 
@@ -131,12 +131,43 @@ const STATUS_MAP = {
 };
 
 export default function DeliveryChallanPage() {
-  const [challans, setChallans] = useState<ChallanItem[]>(INITIAL_CHALLANS);
+  const [challans, setChallans] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [selectedChallan, setSelectedChallan] = useState<ChallanItem | null>(null);
+  const [selectedChallan, setSelectedChallan] = useState<any | null>(null);
   const [isPrintOpen, setIsPrintOpen] = useState(false);
+  
+  const [items, setItems] = useState<any[]>([]);
+  const [showItemSuggestions, setShowItemSuggestions] = useState(false);
+
+  const fetchChallans = async () => {
+    try {
+      const res = await fetch("/api/delivery-challans");
+      const json = await res.json();
+      if (json.success) setChallans(json.data);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchItems = async () => {
+    try {
+      const res = await fetch("/api/items");
+      const json = await res.json();
+      if (json.success) setItems(json.data);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  useEffect(() => {
+    fetchChallans();
+    fetchItems();
+  }, []);
 
   const [formData, setFormData] = useState({
     type: "Customer Return",
@@ -159,45 +190,61 @@ export default function DeliveryChallanPage() {
     return challans.filter((c) => {
       const matchSearch =
         !search ||
-        c.challanNo.toLowerCase().includes(search.toLowerCase()) ||
-        c.sourceParty.toLowerCase().includes(search.toLowerCase()) ||
-        c.itemName.toLowerCase().includes(search.toLowerCase()) ||
-        c.serialImei.toLowerCase().includes(search.toLowerCase());
+        (c.challanNo && c.challanNo.toLowerCase().includes(search.toLowerCase())) ||
+        (c.sourceParty && c.sourceParty.toLowerCase().includes(search.toLowerCase())) ||
+        (c.itemName && c.itemName.toLowerCase().includes(search.toLowerCase())) ||
+        (c.serialImei && c.serialImei.toLowerCase().includes(search.toLowerCase()));
       const matchType = typeFilter === "all" || c.type === typeFilter;
       return matchSearch && matchType;
     });
   }, [challans, search, typeFilter]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.sourceParty || !formData.itemName) {
       toast.error("Please fill Source Party and Item details");
       return;
     }
 
-    const newChallan: ChallanItem = {
-      id: String(Date.now()),
-      challanNo: `DC-2026-${String(challans.length + 90).padStart(4, "0")}`,
-      type: formData.type as any,
-      sourceParty: formData.sourceParty,
-      sourceAddress: formData.sourceAddress || "Civil Lines, Prayagraj, UP",
-      destinationParty: formData.destinationParty,
-      destinationAddress: formData.destinationAddress,
-      itemName: formData.itemName,
-      hsn: formData.hsn || "8517",
-      serialImei: formData.serialImei || "N/A",
+    const payload = {
+      ...formData,
+      challanNo: `DC-${new Date().getFullYear()}-${String(challans.length + 1).padStart(4, "0")}`,
       quantity: Number(formData.quantity) || 1,
-      unit: formData.unit,
-      reason: formData.reason,
-      date: new Date().toISOString().split("T")[0],
-      vehicleNo: formData.vehicleNo || "UP-70-AT-1234",
-      driverName: formData.driverName || "Express Transport",
-      driverPhone: formData.driverPhone || "+91 98765 00000",
       status: "dispatched",
     };
 
-    setChallans([newChallan, ...challans]);
-    toast.success(`Delivery Challan ${newChallan.challanNo} generated!`);
-    setIsFormOpen(false);
+    try {
+      const res = await fetch("/api/delivery-challans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const json = await res.json();
+      if (json.success) {
+        toast.success(`Delivery Challan ${json.data.challanNo} generated!`);
+        setIsFormOpen(false);
+        fetchChallans();
+        setFormData({
+          type: "Customer Return",
+          sourceParty: "",
+          sourceAddress: "",
+          destinationParty: "VALUEPLUS Head Warehouse (Mumbai)",
+          destinationAddress: "Plot 45, MIDC Industrial Area, Andheri East, Mumbai",
+          itemName: "",
+          hsn: "8517",
+          serialImei: "",
+          quantity: "1",
+          unit: "PCS",
+          reason: "Defective Warranty Return",
+          vehicleNo: "",
+          driverName: "",
+          driverPhone: "",
+        });
+      } else {
+        toast.error(json.error || "Failed to create delivery challan");
+      }
+    } catch (error) {
+      toast.error("An error occurred");
+    }
   };
 
   const openPrintSheet = (c: ChallanItem) => {
@@ -305,7 +352,13 @@ export default function DeliveryChallanPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filtered.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-muted-foreground">
+                    Loading...
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-muted-foreground">
                     No Delivery Challans found
@@ -313,7 +366,7 @@ export default function DeliveryChallanPage() {
                 </tr>
               ) : (
                 filtered.map((c) => (
-                  <tr key={c.id} className="hover:bg-slate-50 transition-colors">
+                  <tr key={c._id || c.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-4 py-3 font-mono font-bold text-[#3F63AD] cursor-pointer" onClick={() => openPrintSheet(c)}>
                       {c.challanNo}
                     </td>
@@ -336,7 +389,7 @@ export default function DeliveryChallanPage() {
                     </td>
                     <td className="px-4 py-3 text-muted-foreground text-xs">{formatDate(c.date)}</td>
                     <td className="px-4 py-3 text-center">
-                      <Badge variant={STATUS_MAP[c.status].variant}>{STATUS_MAP[c.status].label}</Badge>
+                      <Badge variant={STATUS_MAP[c.status as keyof typeof STATUS_MAP]?.variant || "secondary"}>{STATUS_MAP[c.status as keyof typeof STATUS_MAP]?.label || c.status}</Badge>
                     </td>
                     <td className="px-4 py-3 text-center">
                       <div className="flex items-center justify-center gap-1">
@@ -425,14 +478,50 @@ export default function DeliveryChallanPage() {
                 <FileCheck className="w-4 h-4 text-[#3F63AD]" /> 2. Product & Serial / IMEI Particulars
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="space-y-1.5 md:col-span-2">
+                <div className="space-y-1.5 md:col-span-2 relative">
                   <Label className="text-xs font-semibold text-slate-700">Product Name & Model *</Label>
                   <Input
-                    placeholder="e.g. iPhone 15 Pro Max 256GB"
+                    placeholder="Type to search products..."
                     value={formData.itemName}
-                    onChange={(e) => setFormData({ ...formData, itemName: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, itemName: e.target.value });
+                      setShowItemSuggestions(true);
+                    }}
+                    onFocus={() => setShowItemSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowItemSuggestions(false), 200)}
                     className="bg-slate-50 border-slate-300"
                   />
+                  {showItemSuggestions && items.length > 0 && (
+                    <div className="absolute left-0 top-full mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-xl z-50 overflow-hidden max-h-[250px] flex flex-col">
+                      <div className="p-2 bg-slate-100 text-xs font-semibold text-slate-600 border-b">
+                        Available Items
+                      </div>
+                      <div className="overflow-y-auto p-1 space-y-1">
+                        {items
+                          .filter((prod) => prod.name.toLowerCase().includes((formData.itemName || "").toLowerCase()))
+                          .map((prod, pIdx) => (
+                            <div
+                              key={pIdx}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                setFormData({
+                                  ...formData,
+                                  itemName: prod.name,
+                                  hsn: prod.hsnCode || "8517"
+                                });
+                                setShowItemSuggestions(false);
+                              }}
+                              className="p-2 hover:bg-slate-50 cursor-pointer flex items-center justify-between transition-colors rounded-md"
+                            >
+                              <div className="flex flex-col">
+                                <span className="font-semibold text-slate-800 text-sm">{prod.name}</span>
+                                <span className="text-xs text-slate-500 font-mono">{prod.code}</span>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-1.5">

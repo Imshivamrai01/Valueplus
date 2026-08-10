@@ -24,18 +24,7 @@ import {
   RefreshCw,
   RotateCcw,
   Hammer,
-  Building2,
-  ArrowDownToLine,
-  ArrowUpFromLine,
-  BookMarked,
-  Scale,
-  TrendingUp,
-  AreaChart,
-  Banknote,
   Percent,
-  Megaphone,
-  Gift,
-  MessageSquare,
   BarChart,
   Settings,
   UserCog,
@@ -109,7 +98,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { title: "Bill of Material", href: "/inventory/bom", icon: Hammer },
     ],
   },
-  {
+  /* {
     title: "Banking",
     items: [
       { title: "Receipts", href: "/banking/receipts", icon: ArrowDownToLine },
@@ -127,20 +116,20 @@ export const NAV_GROUPS: NavGroup[] = [
       { title: "Balance Sheet", href: "/accounting/balance-sheet", icon: AreaChart },
       { title: "Cash Flow", href: "/accounting/cash-flow", icon: Banknote },
     ],
-  },
+  }, */
   {
     title: "GST",
     items: [
       { title: "GST Reports", href: "/gst/reports", icon: Percent },
     ],
   },
-  {
+  /* {
     title: "Marketing",
     items: [
       { title: "Loyalty", href: "/marketing/loyalty", icon: Gift },
       { title: "WhatsApp", href: "/marketing/whatsapp", icon: MessageSquare },
     ],
-  },
+  }, */
   {
     title: "Reports",
     items: [

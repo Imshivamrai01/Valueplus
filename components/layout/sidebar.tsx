@@ -89,57 +89,81 @@ export function Sidebar() {
 
       {/* Navigation */}
       <ScrollArea className="flex-1 px-3 py-4">
-        {NAV_GROUPS.map((group) => (
-          <SidebarSection
-            key={group.title}
-            title={group.title}
-            defaultOpen={group.title === "Overview" || group.title === "Sales" || group.title === "AI Features"}
-          >
-            {group.items.map((item) => {
-              const isActive = pathname === item.href || 
-                (item.href !== "/dashboard" && pathname.startsWith(item.href));
-              const Icon = item.icon;
-              const isAI = group.title === "AI Features";
+        {NAV_GROUPS.map((group) => {
+          // Auto-open the section if the current path belongs to this group
+          const isGroupActive = group.items.some(
+            (item) =>
+              pathname === item.href ||
+              (item.href !== "/dashboard" && pathname.startsWith(item.href))
+          );
+          return (
+            <SidebarSection
+              key={group.title}
+              title={group.title}
+              defaultOpen={
+                isGroupActive ||
+                group.title === "Overview" ||
+                group.title === "Sales" ||
+                group.title === "AI Features"
+              }
+            >
+              {group.items.map((item) => {
+                const isActive =
+                  pathname === item.href ||
+                  (item.href !== "/dashboard" && pathname.startsWith(item.href));
+                const Icon = item.icon;
+                const isAI = group.title === "AI Features";
 
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-200 cursor-pointer group relative overflow-hidden",
-                    isActive 
-                      ? isAI 
-                        ? "bg-gradient-to-r from-purple-500/20 to-fuchsia-500/20 text-white border border-purple-500/30 shadow-[0_0_15px_rgba(168,85,247,0.15)]"
-                        : "bg-white text-[#30539C] shadow-[0_4px_12px_rgba(0,0,0,0.1)]" 
-                      : "text-white/70 hover:bg-white/10 hover:text-white"
-                  )}
-                >
-                  {isActive && !isAI && (
-                    <motion.div 
-                      layoutId="sidebar-active" 
-                      className="absolute left-0 w-1 h-6 bg-[#76C043] rounded-r-full" 
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-200 cursor-pointer group relative overflow-hidden",
+                      isActive
+                        ? isAI
+                          ? "bg-gradient-to-r from-purple-500/20 to-fuchsia-500/20 text-white border border-purple-500/30 shadow-[0_0_15px_rgba(168,85,247,0.15)]"
+                          : "bg-white text-[#30539C] shadow-[0_4px_12px_rgba(0,0,0,0.1)]"
+                        : "text-slate-300 hover:bg-white/10 hover:text-white"
+                    )}
+                  >
+                    {isActive && !isAI && (
+                      <motion.div
+                        layoutId="sidebar-active"
+                        className="absolute left-0 w-1 h-6 bg-[#76C043] rounded-r-full"
+                      />
+                    )}
+                    <Icon
+                      className={cn(
+                        "w-4 h-4 flex-shrink-0 transition-colors",
+                        isActive && !isAI
+                          ? "text-[#30539C]"
+                          : isAI && isActive
+                          ? "text-purple-400"
+                          : "text-slate-400 group-hover:text-white"
+                      )}
                     />
-                  )}
-                  <Icon className={cn(
-                    "w-4 h-4 flex-shrink-0 transition-colors", 
-                    isActive && !isAI ? "text-[#30539C]" : isAI && isActive ? "text-purple-400" : "text-white/50 group-hover:text-white"
-                  )} />
-                  <span className="flex-1 truncate tracking-wide">{item.title}</span>
-                  {item.badge !== undefined && (
-                    <span className={cn(
-                      "text-[10px] font-bold rounded-full px-2 py-0.5 min-w-[20px] text-center shadow-sm",
-                      isAI 
-                        ? "bg-purple-500 text-white" 
-                        : isActive ? "bg-[#76C043]/10 text-[#76C043]" : "bg-[#76C043] text-white"
-                    )}>
-                      {item.badge}
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
-          </SidebarSection>
-        ))}
+                    <span className="flex-1 truncate tracking-wide">{item.title}</span>
+                    {item.badge !== undefined && (
+                      <span
+                        className={cn(
+                          "text-[10px] font-bold rounded-full px-2 py-0.5 min-w-[20px] text-center shadow-sm",
+                          isAI
+                            ? "bg-purple-500 text-white"
+                            : isActive
+                            ? "bg-[#76C043]/10 text-[#76C043]"
+                            : "bg-[#76C043] text-white"
+                        )}
+                      >
+                        {item.badge}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
+            </SidebarSection>
+          );
+        })}
       </ScrollArea>
 
       {/* Bottom */}

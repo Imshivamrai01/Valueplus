@@ -4,7 +4,7 @@
  * VALUEPLUS ERP — GST Tax Invoice with Live Form Filler & Sidebar Logo
  */
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { 
   Printer, Download, Send, MessageSquare, Edit3, Plus, Trash2, CheckCircle2, 
   ArrowLeft, FileText, Building2, User, CreditCard, Layers, Sparkles
@@ -127,9 +127,65 @@ const INITIAL_FORM = {
   ] as InvoiceItem[],
 };
 
-export default function ValueplusInvoice() {
+interface ValueplusInvoiceProps {
+  invoiceData?: any;
+}
+
+export default function ValueplusInvoice({ invoiceData }: ValueplusInvoiceProps = {}) {
   const [formData, setFormData] = useState(INITIAL_FORM);
   const [isEditing, setIsEditing] = useState(false);
+
+  useEffect(() => {
+    if (invoiceData) {
+      const mappedItems = (invoiceData.items && invoiceData.items.length > 0)
+        ? invoiceData.items.map((it: any, index: number) => ({
+            id: it.id || String(index + 1),
+            name: it.itemName || it.name || "Product Item",
+            hsn: it.hsnCode || it.hsn || "8471",
+            serialImei: it.serialImei || it.serialNo || "",
+            qty: Number(it.quantity || it.qty) || 1,
+            unit: it.unit || "Pcs",
+            rate: Number(it.rate) || 0,
+            discount: Number(it.discount) || 0,
+            gstRate: Number(it.gstRate) || 18,
+          }))
+        : INITIAL_FORM.items;
+
+      setFormData((prev) => ({
+        ...prev,
+        invoiceType: invoiceData.estimateNumber || invoiceData.estimateNo ? "PROFORMA ESTIMATE" : "TAX INVOICE",
+        invoiceNo: invoiceData.estimateNumber || invoiceData.estimateNo || invoiceData.invoiceNumber || invoiceData.invoiceNo || "",
+        customerName: invoiceData.customerName || invoiceData.partyName || "",
+        customerGstin: invoiceData.customerGST || invoiceData.gstNumber || invoiceData.customerGstin || invoiceData.gstinNumber || "URP (Unregistered Person)",
+        customerPhone: invoiceData.customerPhone || invoiceData.partyPhone || invoiceData.phoneContact || "",
+        customerEmail: invoiceData.customerEmail || invoiceData.emailContact || "",
+        customerAddress: invoiceData.customerAddress || invoiceData.billingAddress || "",
+        customerState: invoiceData.placeOfSupply || invoiceData.state || "",
+        customerPin: invoiceData.customerPin || invoiceData.pin || "",
+        shippingName: invoiceData.shippingName || invoiceData.customerName || invoiceData.partyName || "",
+        shippingAddress: invoiceData.shippingAddress || invoiceData.customerAddress || invoiceData.billingAddress || "",
+        shippingState: invoiceData.shippingState || invoiceData.placeOfSupply || invoiceData.state || "",
+        shippingPin: invoiceData.shippingPin || invoiceData.customerPin || invoiceData.pin || "",
+        placeOfSupply: invoiceData.placeOfSupply || "",
+        salesExecutive: invoiceData.salesExecutive || "",
+        invoiceDate: invoiceData.date || invoiceData.invoiceDate || invoiceData.createdAt || "",
+        dueDate: invoiceData.dueDate || "",
+        paymentStatus: invoiceData.status || invoiceData.paymentStatus || "pending",
+        paymentMethod: invoiceData.paymentMode || invoiceData.paymentMethod || "Cash",
+        financeCompany: invoiceData.financeCompany || "",
+        financeApprovalNo: invoiceData.financeApprovalNo || "",
+        downPayment: Number(invoiceData.downPayment) || 0,
+        downPaymentMode: invoiceData.downPaymentMode || "Cash",
+        shippingCharges: Number(invoiceData.shippingCharges) || Number(invoiceData.shipping) || 0,
+        financeTenureMonths: Number(invoiceData.financeTenureMonths) || 0,
+        financeSchemeType: invoiceData.financeSchemeType || "no_cost",
+        financeInterestRate: Number(invoiceData.financeInterestRate) || 0,
+        monthlyEMI: Number(invoiceData.monthlyEMI) || 0,
+        totalInterest: Number(invoiceData.totalInterest) || 0,
+        items: mappedItems,
+      }));
+    }
+  }, [invoiceData]);
 
   // Calculations
   const calculatedItems = useMemo(() => {
@@ -318,16 +374,16 @@ export default function ValueplusInvoice() {
   
   /* SIDEBAR LOGO EMBED */
   .co-sidebar-logo {
-    background: #1B2537;
+    background: var(--vp-blue);
     padding: 8px 14px;
     border-radius: 12px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 4px 12px rgba(27, 37, 55, 0.25);
+    box-shadow: 0 4px 12px rgba(63, 99, 173, 0.25);
     flex-shrink: 0;
-    border: 1px solid rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.15);
   }
   .co-sidebar-logo .brand-text {
     display: flex;
@@ -359,11 +415,11 @@ export default function ValueplusInvoice() {
     white-space: nowrap;
   }
 
-  .co-name-row{ display:flex; align-items:baseline; gap:8px; }
-  .co-wordmark{ font-size:19px; font-weight:800; color:var(--vp-blue); letter-spacing:0.2px; }
-  .co-legal{ font-size:11.5px; color:var(--ink-faint); font-weight:600; }
-  .co-details{ margin-top:4px; font-size:11px; color:var(--ink-soft); line-height:1.5; max-width:320px; }
-  .co-details .row{ display:flex; gap:5px; margin-bottom:1px; }
+  .co-name-row{ display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
+  .co-wordmark{ font-size:19px; font-weight:800; color:var(--vp-blue); letter-spacing:0.2px; white-space:nowrap; }
+  .co-legal{ font-size:11.5px; color:var(--ink-faint); font-weight:600; white-space:nowrap; }
+  .co-details{ margin-top:4px; font-size:11px; color:var(--ink-soft); line-height:1.5; max-width:420px; }
+  .co-details .row{ display:flex; flex-wrap:wrap; gap:5px; margin-bottom:1px; }
   .co-details b{ color:var(--ink); font-weight:600; }
 
   .inv-meta{ text-align:right; flex:none; }
@@ -418,8 +474,8 @@ export default function ValueplusInvoice() {
   }
   table.items tbody tr:nth-child(even){ background:#FAFBFD; }
   table.items tbody tr{ page-break-inside:avoid; break-inside:avoid; }
-  .p-name{ font-weight:700; color:var(--ink); }
-  .p-hsn{ font-size:9.5px; color:var(--ink-faint); margin-top:1px; }
+  .p-name{ font-weight:700; color:var(--ink); word-wrap:break-word; max-width: 200px; }
+  .p-hsn{ font-size:9.5px; color:var(--ink-faint); margin-top:1px; word-wrap:break-word; word-break:break-all; max-width: 200px; }
 
   /* ---- summary + payment ---- */
   .lower{
@@ -484,21 +540,27 @@ export default function ValueplusInvoice() {
   /* ---- terms ---- */
   .terms{
     position:relative; z-index:1;
-    padding:8px 40px 4px 40px; display:flex; gap:18px;
+    padding:14px 40px 6px 40px; display:flex; gap:24px;
+    border-top:1px solid var(--line-soft); margin-top:8px;
   }
-  .terms .col{ flex:1; font-size:9.8px; color:var(--ink-soft); line-height:1.4; }
+  .terms .col{ flex:1; font-size:10px; color:var(--ink-soft); line-height:1.45; }
   .terms .label{
-    font-size:9.5px; font-weight:800; letter-spacing:0.8px; text-transform:uppercase;
-    color:var(--vp-blue); margin-bottom:4px;
+    font-size:10px; font-weight:800; letter-spacing:0.8px; text-transform:uppercase;
+    color:var(--vp-blue); margin-bottom:6px;
   }
-  .terms ul{ margin:0; padding-left:15px; }
-  .terms li{ margin-bottom:3px; }
+  .terms ul{ margin:0; padding:0; list-style:none; }
+  .terms li{
+    position:relative; padding-left:12px; margin-bottom:4px;
+  }
+  .terms li::before{
+    content:"•"; position:absolute; left:0; top:0; color:var(--vp-blue); font-weight:bold; font-size:12px; line-height:1;
+  }
 
   /* ---- signatures / footer ---- */
   .sign-row{
     position:relative; z-index:1;
     display:flex; justify-content:space-between; align-items:flex-end;
-    padding:12px 40px 8px 40px;
+    padding:64px 40px 16px 40px;
   }
   .stamp{
     width:74px; height:74px; border-radius:50%; border:2px dashed #C9CFDB;
@@ -508,7 +570,7 @@ export default function ValueplusInvoice() {
   }
   .sign-block{ text-align:center; }
   .sign-line{
-    width:180px; border-top:1px solid #9AA2B1; padding-top:7px; font-size:10.5px; color:var(--ink-faint);
+    min-width:180px; width:max-content; margin:0 auto; border-top:1px solid #9AA2B1; padding-top:7px; font-size:10.5px; color:var(--ink-faint); white-space:nowrap;
   }
   .footer-bar{
     position:relative; z-index:1;
@@ -892,13 +954,17 @@ export default function ValueplusInvoice() {
               <div className="kv"><b>Phone:</b> {formData.customerPhone}</div>
               <div className="kv"><b>Email:</b> {formData.customerEmail}</div>
               <div style={{ marginTop: "6px" }}>{formData.customerAddress}</div>
-              <div className="kv"><b>State/PIN:</b> {formData.customerState} — {formData.customerPin}</div>
+              {(formData.customerState || (formData.customerPin && !/^0+$/.test(String(formData.customerPin)))) && (
+                <div className="kv"><b>State/PIN:</b> {formData.customerState} {(!formData.customerPin || /^0+$/.test(String(formData.customerPin))) ? "" : `— ${formData.customerPin}`}</div>
+              )}
             </div>
             <div className="party">
               <div className="label">Ship To</div>
               <div className="cust-name">{formData.shippingName || formData.customerName}</div>
               <div style={{ marginTop: "6px" }}>{formData.shippingAddress || formData.customerAddress}</div>
-              <div className="kv"><b>State/PIN:</b> {formData.shippingState} — {formData.shippingPin}</div>
+              {(formData.shippingState || (formData.shippingPin && !/^0+$/.test(String(formData.shippingPin)))) && (
+                <div className="kv"><b>State/PIN:</b> {formData.shippingState} {(!formData.shippingPin || /^0+$/.test(String(formData.shippingPin))) ? "" : `— ${formData.shippingPin}`}</div>
+              )}
               <div className="kv" style={{ marginTop: "10px" }}>
                 <b>Delivery Address same as Shipping Address</b>
               </div>
@@ -928,6 +994,7 @@ export default function ValueplusInvoice() {
                     <td>{idx + 1}</td>
                     <td>
                       <div className="p-name">{item.name}</div>
+                      {item.serialImei && <div className="p-hsn" style={{ color: "#3F63AD", fontWeight: 600 }}>IMEI/SN: {item.serialImei}</div>}
                       <div className="p-hsn">HSN {item.hsn}</div>
                     </td>
                     <td className="mono">{item.hsn}</td>
@@ -947,99 +1014,114 @@ export default function ValueplusInvoice() {
           {/* Summary & Payment */}
           <div className="lower">
             <div className="lower-left">
-              <div className="box">
-                <div className="label">Payment Status</div>
-                <div className="payment-box">
-                  <div className="pay-item">
-                    <div className="k">Status</div>
-                    <span className={`status-pill ${formData.paymentStatus}`}>
-                      <span className="dot"></span>
-                      {formData.paymentStatus}
-                    </span>
-                  </div>
-                  <div className="pay-item">
-                    <div className="k">Method</div>
-                    <div className="v">{formData.paymentMethod}</div>
-                  </div>
-                  <div className="pay-item">
-                    <div className="k">Outstanding</div>
-                    <div className="v">₹ {formData.outstandingAmount.toFixed(2)}</div>
+              {formData.invoiceType !== "PROFORMA ESTIMATE" && (
+                <div className="box">
+                  <div className="label">Payment Status</div>
+                  <div className="payment-box">
+                    <div className="pay-item">
+                      <div className="k">Status</div>
+                      <span className={`status-pill ${formData.paymentStatus}`}>
+                        <span className="dot"></span>
+                        {formData.paymentStatus}
+                      </span>
+                    </div>
+                    <div className="pay-item">
+                      <div className="k">Method</div>
+                      <div className="v font-semibold">{formData.paymentMethod}</div>
+                    </div>
+                    {(formData.paymentMethod?.includes("Finance") || formData.paymentMethod?.includes("EMI")) && formData.financeCompany && (
+                      <>
+                        <div className="pay-item">
+                          <div className="k">Finance Provider</div>
+                          <div className="v font-bold text-[#3F63AD]">{formData.financeCompany} {formData.financeApprovalNo ? `(#${formData.financeApprovalNo})` : ''}</div>
+                        </div>
+                        <div className="pay-item">
+                          <div className="k">Down Payment Paid</div>
+                          <div className="v font-bold text-emerald-700">₹ {formData.downPayment.toLocaleString("en-IN")} <span className="text-xs font-semibold text-slate-500">({formData.downPaymentMode || "Cash"})</span></div>
+                        </div>
+                        <div className="pay-item">
+                          <div className="k">Financed Amount</div>
+                          <div className="v font-bold text-purple-700">₹ {Math.max(0, totals.grandTotal - formData.downPayment).toLocaleString("en-IN")}</div>
+                        </div>
+                        <div className="pay-item">
+                          <div className="k">EMI Scheme</div>
+                          <div className="v font-bold text-blue-700">
+                            {formData.financeSchemeType === "no_cost"
+                              ? "No-Cost EMI (0% Interest Offer)"
+                              : `Standard Interest EMI (${formData.financeInterestRate}% p.a.)`}
+                          </div>
+                        </div>
+                        <div className="pay-item">
+                          <div className="k">Monthly EMI</div>
+                          <div className="v font-extrabold text-slate-900">
+                            ₹ {(formData.monthlyEMI || Math.round(Math.max(0, totals.grandTotal - formData.downPayment) / (formData.financeTenureMonths || 6))).toLocaleString("en-IN")} / mo ({formData.financeTenureMonths || 6} Months)
+                          </div>
+                        </div>
+                        {formData.financeSchemeType !== "no_cost" && formData.totalInterest > 0 && (
+                          <div className="pay-item">
+                            <div className="k">Total EMI Interest</div>
+                            <div className="v font-bold text-amber-700">₹ {formData.totalInterest.toLocaleString("en-IN")}</div>
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
-              </div>
-
-              <div className="box">
-                <div className="label">Bank Details</div>
-                <div className="bank-grid">
-                  <div className="bank-info">
-                    <div><b>Bank:</b> {formData.bankName}</div>
-                    <div><b>Account No:</b> <span className="mono">{formData.accountNo}</span></div>
-                    <div><b>IFSC:</b> <span className="mono">{formData.ifscCode}</span></div>
-                    <div className="barcode">
-                      <i style={{ height: "100%" }}></i><i style={{ height: "65%" }}></i><i style={{ height: "90%" }}></i><i style={{ height: "40%" }}></i><i style={{ height: "100%" }}></i><i style={{ height: "55%" }}></i><i style={{ height: "80%" }}></i><i style={{ height: "100%" }}></i><i style={{ height: "30%" }}></i><i style={{ height: "70%" }}></i><i style={{ height: "95%" }}></i><i style={{ height: "50%" }}></i><i style={{ height: "100%" }}></i><i style={{ height: "60%" }}></i><i style={{ height: "85%" }}></i><i style={{ height: "45%" }}></i><i style={{ height: "100%" }}></i><i style={{ height: "35%" }}></i><i style={{ height: "75%" }}></i><i style={{ height: "100%" }}></i><i style={{ height: "55%" }}></i><i style={{ height: "90%" }}></i><i style={{ height: "40%" }}></i><i style={{ height: "100%" }}></i><i style={{ height: "65%" }}></i><i style={{ height: "80%" }}></i><i style={{ height: "50%" }}></i><i style={{ height: "100%" }}></i>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="qr-box">
-                      <i></i><i></i><i style={{ background: "transparent" }}></i><i></i><i></i><i style={{ background: "transparent" }}></i><i></i>
-                      <i style={{ background: "transparent" }}></i><i></i><i style={{ background: "transparent" }}></i><i style={{ background: "transparent" }}></i><i></i><i style={{ background: "transparent" }}></i><i></i>
-                      <i></i><i></i><i></i><i style={{ background: "transparent" }}></i><i></i><i></i><i></i>
-                      <i style={{ background: "transparent" }}></i><i style={{ background: "transparent" }}></i><i></i><i></i><i style={{ background: "transparent" }}></i><i style={{ background: "transparent" }}></i><i></i>
-                      <i></i><i style={{ background: "transparent" }}></i><i></i><i style={{ background: "transparent" }}></i><i></i><i style={{ background: "transparent" }}></i><i></i>
-                      <i style={{ background: "transparent" }}></i><i></i><i style={{ background: "transparent" }}></i><i></i><i></i><i style={{ background: "transparent" }}></i><i></i>
-                      <i></i><i></i><i style={{ background: "transparent" }}></i><i></i><i style={{ background: "transparent" }}></i><i></i><i></i>
-                    </div>
-                    <div className="qr-caption">Scan to Pay (UPI)</div>
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
 
             <div className="lower-right">
-              <div className="totals">
-                <div className="row">
-                  <span>Subtotal</span>
-                  <span>{formatCurrency(totals.grossSubtotal)}</span>
-                </div>
-                <div className="row">
-                  <span>Discount</span>
-                  <span>– {formatCurrency(totals.totalDiscount)}</span>
-                </div>
-                <div className="row">
-                  <span>Taxable Value</span>
-                  <span>{formatCurrency(totals.taxableValue)}</span>
-                </div>
-                {totals.cgst > 0 ? (
-                  <>
-                    <div className="row">
-                      <span>CGST @ 9%</span>
-                      <span>{formatCurrency(totals.cgst)}</span>
-                    </div>
-                    <div className="row">
-                      <span>SGST @ 9%</span>
-                      <span>{formatCurrency(totals.sgst)}</span>
-                    </div>
-                  </>
-                ) : (
+              <div className="box">
+                <div className="label">Invoice Summary</div>
+                <div className="totals">
                   <div className="row">
-                    <span>IGST @ 18%</span>
-                    <span>{formatCurrency(totals.igst)}</span>
+                    <span>Subtotal</span>
+                    <span>{formatCurrency(totals.grossSubtotal)}</span>
                   </div>
-                )}
-                <div className="row">
-                  <span>Shipping Charges</span>
-                  <span>{formatCurrency(totals.shipping)}</span>
-                </div>
-                <div className="row">
-                  <span>Round Off</span>
-                  <span>{totals.roundOff >= 0 ? `+ ₹ ${totals.roundOff}` : `– ₹ ${Math.abs(totals.roundOff)}`}</span>
-                </div>
-                <div className="row grand">
-                  <span>Grand Total</span>
-                  <span>{formatCurrency(totals.grandTotal)}</span>
-                </div>
-                <div className="words">
-                  <b>Amount in Words:</b> {totals.amountInWords}
+                  <div className="row">
+                    <span>Discount</span>
+                    <span>– {formatCurrency(totals.totalDiscount)}</span>
+                  </div>
+                  <div className="row">
+                    <span>Taxable Value</span>
+                    <span>{formatCurrency(totals.taxableValue)}</span>
+                  </div>
+                  {totals.cgst > 0 ? (
+                    <>
+                      <div className="row">
+                        <span>CGST @ 9%</span>
+                        <span>{formatCurrency(totals.cgst)}</span>
+                      </div>
+                      <div className="row">
+                        <span>SGST @ 9%</span>
+                        <span>{formatCurrency(totals.sgst)}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="row">
+                      <span>IGST @ 18%</span>
+                      <span>{formatCurrency(totals.igst)}</span>
+                    </div>
+                  )}
+                  {totals.shipping > 0 && (
+                    <div className="row">
+                      <span>Shipping Charges</span>
+                      <span>{formatCurrency(totals.shipping)}</span>
+                    </div>
+                  )}
+                  {totals.roundOff !== 0 && (
+                    <div className="row">
+                      <span>Round Off</span>
+                      <span>{totals.roundOff > 0 ? `+ ₹ ${totals.roundOff}` : `– ₹ ${Math.abs(totals.roundOff)}`}</span>
+                    </div>
+                  )}
+                  <div className="row grand">
+                    <span>Grand Total</span>
+                    <span>{formatCurrency(totals.grandTotal)}</span>
+                  </div>
+                  <div className="words">
+                    <b>Amount in Words:</b> {totals.amountInWords}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1072,9 +1154,6 @@ export default function ValueplusInvoice() {
 
           {/* Signatures */}
           <div className="sign-row">
-            <div className="stamp">
-              Company<br />Stamp
-            </div>
             <div className="sign-block">
               <div className="sign-line">Customer Signature</div>
             </div>
@@ -1087,8 +1166,8 @@ export default function ValueplusInvoice() {
           </div>
 
           {/* Footer Bar */}
-          <div className="footer-bar">
-            This is a system-generated tax invoice and does not require a physical signature to be valid. &nbsp;·&nbsp; Powered by <b>VALUEPLUS ERP</b>
+          <div className="footer-bar" style={{ fontSize: "12px", fontWeight: "700", color: "var(--vp-blue)" }}>
+            Thanks for shopping with us! &nbsp;·&nbsp; <b>VALUEPLUS — रिश्ता विश्वास का</b>
           </div>
         </div>
       </div>

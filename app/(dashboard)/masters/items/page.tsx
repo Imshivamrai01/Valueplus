@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search, Filter, Download, Upload, Printer, MoreHorizontal, Edit, Trash2, Eye, Package, TrendingUp, AlertTriangle, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 import { PageShell } from "@/components/shared/page-shell";
@@ -21,74 +22,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { formatCurrency, downloadCSV } from "@/lib/utils";
 
-// ─── DUMMY DATA ────────────────────────────────────────────────
-const CATEGORIES = [
-  "Smartphones & Feature Phones",
-  "Mobile Accessories",
-  "Smartwatches & Wearables",
-  "Audio & Sound",
-  "Laptops & Computers",
-  "Computer Accessories",
-  "Storage & Memory",
-  "Televisions & Display",
-  "Home Appliances",
-  "Networking & Smart Home"
-];
-
-const BRANDS = ["Apple", "Samsung", "Vivo", "Oppo", "OnePlus", "Xiaomi", "Realme", "boAt", "Sony", "LG", "Dell", "HP", "Lenovo", "Asus", "Noise", "SanDisk"];
 const WAREHOUSES = ["Main Store - Mumbai", "Pune Branch", "Delhi Hub", "Bengaluru Store"];
-
-function generateItems() {
-  const items = [
-    { name: "iPhone 15 Pro Max 256GB", code: "ITM-0001", category: "Smartphones & Feature Phones", brand: "Apple", unit: "PCS", hsn: "85171300", gstRate: 18, purchasePrice: 125000, sellingPrice: 144900, mrp: 149900, currentStock: 24, reorderLevel: 5, warehouse: "Main Store - Mumbai", status: "active" },
-    { name: "Samsung Galaxy S24 Ultra 512GB", code: "ITM-0002", category: "Smartphones & Feature Phones", brand: "Samsung", unit: "PCS", hsn: "85171300", gstRate: 18, purchasePrice: 110000, sellingPrice: 129999, mrp: 139999, currentStock: 18, reorderLevel: 4, warehouse: "Main Store - Mumbai", status: "active" },
-    { name: "MacBook Air M3 16GB/512GB", code: "ITM-0003", category: "Laptops & Computers", brand: "Apple", unit: "PCS", hsn: "84713010", gstRate: 18, purchasePrice: 105000, sellingPrice: 124900, mrp: 134900, currentStock: 12, reorderLevel: 3, warehouse: "Main Store - Mumbai", status: "active" },
-    { name: "Sony Bravia 55 inch 4K Ultra HD Smart LED TV", code: "ITM-0004", category: "Televisions & Display", brand: "Sony", unit: "PCS", hsn: "85285900", gstRate: 28, purchasePrice: 52000, sellingPrice: 64990, mrp: 74900, currentStock: 8, reorderLevel: 2, warehouse: "Main Store - Mumbai", status: "active" },
-    { name: "AirPods Pro (2nd Gen) USB-C", code: "ITM-0005", category: "Audio & Sound", brand: "Apple", unit: "PR", hsn: "85183000", gstRate: 18, purchasePrice: 18500, sellingPrice: 22900, mrp: 24900, currentStock: 45, reorderLevel: 10, warehouse: "Delhi Hub", status: "active" },
-    { name: "boAt Airdopes 141 TWS Earbuds", code: "ITM-0006", category: "Audio & Sound", brand: "boAt", unit: "PR", hsn: "85183000", gstRate: 18, purchasePrice: 750, sellingPrice: 1299, mrp: 4490, currentStock: 120, reorderLevel: 25, warehouse: "Pune Branch", status: "active" },
-    { name: "OnePlus 12 5G 16GB/512GB", code: "ITM-0007", category: "Smartphones & Feature Phones", brand: "OnePlus", unit: "PCS", hsn: "85171300", gstRate: 18, purchasePrice: 58000, sellingPrice: 64999, mrp: 69999, currentStock: 15, reorderLevel: 5, warehouse: "Bengaluru Store", status: "active" },
-    { name: "Apple 20W USB-C Power Adapter", code: "ITM-0008", category: "Mobile Accessories", brand: "Apple", unit: "PCS", hsn: "85044090", gstRate: 18, purchasePrice: 1300, sellingPrice: 1799, mrp: 1900, currentStock: 85, reorderLevel: 20, warehouse: "Main Store - Mumbai", status: "active" },
-    { name: "SanDisk Extreme 1TB Portable SSD", code: "ITM-0009", category: "Storage & Memory", brand: "SanDisk", unit: "PCS", hsn: "85235100", gstRate: 18, purchasePrice: 8200, sellingPrice: 10999, mrp: 14500, currentStock: 32, reorderLevel: 8, warehouse: "Main Store - Mumbai", status: "active" },
-    { name: "TP-Link Archer AX5400 WiFi 6 Router", code: "ITM-0010", category: "Networking & Smart Home", brand: "Asus", unit: "PCS", hsn: "85176290", gstRate: 18, purchasePrice: 7200, sellingPrice: 9999, mrp: 12999, currentStock: 14, reorderLevel: 5, warehouse: "Delhi Hub", status: "active" },
-    { name: "Logitech MX Master 3S Wireless Mouse", code: "ITM-0011", category: "Computer Accessories", brand: "Asus", unit: "PCS", hsn: "84716060", gstRate: 18, purchasePrice: 6800, sellingPrice: 8995, mrp: 10995, currentStock: 22, reorderLevel: 6, warehouse: "Pune Branch", status: "active" },
-    { name: "LG 1.5 Ton 5 Star AI Dual Inverter Split AC", code: "ITM-0012", category: "Home Appliances", brand: "LG", unit: "UNT", hsn: "84151010", gstRate: 28, purchasePrice: 36500, sellingPrice: 44490, mrp: 54990, currentStock: 6, reorderLevel: 2, warehouse: "Main Store - Mumbai", status: "active" },
-    { name: "Samsung 253L 3 Star Frost Free Refrigerator", code: "ITM-0013", category: "Home Appliances", brand: "Samsung", unit: "UNT", hsn: "84182100", gstRate: 18, purchasePrice: 21500, sellingPrice: 26490, mrp: 31990, currentStock: 9, reorderLevel: 3, warehouse: "Bengaluru Store", status: "active" },
-    { name: "Realme 12 Pro+ 5G 256GB", code: "ITM-0014", category: "Smartphones & Feature Phones", brand: "Realme", unit: "PCS", hsn: "85171300", gstRate: 18, purchasePrice: 24500, sellingPrice: 29999, mrp: 33999, currentStock: 40, reorderLevel: 10, warehouse: "Main Store - Mumbai", status: "active" },
-    { name: "Anker 10000mAh Magnetic Power Bank", code: "ITM-0015", category: "Mobile Accessories", brand: "Apple", unit: "PCS", hsn: "85044090", gstRate: 18, purchasePrice: 2800, sellingPrice: 3999, mrp: 4999, currentStock: 50, reorderLevel: 15, warehouse: "Pune Branch", status: "active" },
-  ];
-
-  // Generate more mobile & electronics items
-  const extraNames = [
-    "Vivo V30 Pro 5G 256GB", "Xiaomi 14 Ultra 512GB", "Noise ColorFit Pulse 3 Smartwatch",
-    "Dell XPS 13 Core i7 16GB/1TB", "HP LaserJet Pro Wireless Printer", "Asus ROG Strix Gaming Monitor 27\"",
-    "Samsung Galaxy Tab S9 Ultra", "boAt Stone 1200 Bluetooth Speaker", "Sony WH-1000XM5 Wireless Headphones",
-    "Tempered Glass Screen Protector 9H", "Silicone Protective Phone Case", "Braided Type-C Fast Charging Cable 2m",
-    "Mi Smart Wi-Fi Security Camera 360", "SanDisk 128GB MicroSDXC Card Class 10", "Logitech K380 Multi-Device Bluetooth Keyboard",
-  ];
-
-  for (let i = 0; i < extraNames.length; i++) {
-    items.push({
-      name: extraNames[i],
-      code: `ITM-${String(i + 16).padStart(4, "0")}`,
-      category: CATEGORIES[i % CATEGORIES.length],
-      brand: BRANDS[i % BRANDS.length],
-      unit: "PCS",
-      hsn: "84716090",
-      gstRate: [5, 12, 18][i % 3],
-      purchasePrice: Math.round((800 + ((i * 37) % 100) / 100 * 15000) / 10) * 10,
-      sellingPrice: Math.round((1500 + ((i * 41) % 100) / 100 * 30000) / 10) * 10,
-      mrp: Math.round((2000 + ((i * 43) % 100) / 100 * 35000) / 10) * 10,
-      currentStock: Math.floor(((i * 47) % 100) / 100 * 300),
-      reorderLevel: Math.floor(((i * 53) % 100) / 100 * 30) + 5,
-      warehouse: WAREHOUSES[i % WAREHOUSES.length],
-      status: ((i * 59) % 100) > 10 ? "active" : "inactive",
-    });
-  }
-
-  return items;
-}
-
-const ALL_ITEMS = generateItems();
 
 interface ItemFormData {
   name: string;
@@ -115,18 +49,48 @@ const EMPTY_FORM: ItemFormData = {
 };
 
 export default function ItemsPage() {
-  const [items, setItems] = useState(ALL_ITEMS);
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<typeof ALL_ITEMS[0] | null>(null);
+  const [editingItem, setEditingItem] = useState<any | null>(null);
   const [deletingCode, setDeletingCode] = useState<string | null>(null);
   const [formData, setFormData] = useState<ItemFormData>(EMPTY_FORM);
   const [page, setPage] = useState(1);
   const PER_PAGE = 10;
+
+  const { data: items = [], isLoading: loading } = useQuery({
+    queryKey: ["items"],
+    queryFn: async () => {
+      const res = await fetch("/api/items");
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+      return json.data;
+    }
+  });
+
+  const { data: categories = [] } = useQuery({
+    queryKey: ["categories"],
+    queryFn: async () => {
+      const res = await fetch("/api/categories");
+      const json = await res.json();
+      if (!json.success) return [];
+      return json.data;
+    }
+  });
+
+  const { data: brands = [] } = useQuery({
+    queryKey: ["brands"],
+    queryFn: async () => {
+      const res = await fetch("/api/brands");
+      const json = await res.json();
+      if (!json.success) return [];
+      return json.data;
+    }
+  });
 
   const filtered = useMemo(() => {
     return items.filter((item) => {
@@ -135,7 +99,12 @@ export default function ItemsPage() {
         item.code.toLowerCase().includes(search.toLowerCase()) ||
         item.brand.toLowerCase().includes(search.toLowerCase());
       const matchCategory = categoryFilter === "all" || item.category === categoryFilter;
-      const matchStatus = statusFilter === "all" || item.status === statusFilter;
+      let matchStatus = true;
+      if (statusFilter === "low_stock") {
+        matchStatus = item.currentStock > 0 && item.currentStock <= item.reorderLevel;
+      } else if (statusFilter !== "all") {
+        matchStatus = item.status === statusFilter;
+      }
       return matchSearch && matchCategory && matchStatus;
     });
   }, [items, search, categoryFilter, statusFilter]);
@@ -164,7 +133,7 @@ export default function ItemsPage() {
     setIsFormOpen(true);
   };
 
-  const openEdit = (item: typeof ALL_ITEMS[0]) => {
+  const openEdit = (item: any) => {
     setEditingItem(item);
     setFormData({
       name: item.name, code: item.code, category: item.category, brand: item.brand,
@@ -176,21 +145,66 @@ export default function ItemsPage() {
     setIsFormOpen(true);
   };
 
-  const handleSave = () => {
+  const saveMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      const method = editingItem ? "PUT" : "POST";
+      const res = await fetch("/api/items", {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || "Failed to save item");
+      return json.data;
+    },
+    onSuccess: () => {
+      toast.success(editingItem ? "Item updated successfully" : "Item added successfully");
+      setIsFormOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "An error occurred");
+    }
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (code: string) => {
+      const res = await fetch(`/api/items?code=${code}`, { method: "DELETE" });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || "Failed to delete item");
+      return json;
+    },
+    onSuccess: () => {
+      toast.success("Item deleted");
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+      setIsDeleteOpen(false);
+      setDeletingCode(null);
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "An error occurred");
+      setIsDeleteOpen(false);
+      setDeletingCode(null);
+    }
+  });
+
+  const handleSave = async () => {
     if (!formData.name || !formData.sellingPrice) {
       toast.error("Please fill all required fields");
       return;
     }
-    if (editingItem) {
-      setItems((prev) => prev.map((i) =>
-        i.code === editingItem.code ? { ...i, ...formData, gstRate: Number(formData.gstRate), purchasePrice: Number(formData.purchasePrice), sellingPrice: Number(formData.sellingPrice), mrp: Number(formData.mrp), currentStock: Number(formData.currentStock), reorderLevel: Number(formData.reorderLevel) } : i
-      ));
-      toast.success("Item updated successfully");
-    } else {
-      setItems((prev) => [...prev, { ...formData, gstRate: Number(formData.gstRate), purchasePrice: Number(formData.purchasePrice), sellingPrice: Number(formData.sellingPrice), mrp: Number(formData.mrp), currentStock: Number(formData.currentStock), reorderLevel: Number(formData.reorderLevel) }]);
-      toast.success("Item added successfully");
-    }
-    setIsFormOpen(false);
+    
+    const payload = {
+      ...formData,
+      code: formData.code || `ITM-${String(items.length + 1).padStart(4, "0")}`,
+      gstRate: Number(formData.gstRate),
+      purchasePrice: Number(formData.purchasePrice),
+      sellingPrice: Number(formData.sellingPrice),
+      mrp: Number(formData.mrp),
+      currentStock: Number(formData.currentStock),
+      reorderLevel: Number(formData.reorderLevel)
+    };
+
+    saveMutation.mutate(payload);
   };
 
   const confirmDelete = (code: string) => {
@@ -199,22 +213,20 @@ export default function ItemsPage() {
   };
 
   const handleDelete = () => {
-    setItems((prev) => prev.filter((i) => i.code !== deletingCode));
-    toast.success("Item deleted");
-    setIsDeleteOpen(false);
-    setDeletingCode(null);
+    if (deletingCode) {
+      deleteMutation.mutate(deletingCode);
+    }
   };
 
   const handleBulkDelete = () => {
-    setItems((prev) => prev.filter((i) => !selectedIds.includes(i.code)));
-    toast.success(`${selectedIds.length} items deleted`);
+    toast.error("Bulk delete not fully implemented via API yet");
     setSelectedIds([]);
   };
 
-  const getStockStatus = (item: typeof ALL_ITEMS[0]) => {
-    if (item.currentStock === 0) return { label: "Out of Stock", variant: "destructive" as const };
-    if (item.currentStock <= item.reorderLevel) return { label: "Low Stock", variant: "warning" as const };
-    return { label: "In Stock", variant: "success" as const };
+  const getStockStatus = (item: any) => {
+    if (item.currentStock === 0) return { label: "Out of Stock", variant: "destructive" as const, low: true };
+    if (item.currentStock <= item.reorderLevel) return { label: "Reorder Needed", variant: "destructive" as const, low: true };
+    return { label: "In Stock", variant: "success" as const, low: false };
   };
 
   return (
@@ -275,7 +287,7 @@ export default function ItemsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Categories</SelectItem>
-              {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+              {categories.map((c: any) => <SelectItem key={c._id || c.id} value={c.name}>{c.name}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
@@ -286,6 +298,7 @@ export default function ItemsPage() {
               <SelectItem value="all">All Status</SelectItem>
               <SelectItem value="active">Active</SelectItem>
               <SelectItem value="inactive">Inactive</SelectItem>
+              <SelectItem value="low_stock">Low Stock (Reorder)</SelectItem>
             </SelectContent>
           </Select>
 
@@ -321,7 +334,13 @@ export default function ItemsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {paginated.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={9} className="px-4 py-16 text-center">
+                    <p className="text-muted-foreground font-medium">Loading items...</p>
+                  </td>
+                </tr>
+              ) : paginated.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="px-4 py-16 text-center">
                     <Package className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
@@ -333,8 +352,9 @@ export default function ItemsPage() {
                 paginated.map((item) => {
                   const stockStatus = getStockStatus(item);
                   const isSelected = selectedIds.includes(item.code);
+                  const rowBg = isSelected ? "bg-blue-50/50" : (stockStatus.low ? "bg-red-50/50 hover:bg-red-50/70" : "hover:bg-slate-50/70");
                   return (
-                    <tr key={item.code} className={`hover:bg-slate-50/70 transition-colors ${isSelected ? "bg-blue-50/50" : ""}`}>
+                    <tr key={item.code} className={`transition-colors ${rowBg}`}>
                       <td className="px-4 py-3">
                         <Checkbox
                           checked={isSelected}
@@ -484,7 +504,7 @@ export default function ItemsPage() {
                   <Select value={formData.category} onValueChange={(v) => setFormData((f) => ({ ...f, category: v }))}>
                     <SelectTrigger className="bg-slate-50 border-slate-300"><SelectValue placeholder="Select category" /></SelectTrigger>
                     <SelectContent>
-                      {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                      {categories.map((c: any) => <SelectItem key={c._id || c.id} value={c.name}>{c.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -493,7 +513,7 @@ export default function ItemsPage() {
                   <Select value={formData.brand} onValueChange={(v) => setFormData((f) => ({ ...f, brand: v }))}>
                     <SelectTrigger className="bg-slate-50 border-slate-300"><SelectValue placeholder="Select brand" /></SelectTrigger>
                     <SelectContent>
-                      {BRANDS.map((b) => <SelectItem key={b} value={b}>{b}</SelectItem>)}
+                      {brands.map((b: any) => <SelectItem key={b._id || b.id} value={b.name}>{b.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -600,8 +620,8 @@ export default function ItemsPage() {
             <Button variant="outline" onClick={() => setIsFormOpen(false)} className="px-5">
               Cancel
             </Button>
-            <Button onClick={handleSave} className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white px-6 font-bold shadow-lg shadow-[#3F63AD]/20">
-              {editingItem ? "Update Catalog Item" : "Save & Add to Catalog"}
+            <Button onClick={handleSave} disabled={saveMutation.isPending} className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white px-6 font-bold shadow-lg shadow-[#3F63AD]/20">
+              {saveMutation.isPending ? "Saving..." : (editingItem ? "Update Catalog Item" : "Save & Add to Catalog")}
             </Button>
           </div>
         </DialogContent>
@@ -617,8 +637,10 @@ export default function ItemsPage() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDeleteOpen(false)}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete}>Delete</Button>
+            <Button variant="outline" onClick={() => setIsDeleteOpen(false)} disabled={deleteMutation.isPending}>Cancel</Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

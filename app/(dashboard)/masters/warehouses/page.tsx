@@ -2,22 +2,16 @@
 import { PageShell } from "@/components/shared/page-shell";
 import { Button } from "@/components/ui/button";
 import { Plus, Warehouse, MapPin, Phone } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 
-const INITIAL_WAREHOUSES = [
-  { id: "1", code: "WH-MUM", name: "Main Store & Hub - Mumbai", address: "Plot 45, MIDC Industrial Area, Andheri East", city: "Mumbai", state: "Maharashtra", contact: "Ravi Kumar", phone: "9876543210", items: 485, status: "active", isDefault: true },
-  { id: "2", code: "WH-PUN", name: "Pune Branch Store", address: "Survey No. 89, Hinjewadi IT Park Phase 2", city: "Pune", state: "Maharashtra", contact: "Suresh Patil", phone: "9812345678", items: 234, status: "active", isDefault: false },
-  { id: "3", code: "WH-DEL", name: "Delhi Hub & Showroom", address: "B-42, Sector 63, Noida Industrial Area", city: "Noida", state: "Uttar Pradesh", contact: "Amit Sharma", phone: "9801234567", items: 167, status: "active", isDefault: false },
-  { id: "4", code: "WH-BLR", name: "Bengaluru Tech Store", address: "BTM Layout, 2nd Stage, Outer Ring Road", city: "Bengaluru", state: "Karnataka", contact: "Priya Nair", phone: "9890123456", items: 98, status: "active", isDefault: false },
-];
-
 export default function WarehousesPage() {
-  const [warehouses, setWarehouses] = useState(INITIAL_WAREHOUSES);
+  const [warehouses, setWarehouses] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
@@ -29,37 +23,66 @@ export default function WarehousesPage() {
     phone: "",
   });
 
-  const handleSave = () => {
+  const fetchWarehouses = async () => {
+    try {
+      const res = await fetch("/api/warehouses");
+      const json = await res.json();
+      if (json.success) setWarehouses(json.data);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchWarehouses();
+  }, []);
+
+  const handleSave = async () => {
     if (!formData.name || !formData.phone) {
       toast.error("Please fill Warehouse Name and Phone");
       return;
     }
 
     const newWh = {
-      id: String(Date.now()),
       code: formData.code || `WH-${formData.city.substring(0, 3).toUpperCase()}`,
       name: formData.name,
       address: formData.address || "Industrial Area",
       city: formData.city,
       state: formData.state,
-      contact: formData.contact || "Store Manager",
+      contactPerson: formData.contact || "Store Manager",
       phone: formData.phone,
-      items: 0,
+      email: formData.name.replace(/\s+/g, '').toLowerCase() + "@valueplus.com",
       status: "active",
       isDefault: false,
     };
 
-    setWarehouses([...warehouses, newWh]);
-    toast.success(`Warehouse "${newWh.name}" added successfully!`);
-    setIsFormOpen(false);
+    try {
+      const res = await fetch("/api/warehouses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newWh)
+      });
+      const json = await res.json();
+      if (json.success) {
+        toast.success(`Warehouse "${json.data.name}" added successfully!`);
+        setIsFormOpen(false);
+        fetchWarehouses();
+      } else {
+        toast.error(json.error || "Failed to add warehouse");
+      }
+    } catch (error) {
+      toast.error("An error occurred");
+    }
   };
 
   return (
     <PageShell title="Warehouses & Outlets" subtitle={`${warehouses.length} active locations`} breadcrumbs={[{ label: "Masters" }, { label: "Warehouses" }]}
       actions={<Button size="sm" onClick={() => setIsFormOpen(true)}><Plus className="w-4 h-4 mr-1.5" /> Add Warehouse</Button>}>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {warehouses.map(wh => (
-          <div key={wh.id} className="metric-card">
+        {loading ? <p className="p-4 text-muted-foreground">Loading...</p> : warehouses.map(wh => (
+          <div key={wh._id || wh.id} className="metric-card">
             <div className="flex items-start justify-between mb-3">
               <div className="flex items-center gap-3">
                 <div className="w-11 h-11 rounded-2xl bg-[#3F63AD]/10 flex items-center justify-center">
@@ -82,16 +105,16 @@ export default function WarehousesPage() {
               </div>
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Phone className="w-3.5 h-3.5 flex-shrink-0" />
-                <span>{wh.contact} · {wh.phone}</span>
+                <span>{wh.contactPerson || wh.contact} · {wh.phone}</span>
               </div>
             </div>
             <div className="mt-4 pt-4 border-t flex items-center justify-between">
               <div>
-                <p className="text-2xl font-bold text-foreground">{wh.items}</p>
+                <p className="text-2xl font-bold text-foreground">{wh.items || 0}</p>
                 <p className="text-xs text-muted-foreground">Total SKUs</p>
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" className="text-red-500" onClick={() => { setWarehouses(prev => prev.filter(x => x.id !== wh.id)); toast.success("Warehouse removed"); }}>Delete</Button>
+                <Button variant="outline" size="sm" className="text-red-500" onClick={() => { setWarehouses(prev => prev.filter(x => x._id !== wh._id)); toast.success("Warehouse removed locally (API not implemented)"); }}>Delete</Button>
               </div>
             </div>
           </div>

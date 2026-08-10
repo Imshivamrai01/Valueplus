@@ -1,5 +1,185 @@
 "use client";
-import { ModuleStub } from "@/components/shared/module-stub";
+
+import { useState } from "react";
+import { PageShell } from "@/components/shared/page-shell";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { format } from "date-fns";
+import { Plus, Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
 export default function StockReturnPage() {
-  return <ModuleStub title="Stock Return" subtitle="Process inventory returns" breadcrumbs={[{ label: "Inventory" }, { label: "Stock Return" }]} description="Process returns from customers or back to suppliers. Update stock quantities and generate appropriate accounting entries automatically." ctaLabel="New Return" />;
+  const queryClient = useQueryClient();
+  const [searchTerm, setSearchTerm] = useState("");
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [newReturn, setNewReturn] = useState({
+    date: format(new Date(), "yyyy-MM-dd"),
+    returnType: "Customer Return",
+    referenceId: "",
+    status: "Completed",
+    items: [{ itemId: "", itemName: "", quantity: 1, reason: "" }]
+  });
+
+  const { data: itemsData } = useQuery({ queryKey: ["items"], queryFn: async () => (await fetch("/api/items")).json() });
+  const items = itemsData?.data || [];
+
+  const { data: returnData, isLoading } = useQuery({ queryKey: ["stock-returns"], queryFn: async () => (await fetch("/api/inventory/return")).json() });
+  const returns = returnData?.data || [];
+
+  const addMutation = useMutation({
+    mutationFn: async (ret: any) => {
+      const res = await fetch("/api/inventory/return", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(ret) });
+      if (!res.ok) throw new Error("Failed to create return");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["stock-returns"] });
+      queryClient.invalidateQueries({ queryKey: ["items"] }); // Update stock across app
+      setIsAddOpen(false);
+    }
+  });
+
+  const handleItemChange = (index: number, field: string, value: any) => {
+    const updated = [...newReturn.items];
+    if (field === "itemId") {
+      const it = items.find((i: any) => i._id === value);
+      updated[index].itemId = value;
+      updated[index].itemName = it ? it.itemName : "";
+    } else {
+      updated[index] = { ...updated[index], [field]: value };
+    }
+    setNewReturn({ ...newReturn, items: updated });
+  };
+
+  const filtered = returns.filter((r: any) => 
+    r.returnNumber.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    r.returnType.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  return (
+    <PageShell title="Stock Return" subtitle="Process inventory returns" breadcrumbs={[{ label: "Inventory" }, { label: "Stock Return" }]}>
+      <div className="flex justify-between items-center mb-6">
+        <div className="relative w-72">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input placeholder="Search Returns..." className="pl-9" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+        </div>
+        
+        <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+          <DialogTrigger asChild>
+            <Button className="bg-[#3F63AD] hover:bg-[#3F63AD]/90"><Plus className="w-4 h-4 mr-2" /> New Return</Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader><DialogTitle>Process Stock Return</DialogTitle></DialogHeader>
+            <form onSubmit={(e) => { e.preventDefault(); addMutation.mutate(newReturn); }} className="space-y-4 mt-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium">Date</label>
+                  <Input type="date" required value={newReturn.date} onChange={e => setNewReturn({...newReturn, date: e.target.value})} className="mt-1" />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Return Type</label>
+                  <Select value={newReturn.returnType} onValueChange={(val) => setNewReturn({...newReturn, returnType: val})}>
+                    <SelectTrigger className="w-full bg-white mt-1">
+                      <SelectValue placeholder="Return Type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Customer Return">Customer Return (Stock IN)</SelectItem>
+                      <SelectItem value="Supplier Return">Supplier Return (Stock OUT)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              
+              <div>
+                <h4 className="font-medium text-sm mb-2">Returned Items</h4>
+                <table className="w-full text-sm border">
+                  <thead className="bg-slate-50 border-b">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Item</th>
+                      <th className="px-3 py-2 text-right">Quantity</th>
+                      <th className="px-3 py-2 text-left">Reason</th>
+                      <th className="px-3 py-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {newReturn.items.map((line, idx) => (
+                      <tr key={idx} className="border-b">
+                        <td className="p-2">
+                          <Select value={line.itemId} onValueChange={(val) => handleItemChange(idx, "itemId", val)}>
+                            <SelectTrigger className="w-full bg-white">
+                              <SelectValue placeholder="Select Item..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {items.map((it: any) => (
+                                <SelectItem key={it._id} value={it._id}>
+                                  {it.itemName} <span className="text-muted-foreground ml-2">(Stock: {it.currentStock || 0})</span>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        <td className="p-2 w-24"><Input type="number" min="1" required value={line.quantity} onChange={e => handleItemChange(idx, "quantity", Number(e.target.value))} /></td>
+                        <td className="p-2"><Input type="text" placeholder="Reason..." value={line.reason} onChange={e => handleItemChange(idx, "reason", e.target.value)} /></td>
+                        <td className="p-2 w-10">
+                          <button type="button" onClick={() => setNewReturn({...newReturn, items: newReturn.items.filter((_, i) => i !== idx)})} className="text-red-500">✕</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => setNewReturn({...newReturn, items: [...newReturn.items, { itemId: "", itemName: "", quantity: 1, reason: "" }]})}>+ Add Line</Button>
+              </div>
+              
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                <Button type="button" variant="outline" onClick={() => setIsAddOpen(false)}>Cancel</Button>
+                <Button type="submit" className="bg-[#3F63AD] hover:bg-[#3F63AD]/90" disabled={addMutation.isPending}>{addMutation.isPending ? "Saving..." : "Process Return"}</Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      <Card className="overflow-hidden border border-slate-200">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
+            <tr>
+              <th className="px-4 py-3 text-left font-semibold">Return No.</th>
+              <th className="px-4 py-3 text-left font-semibold">Date</th>
+              <th className="px-4 py-3 text-left font-semibold">Type</th>
+              <th className="px-4 py-3 text-left font-semibold">Returned Items</th>
+              <th className="px-4 py-3 text-center font-semibold">Status</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {isLoading ? <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">Loading...</td></tr> : filtered.map((row: any) => (
+              <tr key={row._id} className="hover:bg-slate-50/50">
+                <td className="px-4 py-3 font-medium text-[#3F63AD]">{row.returnNumber}</td>
+                <td className="px-4 py-3">{format(new Date(row.date), "dd MMM, yyyy")}</td>
+                <td className="px-4 py-3">
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${row.returnType === 'Customer Return' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
+                    {row.returnType}
+                  </span>
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex flex-col gap-1 text-xs">
+                    {row.items.map((line:any, i:number) => (
+                      <span key={i}>{line.quantity} x {line.itemName}</span>
+                    ))}
+                  </div>
+                </td>
+                <td className="px-4 py-3 text-center">
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${row.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                    {row.status}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+    </PageShell>
+  );
 }
