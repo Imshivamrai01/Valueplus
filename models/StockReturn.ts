@@ -17,7 +17,7 @@ export interface IStockReturn extends Document {
 }
 
 const StockReturnItemSchema = new Schema<IStockReturnItem>({
-  itemId: { type: Schema.Types.ObjectId, ref: "Item", required: true },
+  itemId: { type: String, required: true },
   itemName: { type: String, required: true },
   quantity: { type: Number, required: true, min: 1 },
   reason: { type: String },
@@ -35,5 +35,8 @@ const StockReturnSchema = new Schema<IStockReturn>(
   { timestamps: true, collection: "stock_returns" }
 );
 
-const StockReturn: Model<IStockReturn> = mongoose.models.StockReturn || mongoose.model<IStockReturn>("StockReturn", StockReturnSchema);
+if (mongoose.models.StockReturn) {
+  delete mongoose.models.StockReturn;
+}
+const StockReturn: Model<IStockReturn> = mongoose.model<IStockReturn>("StockReturn", StockReturnSchema);
 export default StockReturn;

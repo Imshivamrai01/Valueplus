@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { toast } from "sonner";
 
 export default function StockReturnPage() {
   const queryClient = useQueryClient();
@@ -45,13 +46,20 @@ export default function StockReturnPage() {
   const addMutation = useMutation({
     mutationFn: async (ret: any) => {
       const res = await fetch("/api/inventory/return", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(ret) });
-      if (!res.ok) throw new Error("Failed to create return");
-      return res.json();
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || "Failed to create return");
+      }
+      return json;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["stock-returns"] });
       queryClient.invalidateQueries({ queryKey: ["items"] }); // Update stock across app
       setIsAddOpen(false);
+      toast.success("Stock return processed successfully!");
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Failed to process stock return");
     }
   });
 
@@ -86,7 +94,15 @@ export default function StockReturnPage() {
           </DialogTrigger>
           <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader><DialogTitle>Process Stock Return</DialogTitle></DialogHeader>
-            <form onSubmit={(e) => { e.preventDefault(); addMutation.mutate(newReturn); }} className="space-y-4 mt-4">
+            <form onSubmit={(e) => { 
+              e.preventDefault(); 
+              const validItems = newReturn.items.filter(i => i.itemId);
+              if (validItems.length === 0) {
+                toast.error("Please select valid items to return.");
+                return;
+              }
+              addMutation.mutate({ ...newReturn, items: validItems }); 
+            }} className="space-y-4 mt-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-medium">Date</label>
@@ -116,9 +132,9 @@ export default function StockReturnPage() {
                         const inv = invoices.find((i: any) => `${i.invoiceNumber} - ${i.customerName}` === val);
                         if (inv) {
                           const mappedItems = inv.items.map((line: any) => ({
-                            itemId: line.itemId,
-                            itemName: line.itemName || line.name,
-                            quantity: line.quantity,
+                            itemId: line.itemId || `UNKNOWN-${Math.random().toString(36).substring(7)}`,
+                            itemName: line.itemName || line.name || "Unknown Item",
+                            quantity: line.quantity || 1,
                             reason: "Customer Return"
                           }));
                           setNewReturn({...newReturn, invoiceId: inv._id, referenceId: inv.invoiceNumber, items: mappedItems.length > 0 ? mappedItems : [{ itemId: "", itemName: "", quantity: 1, reason: "" }]});
@@ -144,9 +160,9 @@ export default function StockReturnPage() {
                         const pur = purchases.find((p: any) => `${p.billNo} - ${p.supplierName}` === val);
                         if (pur) {
                           const mappedItems = pur.items.map((line: any) => ({
-                            itemId: line.itemId,
-                            itemName: line.itemName || line.name,
-                            quantity: line.quantity,
+                            itemId: line.itemId || `UNKNOWN-${Math.random().toString(36).substring(7)}`,
+                            itemName: line.itemName || line.name || "Unknown Item",
+                            quantity: line.quantity || 1,
                             reason: "Supplier Return"
                           }));
                           setNewReturn({...newReturn, invoiceId: pur._id, referenceId: pur.billNo, items: mappedItems.length > 0 ? mappedItems : [{ itemId: "", itemName: "", quantity: 1, reason: "" }]});

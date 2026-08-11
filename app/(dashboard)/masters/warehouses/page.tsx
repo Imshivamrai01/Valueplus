@@ -19,6 +19,7 @@ export default function WarehousesPage() {
     address: "",
     city: "Mumbai",
     state: "Maharashtra",
+    pincode: "",
     contact: "",
     phone: "",
   });
@@ -51,6 +52,7 @@ export default function WarehousesPage() {
       address: formData.address || "Industrial Area",
       city: formData.city,
       state: formData.state,
+      pincode: formData.pincode || "000000",
       contactPerson: formData.contact || "Store Manager",
       phone: formData.phone.startsWith("+91") ? formData.phone : `+91 ${formData.phone}`,
       email: formData.name.replace(/\s+/g, '').toLowerCase() + "@valueplus.com",
@@ -101,7 +103,7 @@ export default function WarehousesPage() {
             <div className="space-y-1.5 text-sm">
               <div className="flex items-start gap-2 text-muted-foreground">
                 <MapPin className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-                <span>{wh.address}, {wh.city}, {wh.state}</span>
+                <span>{wh.address}, {wh.city}, {wh.state} - {wh.pincode}</span>
               </div>
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Phone className="w-3.5 h-3.5 flex-shrink-0" />
@@ -185,6 +187,15 @@ export default function WarehousesPage() {
                   <Input
                     value={formData.state}
                     onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+                    className="bg-slate-50 border-slate-300"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">Pincode</Label>
+                  <Input
+                    value={formData.pincode}
+                    onChange={(e) => setFormData({ ...formData, pincode: e.target.value })}
                     className="bg-slate-50 border-slate-300"
                   />
                 </div>
