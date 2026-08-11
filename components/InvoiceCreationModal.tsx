@@ -486,7 +486,18 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
 
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold text-slate-700">Phone Contact</Label>
-                <Input value={billingForm.customerPhone} onChange={(e) => setBillingForm({ ...billingForm, customerPhone: e.target.value })} className="bg-slate-50 border-slate-300 font-mono" />
+                <Input 
+                  type="text"
+                  maxLength={10}
+                  value={billingForm.customerPhone} 
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, '');
+                    if (val.length <= 10) {
+                      setBillingForm({ ...billingForm, customerPhone: val });
+                    }
+                  }} 
+                  className="bg-slate-50 border-slate-300 font-mono" 
+                />
               </div>
 
                 <div className="space-y-1">
