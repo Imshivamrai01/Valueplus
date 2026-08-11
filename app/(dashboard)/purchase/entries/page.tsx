@@ -118,7 +118,7 @@ export default function PurchaseEntriesPage() {
                 <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">GST</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Total Amount</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Status</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase"></th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y">

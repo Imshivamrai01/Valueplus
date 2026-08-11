@@ -22,6 +22,10 @@ export async function POST(req: Request) {
       body.requestNumber = `SRQ-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
     }
     
+    // Fix Cast to ObjectId error for empty strings
+    if (body.requestingWarehouseId === "") delete body.requestingWarehouseId;
+    if (body.supplyingWarehouseId === "") delete body.supplyingWarehouseId;
+    
     const request = await StockRequest.create(body);
     return NextResponse.json({ success: true, data: request });
   } catch (error: any) {

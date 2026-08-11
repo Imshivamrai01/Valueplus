@@ -33,10 +33,30 @@ export default function StockTransferPage() {
   const [formData, setFormData] = useState({
     fromWarehouse: "Main Store - Mumbai",
     toWarehouse: "Pune Branch",
-    itemName: "",
-    quantity: "1",
-    unit: "PCS",
+    items: [{ itemId: "", itemName: "", quantity: 1, unit: "PCS" }],
   });
+
+  const { data: items = [] } = useQuery({ 
+    queryKey: ["items"], 
+    queryFn: async () => {
+      const res = await fetch("/api/items");
+      const json = await res.json();
+      return json.success ? json.data : [];
+    }
+  });
+
+  const handleItemChange = (index: number, field: string, value: any) => {
+    const updated = [...formData.items];
+    if (field === "itemId") {
+      const it = items.find((i: any) => i._id === value);
+      updated[index].itemId = value;
+      updated[index].itemName = it ? it.name : "";
+      updated[index].unit = it ? it.unit : "PCS";
+    } else {
+      updated[index] = { ...updated[index], [field]: value };
+    }
+    setFormData({ ...formData, items: updated });
+  };
 
   const { data: transfers = [], isLoading: loading } = useQuery({
     queryKey: ["stock-transfers"],
@@ -73,7 +93,7 @@ export default function StockTransferPage() {
       queryClient.invalidateQueries({ queryKey: ["stock-transfers"] });
       toast.success(`Stock Transfer ${data.transferNo || ""} initiated!`);
       setIsFormOpen(false);
-      setFormData({ fromWarehouse: "Main Store - Mumbai", toWarehouse: "Pune Branch", itemName: "", quantity: "1", unit: "PCS" });
+      setFormData({ fromWarehouse: "Main Store - Mumbai", toWarehouse: "Pune Branch", items: [{ itemId: "", itemName: "", quantity: 1, unit: "PCS" }] });
     },
     onError: (error: any) => {
       toast.error(error.message || "An error occurred");
@@ -98,8 +118,8 @@ export default function StockTransferPage() {
   });
 
   const handleSave = () => {
-    if (!formData.itemName || !formData.quantity) {
-      toast.error("Please fill Item Name and Quantity");
+    if (formData.items.length === 0 || !formData.items[0].itemId) {
+      toast.error("Please add at least one item to transfer");
       return;
     }
 
@@ -107,9 +127,7 @@ export default function StockTransferPage() {
       transferNo: `STR-${new Date().getFullYear()}-${String(transfers.length + 35).padStart(4, "0")}`,
       fromWarehouse: formData.fromWarehouse,
       toWarehouse: formData.toWarehouse,
-      itemName: formData.itemName,
-      quantity: Number(formData.quantity) || 1,
-      unit: formData.unit,
+      items: formData.items,
       date: new Date().toISOString().split("T")[0],
       status: "in-transit",
     };
@@ -155,7 +173,7 @@ export default function StockTransferPage() {
                 <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Quantity</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Date</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Status</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase w-10"></th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase w-10">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -169,14 +187,22 @@ export default function StockTransferPage() {
                 </tr>
               ) : (
                 filtered.map((t: any) => (
-                <tr key={t.id} className="hover:bg-slate-50 transition-colors">
+                <tr key={t._id || t.id || t.transferNo || Math.random().toString()} className="hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-3 font-mono font-bold text-[#3F63AD]">{t.transferNo}</td>
                   <td className="px-4 py-3">
                     <p className="font-semibold text-foreground">{t.fromWarehouse}</p>
                     <p className="text-xs text-muted-foreground">→ <span className="font-medium text-slate-700">{t.toWarehouse}</span></p>
                   </td>
-                  <td className="px-4 py-3 font-medium text-foreground">{t.itemName}</td>
-                  <td className="px-4 py-3 text-center font-bold">{t.quantity} {t.unit}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-col gap-1 text-xs">
+                      {t.items?.map((line: any, i: number) => (
+                        <span key={i} className="text-slate-700">
+                          <span className="font-bold">{line.quantity}</span> x {line.itemName}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-center font-bold">{t.items?.reduce((acc: number, item: any) => acc + item.quantity, 0)} Items</td>
                   <td className="px-4 py-3 text-muted-foreground text-xs">{formatDate(t.date)}</td>
                   <td className="px-4 py-3 text-center">
                     <Badge variant={t.status === "received" ? "success" : "info"}>{t.status}</Badge>
@@ -245,37 +271,69 @@ export default function StockTransferPage() {
                   </Select>
                 </div>
 
-                <div className="space-y-1.5 md:col-span-2">
-                  <Label className="text-xs font-semibold text-slate-700">Item Name & Model *</Label>
-                  <Input
-                    placeholder="e.g. iPhone 15 Pro Max 256GB"
-                    value={formData.itemName}
-                    onChange={(e) => setFormData({ ...formData, itemName: e.target.value })}
-                    className="bg-slate-50 border-slate-300"
-                  />
-                </div>
+              </div>
 
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Transfer Quantity</Label>
-                  <Input
-                    type="number"
-                    value={formData.quantity}
-                    onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
-                    className="bg-slate-50 border-slate-300 font-bold"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Unit of Measurement</Label>
-                  <Select value={formData.unit} onValueChange={(v) => setFormData({ ...formData, unit: v })}>
-                    <SelectTrigger className="bg-slate-50 border-slate-300"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="PCS">PCS</SelectItem>
-                      <SelectItem value="BOX">BOX</SelectItem>
-                      <SelectItem value="SET">SET</SelectItem>
-                      <SelectItem value="PR">PR</SelectItem>
-                    </SelectContent>
-                  </Select>
+              <div>
+                <h4 className="font-medium text-sm mb-2 text-slate-700">Items to Transfer *</h4>
+                <div className="border border-slate-200 rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 border-b">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600">Product Item</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold text-slate-600 w-24">Quantity</th>
+                        <th className="px-3 py-2 text-center text-xs font-semibold text-slate-600 w-12"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {formData.items.map((line, idx) => (
+                        <tr key={idx} className="bg-white">
+                          <td className="p-2">
+                            <Select value={line.itemId} onValueChange={(val) => handleItemChange(idx, "itemId", val)}>
+                              <SelectTrigger className="w-full bg-transparent border-slate-200 h-8 text-sm">
+                                <SelectValue placeholder="Select Product..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {items.map((it: any) => (
+                                  <SelectItem key={it._id} value={it._id}>
+                                    {it.name} <span className="text-muted-foreground ml-2">(Stock: {it.currentStock || 0})</span>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </td>
+                          <td className="p-2">
+                            <Input
+                              type="number"
+                              min="1"
+                              className="h-8 text-right bg-transparent"
+                              value={line.quantity}
+                              onChange={(e) => handleItemChange(idx, "quantity", Number(e.target.value))}
+                            />
+                          </td>
+                          <td className="p-2 text-center">
+                            <button
+                              type="button"
+                              onClick={() => setFormData({ ...formData, items: formData.items.filter((_, i) => i !== idx) })}
+                              className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1.5 rounded"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="bg-slate-50 p-2 border-t">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs border-dashed text-slate-600"
+                      onClick={() => setFormData({ ...formData, items: [...formData.items, { itemId: "", itemName: "", quantity: 1, unit: "PCS" }] })}
+                    >
+                      <Plus className="w-3 h-3 mr-1" /> Add Product
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>

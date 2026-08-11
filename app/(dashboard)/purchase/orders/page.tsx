@@ -12,6 +12,8 @@ import { toast } from "sonner";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PurchaseCreationModal } from "@/components/PurchaseCreationModal";
+import { ViewPurchaseOrderModal } from "@/components/ViewPurchaseOrderModal";
+import { Eye } from "lucide-react";
 
 interface POItem {
   id: string;
@@ -35,6 +37,7 @@ export default function PurchaseOrdersPage() {
   const [search, setSearch] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [poToDelete, setPoToDelete] = useState<string | null>(null);
+  const [poToView, setPoToView] = useState<any | null>(null);
 
   const { data: pos = [], isLoading: loading } = useQuery({
     queryKey: ["purchase-orders"],
@@ -114,7 +117,7 @@ export default function PurchaseOrdersPage() {
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Expected Date</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">PO Amount</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Status</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase w-10"></th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase w-10">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -127,8 +130,8 @@ export default function PurchaseOrdersPage() {
                   <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No purchase orders found</td>
                 </tr>
               ) : (
-                filtered.map((p: any) => (
-                <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                filtered.map((p: any, idx: number) => (
+                <tr key={p._id || p.id || p.poNo || idx} className="hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-3 font-mono font-bold text-[#3F63AD]">{p.poNo}</td>
                   <td className="px-4 py-3 font-medium text-foreground">{p.supplierName}</td>
                   <td className="px-4 py-3 text-muted-foreground text-xs">{formatDate(p.date)}</td>
@@ -137,7 +140,15 @@ export default function PurchaseOrdersPage() {
                   <td className="px-4 py-3 text-center">
                     <Badge variant={p.status === "received" ? "success" : p.status === "partial" ? "info" : "warning"}>{p.status}</Badge>
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td className="px-4 py-3 text-center flex justify-center gap-1">
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-8 w-8 text-[#3F63AD] hover:text-[#2E4F95] hover:bg-blue-50"
+                      onClick={() => setPoToView(p)}
+                    >
+                      <Eye className="w-4 h-4" />
+                    </Button>
                     <Button 
                       variant="ghost" 
                       size="icon" 
@@ -159,6 +170,12 @@ export default function PurchaseOrdersPage() {
         isOpen={isFormOpen} 
         onClose={() => setIsFormOpen(false)} 
         mode="order" 
+      />
+
+      <ViewPurchaseOrderModal 
+        isOpen={!!poToView} 
+        onClose={() => setPoToView(null)} 
+        purchaseOrder={poToView} 
       />
 
       {/* DELETE CONFIRMATION MODAL */}

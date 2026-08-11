@@ -64,8 +64,8 @@ export async function POST(req: Request) {
         paymentMode: body.paymentMode || "Cash",
         date: body.date || new Date().toISOString().split("T")[0],
         referenceId: invoice.invoiceNumber,
-        notes: `Initial payment for ${invoice.type === 'sales-order' ? 'order' : 'invoice'} ${invoice.invoiceNumber}`,
-        type: "received"
+        notes: invoice.type === 'credit-note' ? `Refund for Credit Note ${invoice.invoiceNumber}` : `Initial payment for ${invoice.type === 'sales-order' ? 'order' : 'invoice'} ${invoice.invoiceNumber}`,
+        type: invoice.type === 'credit-note' ? "paid" : "received"
       });
     }
     

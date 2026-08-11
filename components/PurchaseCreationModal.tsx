@@ -55,8 +55,28 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: { isO
     billNo: "",
     billDate: new Date().toISOString().split("T")[0],
     supplierName: "",
+    linkedPoNo: "",
     items: [] as any[],
   });
+
+  const handleLoadPO = (poNo: string) => {
+    const po = purchaseOrders.find((p: any) => p.poNo === poNo);
+    if (!po) return;
+    
+    setForm(prev => ({
+      ...prev,
+      supplierName: po.supplierName,
+      linkedPoNo: poNo,
+      items: po.items.map((i: any) => ({
+        id: Math.random().toString(),
+        itemId: i.itemId,
+        name: i.name,
+        quantity: i.quantity,
+        rate: i.rate,
+        gstRate: i.gstRate || 18,
+      }))
+    }));
+  };
 
   useEffect(() => {
     if (isOpen && !form.billNo) {
@@ -154,6 +174,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: { isO
         billNo: form.billNo,
         supplierName: form.supplierName,
         billDate: form.billDate,
+        linkedPoNo: form.linkedPoNo,
         items: form.items.map(i => ({
           itemId: i.itemId,
           name: i.name,
@@ -200,6 +221,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: { isO
         billNo: "",
         billDate: new Date().toISOString().split("T")[0],
         supplierName: "",
+        linkedPoNo: "",
         items: [],
       });
     },
@@ -287,6 +309,24 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: { isO
                 </Select>
               </div>
             </div>
+
+            {mode === "entry" && (
+              <div className="mt-4 pt-4 border-t border-slate-100 flex items-center gap-4">
+                <Label className="text-xs text-slate-600 w-32 shrink-0">Link Purchase Order</Label>
+                <Select value={form.linkedPoNo} onValueChange={handleLoadPO}>
+                  <SelectTrigger className="bg-slate-50 text-sm max-w-sm">
+                    <SelectValue placeholder="Select a pending PO to load items..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {purchaseOrders.filter((po: any) => po.status !== "received").map((po: any) => (
+                      <SelectItem key={po.poNo} value={po.poNo}>
+                        {po.poNo} - {po.supplierName} ({formatCurrency(po.totalAmount)})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
 
           {/* Line Items */}
@@ -341,7 +381,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: { isO
                               type="number"
                               min={1}
                               value={item.quantity}
-                              onChange={(e) => updateLineItem(item.id, "quantity", Number(e.target.value))}
+                              onChange={(e) => updateLineItem(item.id, "quantity", Math.max(1, Number(e.target.value)))}
                               className="h-8 text-xs text-right"
                             />
                           </td>
@@ -350,7 +390,8 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: { isO
                               type="number"
                               min={0}
                               value={item.rate}
-                              onChange={(e) => updateLineItem(item.id, "rate", Number(e.target.value))}
+                              onKeyDown={(e) => ["-", "+", "e", "E"].includes(e.key) && e.preventDefault()}
+                              onChange={(e) => updateLineItem(item.id, "rate", Math.max(0, Number(e.target.value)))}
                               className="h-8 text-xs text-right"
                             />
                           </td>

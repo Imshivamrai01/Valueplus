@@ -33,7 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { cn, formatCurrency, indianNumberFormat } from "@/lib/utils";
+import { cn, formatCurrency, indianNumberFormat, formatDateShort } from "@/lib/utils";
 import ValueplusInvoice from "@/app/invoice/page";
 import { InvoiceCreationModal } from "@/components/InvoiceCreationModal";
 
@@ -113,7 +113,13 @@ export default function DashboardPage() {
   const router = useRouter();
 
   // Period Filter State
-  const [period, setPeriod] = useState<"today" | "yesterday" | "week" | "month" | "all">("today");
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    d.setDate(1);
+    return d.toISOString().split("T")[0];
+  });
+  const [endDate, setEndDate] = useState(() => new Date().toISOString().split("T")[0]);
+
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<any>(null);
 
@@ -146,7 +152,7 @@ export default function DashboardPage() {
   const fetchStats = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/dashboard/stats?period=${period}`);
+      const res = await fetch(`/api/dashboard/stats?startDate=${startDate}&endDate=${endDate}`);
       const json = await res.json();
       if (json.success) {
         setData(json);
@@ -160,7 +166,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchStats();
-  }, [period]);
+  }, [startDate, endDate]);
 
   // Open Invoice Modal
   const handleOpenInvoiceModal = () => {
@@ -300,7 +306,7 @@ export default function DashboardPage() {
           <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center border border-blue-100/50 flex-shrink-0">
             <Activity className="w-6 h-6 text-[#3F63AD]" />
           </div>
-          <div>
+          <div className="min-w-0">
             <h1 className="text-2xl font-black text-slate-900 tracking-tight flex flex-wrap items-center gap-3">
               Executive Dashboard
               <Badge variant="success" className="text-[10px] px-2.5 py-1 uppercase tracking-widest bg-emerald-50 text-emerald-600 border border-emerald-200/50 font-bold shadow-sm whitespace-nowrap flex items-center flex-shrink-0">
@@ -309,26 +315,36 @@ export default function DashboardPage() {
               </Badge>
             </h1>
             <p className="text-sm text-slate-500 font-medium mt-1">
-              Real-time Sales, Cash, Online & Finance Audit · FY 2026–27
+              Real-time Sales, Cash, Online & Finance Audit · <span className="whitespace-nowrap">FY 2026–27</span>
             </p>
           </div>
         </div>
 
-        {/* PERIOD FILTER DROPDOWN */}
-        <div className="w-full xl:w-56 mt-2 xl:mt-0">
-          <Select value={period} onValueChange={(v: any) => setPeriod(v)}>
-            <SelectTrigger className="h-11 rounded-[14px] bg-slate-50 border-slate-200 font-bold text-slate-700 shadow-sm w-full">
-              <Calendar className="w-4 h-4 mr-2 text-[#3F63AD]" />
-              <SelectValue placeholder="Select Period" />
-            </SelectTrigger>
-            <SelectContent className="rounded-xl border-slate-100 shadow-xl">
-              <SelectItem value="today" className="font-semibold cursor-pointer">Today</SelectItem>
-              <SelectItem value="yesterday" className="font-semibold cursor-pointer">Yesterday</SelectItem>
-              <SelectItem value="week" className="font-semibold cursor-pointer">This Week</SelectItem>
-              <SelectItem value="month" className="font-semibold cursor-pointer">This Month</SelectItem>
-              <SelectItem value="all" className="font-semibold cursor-pointer">All Time</SelectItem>
-            </SelectContent>
-          </Select>
+        {/* PERIOD FILTER DATE PICKERS */}
+        <div className="flex flex-col sm:flex-row items-center gap-3 w-full xl:w-auto mt-2 xl:mt-0">
+          <div className="flex items-center gap-2">
+            {/* FROM DATE */}
+            <div className="flex items-center bg-slate-50 border border-slate-200 rounded-[12px] px-3 h-11 shadow-sm focus-within:border-blue-300 focus-within:ring-2 focus-within:ring-blue-100 transition-all">
+              <span className="text-[11px] text-slate-500 font-bold uppercase mr-2 tracking-wide">From</span>
+              <input 
+                type="date" 
+                value={startDate} 
+                onChange={(e) => setStartDate(e.target.value)}
+                className="bg-transparent text-sm font-bold text-slate-700 outline-none w-[115px] cursor-pointer"
+              />
+            </div>
+
+            {/* TO DATE */}
+            <div className="flex items-center bg-slate-50 border border-slate-200 rounded-[12px] px-3 h-11 shadow-sm focus-within:border-blue-300 focus-within:ring-2 focus-within:ring-blue-100 transition-all">
+              <span className="text-[11px] text-slate-500 font-bold uppercase mr-2 tracking-wide">To</span>
+              <input 
+                type="date" 
+                value={endDate} 
+                onChange={(e) => setEndDate(e.target.value)}
+                className="bg-transparent text-sm font-bold text-slate-700 outline-none w-[115px] cursor-pointer"
+              />
+            </div>
+          </div>
         </div>
 
         {/* HEADER QUICK BUTTONS */}
@@ -347,7 +363,7 @@ export default function DashboardPage() {
         <div>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-bold text-foreground uppercase tracking-wider flex items-center gap-2">
-              <CreditCard className="w-4 h-4 text-[#3F63AD]" /> Payment & Sales Audit ({period.toUpperCase()})
+              <CreditCard className="w-4 h-4 text-[#3F63AD]" /> Payment & Sales Audit
             </h2>
             <span className="text-xs text-muted-foreground font-medium">Click any card to open detailed transaction ledger</span>
           </div>
@@ -505,7 +521,7 @@ export default function DashboardPage() {
                 <h3 className="font-bold text-foreground text-base">Sales Revenue & Operational Analytics</h3>
                 <p className="text-xs text-muted-foreground mt-0.5">Live performance tracking from MongoDB</p>
               </div>
-              <Badge variant="secondary">Period: {period.toUpperCase()}</Badge>
+              <Badge variant="secondary" className="px-3 py-1 font-semibold">{formatDateShort(startDate)} to {formatDateShort(endDate)}</Badge>
             </div>
             <ResponsiveContainer width="100%" height={260}>
               <AreaChart data={DAILY_REVENUE} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
@@ -991,7 +1007,7 @@ export default function DashboardPage() {
               {activeModal === "orders" && <><Package className="w-6 h-6 text-purple-600" /> Total Orders & Breakdown</>}
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Selected Period Filter: <span className="font-bold uppercase text-foreground">{period}</span> · Transaction Audit Log
+              Selected Date Filter: <span className="font-bold uppercase text-foreground">{formatDateShort(startDate)} - {formatDateShort(endDate)}</span> · Transaction Audit Log
             </DialogDescription>
           </DialogHeader>
 
@@ -1082,7 +1098,7 @@ export default function DashboardPage() {
 
           <div className="flex items-center justify-between pt-4 border-t mt-4 text-xs">
             <span className="text-muted-foreground font-medium">
-              Showing {getFilteredTransactions().length} entries for {period} filter
+              Showing {getFilteredTransactions().length} entries for selected date filter
             </span>
             <Button size="sm" onClick={() => setActiveModal(null)} className="h-8">
               Close Audit

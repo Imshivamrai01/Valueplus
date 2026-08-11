@@ -152,7 +152,7 @@ export default function ExpensesPage() {
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Payment Mode</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Amount</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Status</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase w-10"></th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase w-10">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -166,7 +166,7 @@ export default function ExpensesPage() {
                 </tr>
               ) : (
                 filtered.map((e: any) => (
-                <tr key={e.id} className="hover:bg-slate-50 transition-colors">
+                <tr key={e._id || e.expenseNo} className="hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-3 font-mono font-bold text-[#3F63AD]">{e.expenseNo}</td>
                   <td className="px-4 py-3 font-semibold text-foreground">{e.category}</td>
                   <td className="px-4 py-3 text-muted-foreground">{e.description}</td>

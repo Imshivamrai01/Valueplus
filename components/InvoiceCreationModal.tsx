@@ -62,7 +62,7 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
     }
   });
 
-  const [billingForm, setBillingForm] = useState({
+  const INITIAL_BILLING_FORM = {
     invoiceNo: "",
     invoiceDate: new Date().toISOString().split("T")[0],
     dueDate: new Date(Date.now() + 15 * 86400000).toISOString().split("T")[0],
@@ -89,20 +89,29 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
     advanceAmount: 0,
     linkedEstimateNumber: "",
     lineItems: [] as any[],
-  });
+  };
+
+  const [billingForm, setBillingForm] = useState(INITIAL_BILLING_FORM);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setBillingForm(INITIAL_BILLING_FORM);
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (isOpen && !billingForm.invoiceNo) {
       setBillingForm(prev => {
         let newNo = "";
+        const randomSuffix = Math.floor(1000 + Math.random() * 9000);
         if (mode === "estimate") {
-          newNo = `EST-2026-${String(estimatesList.length + 1).padStart(4, "0")}`;
+          newNo = `EST-2026-${String(estimatesList.length + 1).padStart(4, "0")}-${randomSuffix}`;
         } else if (mode === "sales-order") {
-          newNo = `SO-2026-${String(ordersList.length + 1).padStart(4, "0")}`;
+          newNo = `SO-2026-${String(ordersList.length + 1).padStart(4, "0")}-${randomSuffix}`;
         } else if (mode === "credit-note") {
-          newNo = `CN-2026-${String(invoices.filter((i:any) => i.type === "credit-note").length + 1).padStart(4, "0")}`;
+          newNo = `CN-2026-${String(invoices.filter((i:any) => i.type === "credit-note").length + 1).padStart(4, "0")}-${randomSuffix}`;
         } else {
-          newNo = `INV-2026-${String(invoices.filter((i:any) => i.type !== "credit-note").length + 1).padStart(4, "0")}`;
+          newNo = `INV-2026-${String(invoices.filter((i:any) => i.type !== "credit-note").length + 1).padStart(4, "0")}-${randomSuffix}`;
         }
         return { ...prev, invoiceNo: newNo };
       });
@@ -240,11 +249,23 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
 
   const handleLineItemChange = (idx: number, field: string, value: any) => {
     const updated = [...billingForm.lineItems];
+    if (field === "qty" && mode === "tax-invoice") {
+      const maxStock = updated[idx].maxStock !== undefined ? updated[idx].maxStock : Infinity;
+      if (value > maxStock) {
+        toast.error(`Only ${maxStock} units in stock!`);
+        value = maxStock;
+      }
+    }
     updated[idx] = { ...updated[idx], [field]: value };
     setBillingForm((prev) => ({ ...prev, lineItems: updated }));
   };
 
   const selectProductSuggestion = (idx: number, prod: any) => {
+    if (mode === "tax-invoice" && (prod.currentStock || 0) <= 0) {
+      toast.error(`${prod.name} is out of stock and cannot be invoiced!`);
+      setActiveSuggestRow(null);
+      return;
+    }
     const updated = [...billingForm.lineItems];
     updated[idx] = {
       ...updated[idx],
@@ -253,6 +274,7 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
       gstRate: prod.gstRate || 18,
       itemCode: prod.code,
       itemId: prod._id,
+      maxStock: prod.currentStock || Infinity
     };
     setBillingForm((prev) => ({ ...prev, lineItems: updated }));
     setActiveSuggestRow(null);
@@ -371,9 +393,9 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
       igst: billCalculations.igst,
       total: billCalculations.grandTotal,
       
-      paidAmount: mode === "credit-note" ? 0 : (billingForm.paymentMode.includes("Finance") ? billingForm.downPayment : (mode === "sales-order" ? (billingForm.advanceAmount || 0) : billCalculations.grandTotal)),
-      balanceAmount: mode === "credit-note" ? billCalculations.grandTotal : (billCalculations.grandTotal - (billingForm.paymentMode.includes("Finance") ? billingForm.downPayment : (mode === "sales-order" ? (billingForm.advanceAmount || 0) : billCalculations.grandTotal))),
-      status: (mode === "sales-order" ? ((billingForm.advanceAmount || 0) > 0 ? "partial" : "pending") : (mode === "credit-note" ? "pending" : "paid")),
+      paidAmount: mode === "credit-note" ? (billingForm.advanceAmount || 0) : (billingForm.paymentMode.includes("Finance") ? billingForm.downPayment : (mode === "sales-order" ? (billingForm.advanceAmount || 0) : billCalculations.grandTotal)),
+      balanceAmount: mode === "credit-note" ? Math.max(0, billCalculations.grandTotal - (billingForm.advanceAmount || 0)) : (billCalculations.grandTotal - (billingForm.paymentMode.includes("Finance") ? billingForm.downPayment : (mode === "sales-order" ? (billingForm.advanceAmount || 0) : billCalculations.grandTotal))),
+      status: (mode === "sales-order" ? ((billingForm.advanceAmount || 0) > 0 ? "partial" : "pending") : (mode === "credit-note" ? ((billingForm.advanceAmount || 0) >= billCalculations.grandTotal ? "paid" : "pending") : "paid")),
       monthlyEMI: emiBreakdown.monthlyEMI,
       totalInterest: emiBreakdown.totalInterest,
       linkedEstimateNumber: billingForm.linkedEstimateNumber,
@@ -469,7 +491,7 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
 
                 <div className="space-y-1">
                   <Label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{mode === "estimate" ? "Valid Until" : "Due Date"}</Label>
-                  <Input type="date" value={billingForm.dueDate} onChange={e => setBillingForm({ ...billingForm, dueDate: e.target.value })} className="h-8 text-xs bg-slate-50 border-slate-300" />
+                  <Input type="date" min={new Date().toISOString().split('T')[0]} value={billingForm.dueDate} onChange={e => setBillingForm({ ...billingForm, dueDate: e.target.value })} className="h-8 text-xs bg-slate-50 border-slate-300" />
                 </div>
 
               <div className="space-y-1.5">
@@ -601,9 +623,9 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
                           )}
                         </td>
                         <td className="p-2"><Input placeholder="IMEI 3591820..." value={item.serialImei} onChange={(e) => handleLineItemChange(idx, "serialImei", e.target.value)} className="h-8 text-xs bg-slate-50 border-slate-300 font-mono px-2" /></td>
-                        <td className="p-2"><Input type="number" min="1" value={item.qty} onChange={(e) => handleLineItemChange(idx, "qty", Number(e.target.value))} className="h-8 text-xs bg-slate-50 border-slate-300 text-center font-bold px-1" /></td>
-                        <td className="p-2"><Input type="number" value={item.rate || ""} onChange={(e) => handleLineItemChange(idx, "rate", Number(e.target.value))} className="h-8 text-xs bg-slate-50 border-slate-300 text-right font-semibold px-2" /></td>
-                        <td className="p-2"><Input type="number" value={item.discount || ""} onChange={(e) => handleLineItemChange(idx, "discount", Number(e.target.value))} className="h-8 text-xs bg-slate-50 border-slate-300 text-right text-emerald-600 font-semibold px-2" /></td>
+                        <td className="p-2"><Input type="number" min="1" value={item.qty} onKeyDown={(e) => ["-", "+", "e", "E"].includes(e.key) && e.preventDefault()} onChange={(e) => handleLineItemChange(idx, "qty", Math.max(1, Number(e.target.value)))} className="h-8 text-xs bg-slate-50 border-slate-300 text-center font-bold px-1" /></td>
+                        <td className="p-2"><Input type="number" min="0" value={item.rate === 0 ? "" : item.rate} onKeyDown={(e) => ["-", "+", "e", "E"].includes(e.key) && e.preventDefault()} onChange={(e) => handleLineItemChange(idx, "rate", Math.max(0, Number(e.target.value)))} className="h-8 text-xs bg-slate-50 border-slate-300 text-right font-semibold px-2" /></td>
+                        <td className="p-2"><Input type="number" min="0" value={item.discount === 0 ? "" : item.discount} onKeyDown={(e) => ["-", "+", "e", "E"].includes(e.key) && e.preventDefault()} onChange={(e) => handleLineItemChange(idx, "discount", Math.max(0, Number(e.target.value)))} className="h-8 text-xs bg-slate-50 border-slate-300 text-right text-emerald-600 font-semibold px-2" /></td>
                         <td className="p-2">
                           <select value={item.gstRate} onChange={(e) => handleLineItemChange(idx, "gstRate", Number(e.target.value))} className="w-full h-8 rounded-md border border-slate-300 bg-slate-50 text-xs text-center">
                             <option value="0">0%</option><option value="5">5%</option><option value="12">12%</option><option value="18">18%</option><option value="28">28%</option>
@@ -642,9 +664,10 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
                     <div className="md:col-span-2 flex flex-col justify-end">
                        <Label className="text-xs font-semibold text-slate-700 mb-1.5">Advance Amount Received (₹)</Label>
                        <Input 
-                         type="number" 
+                         type="number" min="0"
+                         onKeyDown={(e) => ["-", "+", "e", "E"].includes(e.key) && e.preventDefault()}
                          value={billingForm.advanceAmount || ""} 
-                         onChange={(e) => setBillingForm({ ...billingForm, advanceAmount: Number(e.target.value) })}
+                         onChange={(e) => setBillingForm({ ...billingForm, advanceAmount: Math.max(0, Number(e.target.value)) })}
                          className="bg-slate-50 border-slate-300 font-semibold"
                          placeholder="e.g. 5000"
                        />
@@ -676,7 +699,7 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
                       </div>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 text-xs">
-                      <div><Label className="text-[11px] font-extrabold text-amber-950">Down Payment (₹)</Label><Input type="number" value={billingForm.downPayment} onChange={(e) => setBillingForm({ ...billingForm, downPayment: Number(e.target.value) })} className="h-8 bg-white border-amber-300 font-black text-emerald-700 mt-1 shadow-sm" /></div>
+                      <div><Label className="text-[11px] font-extrabold text-amber-950">Down Payment (₹)</Label><Input type="number" min="0" onKeyDown={(e) => ["-", "+", "e", "E"].includes(e.key) && e.preventDefault()} value={billingForm.downPayment} onChange={(e) => setBillingForm({ ...billingForm, downPayment: Math.max(0, Number(e.target.value)) })} className="h-8 bg-white border-amber-300 font-black text-emerald-700 mt-1 shadow-sm" /></div>
                       <div>
                         <Label className="text-[11px] font-bold text-amber-900">Down Payment Mode</Label>
                         <Select value={billingForm.downPaymentMode} onValueChange={(v) => setBillingForm({ ...billingForm, downPaymentMode: v })}><SelectTrigger className="h-8 bg-white border-amber-300 mt-1 font-bold text-slate-800"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Cash">Cash</SelectItem><SelectItem value="UPI / PhonePe / GPay">UPI / PhonePe / GPay</SelectItem></SelectContent></Select>
@@ -704,6 +727,38 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
                     </div>
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* REFUND MODE FOR CREDIT NOTES */}
+          {mode === "credit-note" && (
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+              <div className="space-y-1.5 pt-2">
+                <Label className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <CreditCard className="w-3.5 h-3.5 text-[#3F63AD]" /> Refund / Settlement Details
+                </Label>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <Select value={billingForm.paymentMode} onValueChange={(v) => setBillingForm({ ...billingForm, paymentMode: v })}>
+                    <SelectTrigger className="bg-slate-50 border-slate-300 font-semibold"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Cash Counter">Cash Counter</SelectItem>
+                      <SelectItem value="UPI / Card / NetBanking">UPI / Card / NetBanking</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  <div className="md:col-span-2 flex flex-col justify-end">
+                     <Label className="text-xs font-semibold text-slate-700 mb-1.5">Amount Refunded / Paid (₹)</Label>
+                     <Input 
+                       type="number" min="0"
+                       onKeyDown={(e) => ["-", "+", "e", "E"].includes(e.key) && e.preventDefault()}
+                       value={billingForm.advanceAmount || ""} 
+                       onChange={(e) => setBillingForm({ ...billingForm, advanceAmount: Math.max(0, Number(e.target.value)) })}
+                       className="bg-slate-50 border-slate-300 font-semibold"
+                       placeholder="e.g. 5000"
+                     />
+                  </div>
+                </div>
               </div>
             </div>
           )}

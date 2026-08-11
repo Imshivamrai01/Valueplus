@@ -32,7 +32,7 @@ export interface IInvoice extends Document {
   placeOfSupply?: string;
   date: string;
   dueDate: string;
-  status: "draft" | "sent" | "paid" | "partial" | "overdue" | "cancelled";
+  status: "draft" | "sent" | "paid" | "partial" | "overdue" | "cancelled" | "pending";
   items: ILineItem[];
   subtotal: number;
   discount: number;
@@ -94,7 +94,7 @@ const InvoiceSchema = new Schema<IInvoice>(
     placeOfSupply: String,
     date: { type: String, required: true },
     dueDate: { type: String, required: true },
-    status: { type: String, enum: ["draft", "sent", "paid", "partial", "overdue", "cancelled"], default: "sent" },
+    status: { type: String, enum: ["draft", "sent", "paid", "partial", "overdue", "cancelled", "pending"], default: "sent" },
     items: [LineItemSchema],
     subtotal: { type: Number, required: true },
     discount: { type: Number, default: 0 },
@@ -125,5 +125,8 @@ const InvoiceSchema = new Schema<IInvoice>(
   { timestamps: true, collection: "invoices" }
 );
 
-const Invoice: Model<IInvoice> = mongoose.models.Invoice || mongoose.model<IInvoice>("Invoice", InvoiceSchema);
+if (mongoose.models.Invoice) {
+  delete mongoose.models.Invoice;
+}
+const Invoice: Model<IInvoice> = mongoose.model<IInvoice>("Invoice", InvoiceSchema);
 export default Invoice;

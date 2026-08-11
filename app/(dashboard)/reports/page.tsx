@@ -4,7 +4,6 @@ import { useState } from "react";
 import { PageShell } from "@/components/shared/page-shell";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { format } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 import { 
   Download, 
@@ -18,11 +17,24 @@ import {
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import ValueplusInvoice from "@/app/invoice/page";
+import { exportToCSV } from "@/lib/export";
+import { formatDate } from "@/lib/utils";
 
 export default function ReportsPage() {
   const [period, setPeriod] = useState("All Time");
+  const [activeTab, setActiveTab] = useState("sales");
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [activePrintInvoice, setActivePrintInvoice] = useState<any | null>(null);
+
+  const handleExport = () => {
+    switch (activeTab) {
+      case "sales": exportToCSV(filteredInvoices, `sales_report_${new Date().toISOString().split('T')[0]}.csv`); break;
+      case "challans": exportToCSV(filteredChallans, `challans_report_${new Date().toISOString().split('T')[0]}.csv`); break;
+      case "purchases": exportToCSV(filteredPurchases, `purchases_report_${new Date().toISOString().split('T')[0]}.csv`); break;
+      case "inventory": exportToCSV(items, `inventory_report_${new Date().toISOString().split('T')[0]}.csv`); break;
+      case "expenses": exportToCSV(filteredExpenses, `expenses_report_${new Date().toISOString().split('T')[0]}.csv`); break;
+    }
+  };
 
   // Fetching data
   const { data: invoices = [], isLoading: loadingInvoices } = useQuery({
@@ -70,11 +82,57 @@ export default function ReportsPage() {
     }
   });
 
+  const { data: customers = [] } = useQuery({
+    queryKey: ["reports", "customers"],
+    queryFn: async () => {
+      const res = await fetch("/api/customers");
+      const json = await res.json();
+      return json.success ? json.data : [];
+    }
+  });
+
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ["reports", "suppliers"],
+    queryFn: async () => {
+      const res = await fetch("/api/suppliers");
+      const json = await res.json();
+      return json.success ? json.data : [];
+    }
+  });
+
+  // Filtering Logic
+  const filterByPeriod = (data: any[], dateField: string = "date") => {
+    if (period === "All Time") return data;
+    const now = new Date();
+    return data.filter(item => {
+      const itemDate = new Date(item[dateField] || item.createdAt);
+      if (period === "This Month") {
+        return itemDate.getMonth() === now.getMonth() && itemDate.getFullYear() === now.getFullYear();
+      } else if (period === "Last Month") {
+        const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        return itemDate.getMonth() === lastMonth.getMonth() && itemDate.getFullYear() === lastMonth.getFullYear();
+      } else if (period === "This Year") {
+        return itemDate.getFullYear() === now.getFullYear();
+      } else if (period === "Last Year") {
+        return itemDate.getFullYear() === now.getFullYear() - 1;
+      }
+      return true;
+    });
+  };
+
+  const filteredInvoices = filterByPeriod(invoices);
+  const filteredChallans = filterByPeriod(challans);
+  const filteredPurchases = filterByPeriod(purchases);
+  const filteredExpenses = filterByPeriod(expenses);
+
   // Calculate Summaries
-  const totalSales = invoices.reduce((acc: any, curr: any) => acc + (curr.total || 0), 0);
-  const totalBalance = invoices.reduce((acc: any, curr: any) => acc + (curr.balanceAmount || 0), 0);
-  const totalPurchases = purchases.reduce((acc: any, curr: any) => acc + (curr.total || curr.totalAmount || 0), 0);
-  const totalExpenses = expenses.reduce((acc: any, curr: any) => acc + (curr.amount || 0), 0);
+  const totalSales = filteredInvoices.reduce((acc: any, curr: any) => acc + (curr.type === 'credit-note' ? -(curr.total || 0) : (curr.total || 0)), 0);
+  
+  // Pending Balance is the total outstanding balance from all customers, not from invoices
+  const totalBalance = customers.reduce((acc: any, curr: any) => acc + Math.max(0, curr.outstandingBalance || 0), 0);
+  
+  const totalPurchases = filteredPurchases.reduce((acc: any, curr: any) => acc + (curr.total || curr.totalAmount || 0), 0);
+  const totalExpenses = filteredExpenses.reduce((acc: any, curr: any) => acc + (curr.amount || 0), 0);
   
   const totalStockValue = items.reduce((acc: any, curr: any) => acc + ((curr.currentStock || 0) * (curr.purchasePrice || 0)), 0);
   const lowStockCount = items.filter((item: any) => item.currentStock <= (item.minStock || 5)).length;
@@ -95,15 +153,16 @@ export default function ReportsPage() {
             <option>This Month</option>
             <option>Last Month</option>
             <option>This Year</option>
+            <option>Last Year</option>
           </select>
-          <Button size="sm" variant="outline" className="text-slate-700">
+          <Button size="sm" variant="outline" className="text-slate-700" onClick={handleExport}>
             <Download className="w-4 h-4 mr-2" />
             Export Data
           </Button>
         </div>
       }
     >
-      <Tabs defaultValue="sales" className="w-full">
+      <Tabs defaultValue="sales" value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="flex flex-wrap w-full md:max-w-4xl h-auto p-1 bg-slate-100 rounded-xl mb-6">
           <TabsTrigger value="sales" className="flex-1 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">
             <TrendingUp className="w-4 h-4 mr-2" /> Sales
@@ -128,7 +187,7 @@ export default function ReportsPage() {
             <Card className="p-5 flex flex-col justify-between">
               <p className="text-sm font-medium text-muted-foreground">Total Sales</p>
               <h3 className="text-2xl font-bold mt-2">₹{totalSales.toLocaleString('en-IN')}</h3>
-              <p className="text-xs text-emerald-600 mt-2 font-medium">{invoices.length} Invoices generated</p>
+              <p className="text-xs text-emerald-600 mt-2 font-medium">{filteredInvoices.length} Invoices generated</p>
             </Card>
             <Card className="p-5 flex flex-col justify-between">
               <p className="text-sm font-medium text-muted-foreground">Pending Balance</p>
@@ -138,20 +197,20 @@ export default function ReportsPage() {
             <Card className="p-5 flex flex-col justify-between">
               <p className="text-sm font-medium text-muted-foreground">Cash Sales</p>
               <h3 className="text-2xl font-bold mt-2">
-                ₹{invoices.filter((i: any) => i.paymentMode === 'Cash').reduce((a: any, c: any) => a + (c.total || 0), 0).toLocaleString('en-IN')}
+                ₹{filteredInvoices.filter((i: any) => i.paymentMode === 'Cash' || i.paymentMode === 'Cash Counter').reduce((a: any, c: any) => a + (c.type === 'credit-note' ? -(c.total || 0) : (c.total || 0)), 0).toLocaleString('en-IN')}
               </h3>
             </Card>
             <Card className="p-5 flex flex-col justify-between">
               <p className="text-sm font-medium text-muted-foreground">Bank/Online Sales</p>
               <h3 className="text-2xl font-bold mt-2">
-                ₹{invoices.filter((i: any) => i.paymentMode !== 'Cash').reduce((a: any, c: any) => a + (c.total || 0), 0).toLocaleString('en-IN')}
+                ₹{filteredInvoices.filter((i: any) => i.paymentMode !== 'Cash' && i.paymentMode !== 'Cash Counter').reduce((a: any, c: any) => a + (c.type === 'credit-note' ? -(c.total || 0) : (c.total || 0)), 0).toLocaleString('en-IN')}
               </h3>
             </Card>
           </div>
 
           <div className="bg-white border rounded-2xl overflow-hidden shadow-sm">
             <div className="p-4 border-b bg-slate-50/50">
-              <h3 className="font-semibold text-slate-800">Recent Sales Transactions</h3>
+              <h3 className="font-semibold text-slate-800">Sales Transactions</h3>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
@@ -169,10 +228,10 @@ export default function ReportsPage() {
                 <tbody className="divide-y">
                   {loadingInvoices ? (
                     <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">Loading sales data...</td></tr>
-                  ) : invoices.length === 0 ? (
+                  ) : filteredInvoices.length === 0 ? (
                     <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No sales found</td></tr>
                   ) : (
-                    invoices.slice(0, 10).map((row: any) => (
+                    filteredInvoices.map((row: any) => (
                       <tr key={row._id} className="hover:bg-slate-50/50">
                         <td className="px-4 py-3 font-medium">
                           <button
@@ -186,18 +245,22 @@ export default function ReportsPage() {
                             <FileText className="w-3 h-3 text-muted-foreground" />
                           </button>
                         </td>
-                        <td className="px-4 py-3">{format(new Date(row.date), "dd MMM, yyyy")}</td>
+                        <td className="px-4 py-3">{formatDate(row.date)}</td>
                         <td className="px-4 py-3 font-medium">{row.customerName}</td>
                         <td className="px-4 py-3 text-right">₹{row.taxableAmount?.toLocaleString('en-IN')}</td>
                         <td className="px-4 py-3 text-right">₹{row.totalGST?.toLocaleString('en-IN')}</td>
-                        <td className="px-4 py-3 text-right font-semibold">₹{row.total?.toLocaleString('en-IN')}</td>
+                        <td className="px-4 py-3 text-right font-semibold">
+                          <span className={row.type === 'credit-note' ? 'text-red-600' : 'text-slate-900'}>
+                            {row.type === 'credit-note' ? '-' : ''}₹{row.total?.toLocaleString('en-IN')}
+                          </span>
+                        </td>
                         <td className="px-4 py-3 text-center">
                           <span className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${
                             row.status === 'paid' ? 'bg-emerald-100 text-emerald-700' :
                             row.status === 'partial' ? 'bg-amber-100 text-amber-700' :
                             'bg-red-100 text-red-700'
                           }`}>
-                            {row.status || (row.balanceAmount === 0 ? 'paid' : row.balanceAmount === row.total ? 'unpaid' : 'partial')}
+                            {row.type === 'credit-note' ? (row.status === 'paid' ? 'Refunded' : 'Pending') : (row.status || (row.balanceAmount === 0 ? 'paid' : row.balanceAmount === row.total ? 'unpaid' : 'partial'))}
                           </span>
                         </td>
                       </tr>
@@ -214,19 +277,19 @@ export default function ReportsPage() {
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <Card className="p-5 flex flex-col justify-between border-l-4 border-l-[#3F63AD]">
               <p className="text-sm font-medium text-muted-foreground">Total Challans Issued</p>
-              <h3 className="text-2xl font-bold mt-2">{challans.length}</h3>
+              <h3 className="text-2xl font-bold mt-2">{filteredChallans.length}</h3>
             </Card>
             <Card className="p-5 flex flex-col justify-between">
               <p className="text-sm font-medium text-muted-foreground">Challans this Month</p>
               <h3 className="text-2xl font-bold mt-2">
-                {challans.filter((c: any) => new Date(c.date).getMonth() === new Date().getMonth()).length}
+                {filteredChallans.filter((c: any) => new Date(c.date).getMonth() === new Date().getMonth()).length}
               </h3>
             </Card>
           </div>
 
           <div className="bg-white border rounded-2xl overflow-hidden shadow-sm">
             <div className="p-4 border-b bg-slate-50/50">
-              <h3 className="font-semibold text-slate-800">Recent Delivery Challans</h3>
+              <h3 className="font-semibold text-slate-800">Delivery Challans</h3>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
@@ -242,13 +305,13 @@ export default function ReportsPage() {
                 <tbody className="divide-y">
                   {loadingChallans ? (
                     <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">Loading challans...</td></tr>
-                  ) : challans.length === 0 ? (
+                  ) : filteredChallans.length === 0 ? (
                     <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No delivery challans found</td></tr>
                   ) : (
-                    challans.slice(0, 10).map((row: any) => (
+                    filteredChallans.map((row: any) => (
                       <tr key={row._id} className="hover:bg-slate-50/50">
                         <td className="px-4 py-3 font-medium text-[#3F63AD]">{row.challanNo}</td>
-                        <td className="px-4 py-3">{format(new Date(row.date), "dd MMM, yyyy")}</td>
+                        <td className="px-4 py-3">{formatDate(row.date)}</td>
                         <td className="px-4 py-3 font-medium">{row.customerName}</td>
                         <td className="px-4 py-3">{row.vehicleNo || "-"}</td>
                         <td className="px-4 py-3 text-center">{row.items?.length || 0} items</td>
@@ -267,12 +330,12 @@ export default function ReportsPage() {
             <Card className="p-5 flex flex-col justify-between">
               <p className="text-sm font-medium text-muted-foreground">Total Purchases</p>
               <h3 className="text-2xl font-bold mt-2">₹{totalPurchases.toLocaleString('en-IN')}</h3>
-              <p className="text-xs text-muted-foreground mt-2">{purchases.length} Purchase entries</p>
+              <p className="text-xs text-muted-foreground mt-2">{filteredPurchases.length} Purchase entries</p>
             </Card>
             <Card className="p-5 flex flex-col justify-between">
               <p className="text-sm font-medium text-muted-foreground">Pending Payables</p>
               <h3 className="text-2xl font-bold mt-2 text-red-600">
-                ₹{purchases.reduce((a: any, c: any) => a + (c.balanceAmount || 0), 0).toLocaleString('en-IN')}
+                ₹{suppliers.reduce((acc: any, curr: any) => acc + Math.max(0, curr.outstandingBalance || 0), 0).toLocaleString('en-IN')}
               </h3>
               <p className="text-xs text-muted-foreground mt-2">Amount to be paid to suppliers</p>
             </Card>
@@ -280,7 +343,7 @@ export default function ReportsPage() {
 
           <div className="bg-white border rounded-2xl overflow-hidden shadow-sm">
             <div className="p-4 border-b bg-slate-50/50">
-              <h3 className="font-semibold text-slate-800">Recent Purchase Entries</h3>
+              <h3 className="font-semibold text-slate-800">Purchase Entries</h3>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
@@ -297,22 +360,22 @@ export default function ReportsPage() {
                 <tbody className="divide-y">
                   {loadingPurchases ? (
                     <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">Loading purchases...</td></tr>
-                  ) : purchases.length === 0 ? (
+                  ) : filteredPurchases.length === 0 ? (
                     <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No purchases found</td></tr>
                   ) : (
-                    purchases.slice(0, 10).map((row: any) => (
+                    filteredPurchases.map((row: any) => (
                       <tr key={row._id} className="hover:bg-slate-50/50">
-                        <td className="px-4 py-3 font-medium">{row.billNumber}</td>
-                        <td className="px-4 py-3">{format(new Date(row.date), "dd MMM, yyyy")}</td>
+                        <td className="px-4 py-3 font-medium">{row.billNo}</td>
+                        <td className="px-4 py-3">{formatDate(row.billDate || row.createdAt)}</td>
                         <td className="px-4 py-3 font-medium">{row.supplierName}</td>
-                        <td className="px-4 py-3 text-right">₹{row.subTotal?.toLocaleString('en-IN')}</td>
-                        <td className="px-4 py-3 text-right font-semibold">₹{(row.total || row.totalAmount)?.toLocaleString('en-IN')}</td>
+                        <td className="px-4 py-3 text-right">₹{row.subtotal?.toLocaleString('en-IN')}</td>
+                        <td className="px-4 py-3 text-right font-semibold">₹{(row.total)?.toLocaleString('en-IN')}</td>
                         <td className="px-4 py-3 text-center">
                           <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            row.balanceAmount === 0 ? 'bg-emerald-100 text-emerald-700' :
-                            row.balanceAmount === (row.total || row.totalAmount) ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                            row.balance === 0 ? 'bg-emerald-100 text-emerald-700' :
+                            row.balance === row.total ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
                           }`}>
-                            {row.balanceAmount === 0 ? 'Paid' : row.balanceAmount === (row.total || row.totalAmount) ? 'Unpaid' : 'Partial'}
+                            {row.balance === 0 ? 'Paid' : row.balance === row.total ? 'Unpaid' : 'Partial'}
                           </span>
                         </td>
                       </tr>
@@ -361,7 +424,7 @@ export default function ReportsPage() {
                   ) : items.length === 0 ? (
                     <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No items found</td></tr>
                   ) : (
-                    items.slice(0, 10).map((row: any) => {
+                    items.map((row: any) => {
                       const isLowStock = row.currentStock <= (row.minStock || 5);
                       return (
                         <tr key={row._id} className="hover:bg-slate-50/50">
@@ -394,13 +457,13 @@ export default function ReportsPage() {
             <Card className="p-5 flex flex-col justify-between">
               <p className="text-sm font-medium text-muted-foreground">Total Expenses</p>
               <h3 className="text-2xl font-bold mt-2 text-orange-600">₹{totalExpenses.toLocaleString('en-IN')}</h3>
-              <p className="text-xs text-muted-foreground mt-2">{expenses.length} Expense records</p>
+              <p className="text-xs text-muted-foreground mt-2">{filteredExpenses.length} Expense records</p>
             </Card>
           </div>
 
           <div className="bg-white border rounded-2xl overflow-hidden shadow-sm">
             <div className="p-4 border-b bg-slate-50/50">
-              <h3 className="font-semibold text-slate-800">Recent Expenses</h3>
+              <h3 className="font-semibold text-slate-800">Expenses</h3>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
@@ -416,12 +479,12 @@ export default function ReportsPage() {
                 <tbody className="divide-y">
                   {loadingExpenses ? (
                     <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">Loading expenses...</td></tr>
-                  ) : expenses.length === 0 ? (
+                  ) : filteredExpenses.length === 0 ? (
                     <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No expenses found</td></tr>
                   ) : (
-                    expenses.slice(0, 10).map((row: any) => (
+                    filteredExpenses.map((row: any) => (
                       <tr key={row._id} className="hover:bg-slate-50/50">
-                        <td className="px-4 py-3">{format(new Date(row.date), "dd MMM, yyyy")}</td>
+                        <td className="px-4 py-3">{formatDate(row.date)}</td>
                         <td className="px-4 py-3 font-medium">
                           <span className="inline-block px-2 py-1 rounded bg-slate-100 text-xs text-slate-700">{row.category}</span>
                         </td>

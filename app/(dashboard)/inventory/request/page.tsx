@@ -4,7 +4,7 @@ import { useState } from "react";
 import { PageShell } from "@/components/shared/page-shell";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, AlertTriangle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -22,8 +22,14 @@ export default function StockRequestPage() {
     items: [{ itemId: "", itemName: "", requestedQty: 1 }]
   });
 
-  const { data: itemsData } = useQuery({ queryKey: ["items"], queryFn: async () => (await fetch("/api/items")).json() });
-  const items = itemsData?.data || [];
+  const { data: items = [] } = useQuery({ 
+    queryKey: ["items"], 
+    queryFn: async () => {
+      const res = await fetch("/api/items");
+      const json = await res.json();
+      return json.success ? json.data : [];
+    }
+  });
 
   const { data: requestData, isLoading } = useQuery({ queryKey: ["stock-requests"], queryFn: async () => (await fetch("/api/inventory/request")).json() });
   const requests = requestData?.data || [];
@@ -45,7 +51,7 @@ export default function StockRequestPage() {
     if (field === "itemId") {
       const it = items.find((i: any) => i._id === value);
       updated[index].itemId = value;
-      updated[index].itemName = it ? it.itemName : "";
+      updated[index].itemName = it ? (it.itemName || it.name) : "";
     } else {
       updated[index] = { ...updated[index], [field]: value };
     }
@@ -55,6 +61,19 @@ export default function StockRequestPage() {
   const filtered = requests.filter((r: any) => 
     r.requestNumber.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const lowStockItems = items.filter((it: any) => it.currentStock <= (it.minStock || 5));
+
+  const handleQuickRequest = (it: any) => {
+    const qtyNeeded = Math.max(1, (it.minStock || 5) - (it.currentStock || 0));
+    setNewRequest({
+      date: format(new Date(), "yyyy-MM-dd"),
+      requestingWarehouseId: "",
+      supplyingWarehouseId: "",
+      items: [{ itemId: it._id, itemName: it.itemName || it.name, requestedQty: qtyNeeded }]
+    });
+    setIsAddOpen(true);
+  };
 
   return (
     <PageShell title="Stock Request" subtitle="Internal stock indents" breadcrumbs={[{ label: "Inventory" }, { label: "Stock Request" }]}>
@@ -97,13 +116,13 @@ export default function StockRequestPage() {
                             <SelectContent>
                               {items.map((it: any) => (
                                 <SelectItem key={it._id} value={it._id}>
-                                  {it.itemName} <span className="text-muted-foreground ml-2">(Stock: {it.currentStock || 0})</span>
+                                  {it.itemName || it.name} <span className="text-muted-foreground ml-2">(Stock: {it.currentStock || 0})</span>
                                 </SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
                         </td>
-                        <td className="p-2 w-32"><Input type="number" min="1" required value={line.requestedQty} onChange={e => handleItemChange(idx, "requestedQty", Number(e.target.value))} /></td>
+                        <td className="p-2 w-32"><Input type="number" min="1" required value={line.requestedQty} onKeyDown={(e) => ["-", "+", "e", "E"].includes(e.key) && e.preventDefault()} onChange={e => handleItemChange(idx, "requestedQty", Number(e.target.value))} /></td>
                         <td className="p-2 w-10">
                           <button type="button" onClick={() => setNewRequest({...newRequest, items: newRequest.items.filter((_, i) => i !== idx)})} className="text-red-500">✕</button>
                         </td>
@@ -123,7 +142,56 @@ export default function StockRequestPage() {
         </Dialog>
       </div>
 
+      {lowStockItems.length > 0 && (
+        <Card className="overflow-hidden border border-red-200 mb-6 bg-red-50/30">
+          <div className="p-4 border-b border-red-200 flex justify-between items-center bg-red-50/50">
+            <h3 className="font-bold text-red-800 flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5" /> Auto-Generated Low Stock Alerts
+            </h3>
+          </div>
+          <div className="overflow-x-auto max-h-64 overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-red-50 border-b border-red-100 text-red-700 sticky top-0">
+                <tr>
+                  <th className="px-4 py-3 text-left font-semibold">Item Code</th>
+                  <th className="px-4 py-3 text-left font-semibold">Item Name</th>
+                  <th className="px-4 py-3 text-left font-semibold">HSN Code</th>
+                  <th className="px-4 py-3 text-right font-semibold">Current Stock</th>
+                  <th className="px-4 py-3 text-center font-semibold">Priority</th>
+                  <th className="px-4 py-3 text-center font-semibold">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-red-100">
+                {lowStockItems.map((it: any) => (
+                  <tr key={it._id} className="hover:bg-red-50/40">
+                    <td className="px-4 py-3 font-medium text-red-900">{it.code}</td>
+                    <td className="px-4 py-3 text-red-800 font-semibold">{it.itemName || it.name}</td>
+                    <td className="px-4 py-3 text-red-800">{it.hsnCode || "-"}</td>
+                    <td className="px-4 py-3 text-right font-black text-red-600">{it.currentStock}</td>
+                    <td className="px-4 py-3 text-center">
+                      {it.currentStock <= 0 ? (
+                        <span className="px-2 py-1 rounded bg-red-600 text-white text-[10px] font-black tracking-wider uppercase animate-pulse">Urgent (Out of Stock)</span>
+                      ) : (
+                        <span className="px-2 py-1 rounded bg-orange-100 text-orange-700 text-[10px] font-bold tracking-wider uppercase">Low Stock</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <Button size="sm" variant="outline" className="h-7 text-[10px] bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800 border-red-200" onClick={() => handleQuickRequest(it)}>
+                        Quick Request
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
       <Card className="overflow-hidden border border-slate-200">
+        <div className="p-4 border-b bg-slate-50">
+          <h3 className="font-semibold text-slate-800">Request History</h3>
+        </div>
         <table className="w-full text-sm">
           <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
             <tr>

@@ -18,8 +18,10 @@ export function formatNumber(num: number): string {
   return new Intl.NumberFormat("en-IN").format(num);
 }
 
-export function formatDate(date: string | Date, fmt = "dd MMM yyyy"): string {
-  const d = typeof date === "string" ? new Date(date) : date;
+export function formatDate(date: any, fmt = "dd MMM yyyy"): string {
+  if (!date) return "-";
+  const d = typeof date === "string" ? new Date(date) : new Date(date);
+  if (!(d instanceof Date) || isNaN(d.getTime())) return "-";
   const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const day = d.getDate().toString().padStart(2, "0");
   const month = months[d.getMonth()];
@@ -27,8 +29,10 @@ export function formatDate(date: string | Date, fmt = "dd MMM yyyy"): string {
   return `${day} ${month} ${year}`;
 }
 
-export function formatDateShort(date: string | Date): string {
-  const d = typeof date === "string" ? new Date(date) : date;
+export function formatDateShort(date: any): string {
+  if (!date) return "-";
+  const d = typeof date === "string" ? new Date(date) : new Date(date);
+  if (!(d instanceof Date) || isNaN(d.getTime())) return "-";
   const day = d.getDate().toString().padStart(2, "0");
   const month = (d.getMonth() + 1).toString().padStart(2, "0");
   const year = d.getFullYear();

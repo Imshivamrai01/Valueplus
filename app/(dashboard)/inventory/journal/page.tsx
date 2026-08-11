@@ -21,8 +21,14 @@ export default function StockJournalPage() {
     items: [{ itemId: "", itemName: "", quantity: 1, type: "in" }]
   });
 
-  const { data: itemsData } = useQuery({ queryKey: ["items"], queryFn: async () => (await fetch("/api/items")).json() });
-  const items = itemsData?.data || [];
+  const { data: items = [] } = useQuery({ 
+    queryKey: ["items"], 
+    queryFn: async () => {
+      const res = await fetch("/api/items");
+      const json = await res.json();
+      return json.success ? json.data : [];
+    }
+  });
 
   const { data: journalData, isLoading } = useQuery({ queryKey: ["stock-journals"], queryFn: async () => (await fetch("/api/inventory/journal")).json() });
   const journals = journalData?.data || [];
@@ -45,7 +51,7 @@ export default function StockJournalPage() {
     if (field === "itemId") {
       const it = items.find((i: any) => i._id === value);
       updated[index].itemId = value;
-      updated[index].itemName = it ? it.itemName : "";
+      updated[index].itemName = it ? it.name : "";
     } else {
       updated[index] = { ...updated[index], [field]: value };
     }
@@ -78,15 +84,16 @@ export default function StockJournalPage() {
                   <Input type="date" required value={newJournal.date} onChange={e => setNewJournal({...newJournal, date: e.target.value})} />
                 </div>
                 <div>
-                  <label className="text-sm font-medium">Purpose</label>
+                  <label className="text-sm font-medium">Reason (Purpose)</label>
                   <Select value={newJournal.purpose} onValueChange={(val) => setNewJournal({...newJournal, purpose: val})}>
                     <SelectTrigger className="w-full bg-white mt-1">
-                      <SelectValue placeholder="Select Purpose" />
+                      <SelectValue placeholder="Select Reason" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Adjustment">Adjustment (Correction)</SelectItem>
                       <SelectItem value="Manufacturing">Manufacturing (Assembly)</SelectItem>
                       <SelectItem value="Write-off">Write-off (Damaged/Lost)</SelectItem>
+                      <SelectItem value="Internal Use">Internal Use (Consumed by Staff)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -114,7 +121,7 @@ export default function StockJournalPage() {
                             <SelectContent>
                               {items.map((it: any) => (
                                 <SelectItem key={it._id} value={it._id}>
-                                  {it.itemName} <span className="text-muted-foreground ml-2">(Stock: {it.currentStock || 0})</span>
+                                  {it.name} <span className="text-muted-foreground ml-2">(Stock: {it.currentStock || 0})</span>
                                 </SelectItem>
                               ))}
                             </SelectContent>

@@ -19,15 +19,28 @@ export default function StockReturnPage() {
     date: format(new Date(), "yyyy-MM-dd"),
     returnType: "Customer Return",
     referenceId: "",
+    invoiceId: "",
     status: "Completed",
     items: [{ itemId: "", itemName: "", quantity: 1, reason: "" }]
   });
 
-  const { data: itemsData } = useQuery({ queryKey: ["items"], queryFn: async () => (await fetch("/api/items")).json() });
-  const items = itemsData?.data || [];
+  const { data: items = [] } = useQuery({ 
+    queryKey: ["items"], 
+    queryFn: async () => {
+      const res = await fetch("/api/items");
+      const json = await res.json();
+      return json.success ? json.data : [];
+    }
+  });
 
   const { data: returnData, isLoading } = useQuery({ queryKey: ["stock-returns"], queryFn: async () => (await fetch("/api/inventory/return")).json() });
   const returns = returnData?.data || [];
+
+  const { data: invoicesData } = useQuery({ queryKey: ["invoices"], queryFn: async () => (await fetch("/api/invoices")).json() });
+  const invoices = invoicesData?.data || [];
+
+  const { data: purchasesData } = useQuery({ queryKey: ["purchase-entries"], queryFn: async () => (await fetch("/api/purchase-entries")).json() });
+  const purchases = purchasesData?.data || [];
 
   const addMutation = useMutation({
     mutationFn: async (ret: any) => {
@@ -47,7 +60,7 @@ export default function StockReturnPage() {
     if (field === "itemId") {
       const it = items.find((i: any) => i._id === value);
       updated[index].itemId = value;
-      updated[index].itemName = it ? it.itemName : "";
+      updated[index].itemName = it ? (it.itemName || it.name) : "";
     } else {
       updated[index] = { ...updated[index], [field]: value };
     }
@@ -81,7 +94,7 @@ export default function StockReturnPage() {
                 </div>
                 <div>
                   <label className="text-sm font-medium">Return Type</label>
-                  <Select value={newReturn.returnType} onValueChange={(val) => setNewReturn({...newReturn, returnType: val})}>
+                  <Select value={newReturn.returnType} onValueChange={(val) => setNewReturn({...newReturn, returnType: val, invoiceId: "", items: [{ itemId: "", itemName: "", quantity: 1, reason: "" }]})}>
                     <SelectTrigger className="w-full bg-white mt-1">
                       <SelectValue placeholder="Return Type" />
                     </SelectTrigger>
@@ -91,6 +104,62 @@ export default function StockReturnPage() {
                     </SelectContent>
                   </Select>
                 </div>
+                {newReturn.returnType === "Customer Return" && (
+                  <div className="col-span-2">
+                    <label className="text-sm font-medium">Link to Sales Invoice *</label>
+                    <Input 
+                      list="invoice-list"
+                      placeholder="Type Bill No or Customer Name to search..."
+                      className="w-full bg-white mt-1"
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const inv = invoices.find((i: any) => `${i.invoiceNumber} - ${i.customerName}` === val);
+                        if (inv) {
+                          const mappedItems = inv.items.map((line: any) => ({
+                            itemId: line.itemId,
+                            itemName: line.itemName || line.name,
+                            quantity: line.quantity,
+                            reason: "Customer Return"
+                          }));
+                          setNewReturn({...newReturn, invoiceId: inv._id, referenceId: inv.invoiceNumber, items: mappedItems.length > 0 ? mappedItems : [{ itemId: "", itemName: "", quantity: 1, reason: "" }]});
+                        }
+                      }}
+                    />
+                    <datalist id="invoice-list">
+                      {invoices.map((inv: any) => (
+                        <option key={inv._id} value={`${inv.invoiceNumber} - ${inv.customerName}`} />
+                      ))}
+                    </datalist>
+                  </div>
+                )}
+                {newReturn.returnType === "Supplier Return" && (
+                  <div className="col-span-2">
+                    <label className="text-sm font-medium">Link to Purchase Entry *</label>
+                    <Input 
+                      list="purchase-list"
+                      placeholder="Type Bill No or Supplier Name to search..."
+                      className="w-full bg-white mt-1"
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const pur = purchases.find((p: any) => `${p.billNo} - ${p.supplierName}` === val);
+                        if (pur) {
+                          const mappedItems = pur.items.map((line: any) => ({
+                            itemId: line.itemId,
+                            itemName: line.itemName || line.name,
+                            quantity: line.quantity,
+                            reason: "Supplier Return"
+                          }));
+                          setNewReturn({...newReturn, invoiceId: pur._id, referenceId: pur.billNo, items: mappedItems.length > 0 ? mappedItems : [{ itemId: "", itemName: "", quantity: 1, reason: "" }]});
+                        }
+                      }}
+                    />
+                    <datalist id="purchase-list">
+                      {purchases.map((pur: any) => (
+                        <option key={pur._id} value={`${pur.billNo} - ${pur.supplierName}`} />
+                      ))}
+                    </datalist>
+                  </div>
+                )}
               </div>
               
               <div>
@@ -113,15 +182,25 @@ export default function StockReturnPage() {
                               <SelectValue placeholder="Select Item..." />
                             </SelectTrigger>
                             <SelectContent>
-                              {items.map((it: any) => (
+                              {(newReturn.invoiceId 
+                                ? (newReturn.returnType === "Customer Return" 
+                                    ? invoices.find((inv: any) => inv._id === newReturn.invoiceId)?.items
+                                    : purchases.find((pur: any) => pur._id === newReturn.invoiceId)?.items
+                                  )?.map((line: any) => ({
+                                    _id: line.itemId,
+                                    name: line.itemName || line.name,
+                                    currentStock: items.find((i: any) => i._id === line.itemId)?.currentStock || 0
+                                  })) || []
+                                : items
+                              ).map((it: any) => (
                                 <SelectItem key={it._id} value={it._id}>
-                                  {it.itemName} <span className="text-muted-foreground ml-2">(Stock: {it.currentStock || 0})</span>
+                                  {it.itemName || it.name} <span className="text-muted-foreground ml-2">(Stock: {it.currentStock || 0})</span>
                                 </SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
                         </td>
-                        <td className="p-2 w-24"><Input type="number" min="1" required value={line.quantity} onChange={e => handleItemChange(idx, "quantity", Number(e.target.value))} /></td>
+                        <td className="p-2 w-24"><Input type="number" min="1" required value={line.quantity} onKeyDown={(e) => ["-", "+", "e", "E"].includes(e.key) && e.preventDefault()} onChange={e => handleItemChange(idx, "quantity", Number(e.target.value))} /></td>
                         <td className="p-2"><Input type="text" placeholder="Reason..." value={line.reason} onChange={e => handleItemChange(idx, "reason", e.target.value)} /></td>
                         <td className="p-2 w-10">
                           <button type="button" onClick={() => setNewReturn({...newReturn, items: newReturn.items.filter((_, i) => i !== idx)})} className="text-red-500">✕</button>

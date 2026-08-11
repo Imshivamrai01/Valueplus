@@ -20,7 +20,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { formatCurrency, downloadCSV } from "@/lib/utils";
+import { formatCurrency, downloadCSV, formatDate } from "@/lib/utils";
 
 const WAREHOUSES = ["Main Store - Mumbai", "Pune Branch", "Delhi Hub", "Bengaluru Store"];
 
@@ -57,6 +57,7 @@ export default function ItemsPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any | null>(null);
+  const [viewingItem, setViewingItem] = useState<any | null>(null);
   const [deletingCode, setDeletingCode] = useState<string | null>(null);
   const [formData, setFormData] = useState<ItemFormData>(EMPTY_FORM);
   const [page, setPage] = useState(1);
@@ -80,6 +81,18 @@ export default function ItemsPage() {
       if (!json.success) return [];
       return json.data;
     }
+  });
+
+  const { data: salesHistory = [], isLoading: historyLoading } = useQuery({
+    queryKey: ["item-history", viewingItem?.code],
+    queryFn: async () => {
+      if (!viewingItem?.code) return [];
+      const res = await fetch(`/api/items/history?code=${encodeURIComponent(viewingItem.code)}`);
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+      return json.data;
+    },
+    enabled: !!viewingItem
   });
 
   const { data: brands = [] } = useQuery({
@@ -137,7 +150,7 @@ export default function ItemsPage() {
     setEditingItem(item);
     setFormData({
       name: item.name, code: item.code, category: item.category, brand: item.brand,
-      unit: item.unit, hsn: item.hsn, gstRate: String(item.gstRate),
+      unit: item.unit, hsn: item.hsnCode || item.hsn || "", gstRate: String(item.gstRate),
       purchasePrice: String(item.purchasePrice), sellingPrice: String(item.sellingPrice),
       mrp: String(item.mrp), currentStock: String(item.currentStock),
       reorderLevel: String(item.reorderLevel), warehouse: item.warehouse, status: item.status,
@@ -374,7 +387,7 @@ export default function ItemsPage() {
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">{item.category}</td>
                       <td className="px-4 py-3">
-                        <p className="text-sm font-mono">{item.hsn}</p>
+                        <p className="text-sm font-mono">{item.hsnCode || item.hsn}</p>
                         <p className="text-xs text-muted-foreground">GST {item.gstRate}%</p>
                       </td>
                       <td className="px-4 py-3 text-right font-medium">{formatCurrency(item.purchasePrice)}</td>
@@ -399,7 +412,7 @@ export default function ItemsPage() {
                             </button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-40">
-                            <DropdownMenuItem onClick={() => toast.info(`Viewing ${item.name}`)}>
+                            <DropdownMenuItem onClick={() => setViewingItem(item)}>
                               <Eye className="w-4 h-4 mr-2" /> View
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => openEdit(item)}>
@@ -642,6 +655,119 @@ export default function ItemsPage() {
               {deleteMutation.isPending ? "Deleting..." : "Delete"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* View Item Modal */}
+      <Dialog open={!!viewingItem} onOpenChange={(open) => !open && setViewingItem(null)}>
+        <DialogContent className="max-w-4xl p-0 rounded-2xl overflow-hidden border-none shadow-2xl">
+          <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-5 flex justify-between items-center">
+            <div>
+              <h3 className="text-lg font-bold tracking-tight">Product Details & Sales History</h3>
+              <p className="text-xs text-slate-300 mt-0.5">{viewingItem?.code} · {viewingItem?.brand}</p>
+            </div>
+            <Badge variant="outline" className="bg-white/10 text-white border-white/20">
+              Stock: {viewingItem?.currentStock} {viewingItem?.unit}
+            </Badge>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 bg-slate-50 min-h-[400px]">
+            {/* Left Side: Details */}
+            <div className="p-5 border-r border-slate-200 bg-white space-y-5">
+              <h4 className="text-sm font-bold text-slate-700 flex items-center gap-2 border-b pb-2">
+                <Package className="w-4 h-4 text-[#3F63AD]" /> Item Particulars
+              </h4>
+              <div className="grid grid-cols-1 gap-4 text-sm">
+                <div>
+                  <p className="text-xs text-muted-foreground font-semibold uppercase">Product Name</p>
+                  <p className="font-medium text-foreground">{viewingItem?.name}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground font-semibold uppercase">Category</p>
+                    <p className="font-medium text-foreground">{viewingItem?.category}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground font-semibold uppercase">HSN Code</p>
+                    <p className="font-medium text-foreground">{viewingItem?.hsnCode || viewingItem?.hsn || "N/A"}</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground font-semibold uppercase">GST Rate</p>
+                    <p className="font-medium text-foreground">{viewingItem?.gstRate}%</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground font-semibold uppercase">Warehouse</p>
+                    <p className="font-medium text-foreground">{viewingItem?.warehouse || "N/A"}</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                  <div>
+                    <p className="text-xs text-muted-foreground font-semibold uppercase">Purchase Price</p>
+                    <p className="font-bold text-slate-700">{formatCurrency(viewingItem?.purchasePrice || 0)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground font-semibold uppercase">Selling Price</p>
+                    <p className="font-bold text-[#3F63AD]">{formatCurrency(viewingItem?.sellingPrice || 0)}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Right Side: History */}
+            <div className="col-span-2 p-5 flex flex-col h-[400px]">
+              <h4 className="text-sm font-bold text-slate-700 flex items-center gap-2 border-b pb-2 mb-4">
+                <TrendingUp className="w-4 h-4 text-[#3F63AD]" /> Complete Transaction History
+              </h4>
+              
+              <div className="flex-1 overflow-y-auto pr-2">
+                {historyLoading ? (
+                  <div className="flex flex-col items-center justify-center h-full space-y-3">
+                    <div className="w-8 h-8 border-4 border-[#3F63AD] border-t-transparent rounded-full animate-spin"></div>
+                    <p className="text-sm text-muted-foreground">Loading history...</p>
+                  </div>
+                ) : salesHistory.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full text-center">
+                    <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mb-3">
+                      <TrendingUp className="w-5 h-5 text-slate-400" />
+                    </div>
+                    <p className="text-slate-600 font-medium">No sales recorded yet</p>
+                    <p className="text-xs text-muted-foreground mt-1">When this item is sold, invoices will appear here.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {salesHistory.map((h: any) => (
+                      <div key={h.invoiceId} className="bg-white border border-slate-200 rounded-lg p-3 hover:shadow-md transition-shadow">
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <div className="font-bold text-foreground text-sm flex items-center gap-2">
+                              {h.customerName}
+                              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 uppercase h-4 tracking-wider">
+                                {h.type?.replace("-", " ") || "Tax Invoice"}
+                              </Badge>
+                            </div>
+                            <p className="text-xs text-muted-foreground">{formatDate(h.date)}</p>
+                          </div>
+                          <Badge variant="outline" className="font-mono text-xs text-[#3F63AD] border-[#3F63AD]/20 bg-[#3F63AD]/5">{h.invoiceNumber}</Badge>
+                        </div>
+                        <div className="flex justify-between items-center bg-slate-50 p-2 rounded text-sm">
+                          <span className="text-slate-600">Qty: <span className="font-bold text-foreground">{h.quantity}</span></span>
+                          <span className="text-slate-600">Rate: <span className="font-bold text-foreground">{formatCurrency(h.rate)}</span></span>
+                          <span className="text-[#3F63AD] font-bold">{formatCurrency(h.amount)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="bg-white px-5 py-3 flex justify-end border-t">
+            <Button onClick={() => setViewingItem(null)} className="px-6 bg-slate-800 hover:bg-slate-700 text-white font-semibold shadow-sm">
+              Close Window
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </PageShell>

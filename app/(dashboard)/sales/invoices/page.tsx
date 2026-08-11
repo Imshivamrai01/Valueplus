@@ -180,7 +180,7 @@ function SalesInvoicesContent() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b">
               <tr>
-                {["Invoice #", "Customer Name", "Invoice Date", "Due Date", "Taxable", "GST", "Total Amount", "Paid", "Balance", "Status", ""].map((h) => (
+                {["Invoice #", "Customer Name", "Invoice Date", "Due Date", "Taxable", "GST", "Total Amount", "Paid", "Balance", "Status", "Action"].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -268,6 +268,26 @@ function SalesInvoicesContent() {
             </tbody>
           </table>
         </div>
+        {(() => {
+          const filtered = invoices.filter((inv: any) => {
+            const matchesSearch = inv.invoiceNumber?.toLowerCase().includes(search.toLowerCase()) || 
+                                  inv.customerName?.toLowerCase().includes(search.toLowerCase());
+            const matchesStatus = statusFilter === "all" || inv.status === statusFilter;
+            return matchesSearch && matchesStatus;
+          });
+          if (filtered.length > 10) {
+            return (
+              <div className="p-4 border-t flex items-center justify-between bg-slate-50 rounded-b-xl mt-auto">
+                <span className="text-xs text-muted-foreground">Showing {(page - 1) * 10 + 1} to {Math.min(page * 10, filtered.length)} of {filtered.length} entries</span>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Prev</Button>
+                  <Button variant="outline" size="sm" disabled={page * 10 >= filtered.length} onClick={() => setPage(p => p + 1)}>Next</Button>
+                </div>
+              </div>
+            );
+          }
+          return null;
+        })()}
       </div>
       </TabsContent>
 
@@ -340,7 +360,7 @@ function SalesInvoicesContent() {
               if (!enrichedData.customerEmail) enrichedData.customerEmail = customer.email || "";
               if (!enrichedData.placeOfSupply) enrichedData.placeOfSupply = customer.billingAddress?.state || customer.state || "Uttar Pradesh (09)";
             }
-            return <ValueplusInvoice invoiceData={enrichedData} />;
+            return <ValueplusInvoice invoiceData={enrichedData} onBack={() => setIsPreviewOpen(false)} />;
           })()}
         </DialogContent>
       </Dialog>
@@ -386,9 +406,9 @@ function SalesInvoicesContent() {
             const custInvoices = invoices.filter((inv) => inv.customerName === c.name || inv.customerId === c._id);
             const custPayments = payments.filter((p: any) => p.partyId === c._id || p.partyId === c.code);
             
-            const totalBilled = custInvoices.reduce((a, inv) => a + (inv.total || 0), 0);
+            const totalBilled = custInvoices.reduce((a, inv) => a + (inv.type === "credit-note" ? -(inv.total || 0) : (inv.total || 0)), 0);
             const invoicePaidAmounts = custInvoices.reduce((a, inv) => a + (inv.paidAmount || (inv.status === 'paid' ? inv.total : 0) || 0), 0);
-            const txPaidAmounts = custPayments.reduce((a, p) => a + p.amount, 0);
+            const txPaidAmounts = custPayments.reduce((a, p) => a + (p.type === "paid" ? -p.amount : p.amount), 0);
             const totalPaid = invoicePaidAmounts + txPaidAmounts;
             const balance = totalBilled - totalPaid;
 
@@ -447,13 +467,13 @@ function SalesInvoicesContent() {
                               )}
                             </td>
                             <td className="px-4 py-3 text-right font-medium">
-                              {tx.txType === "invoice" ? formatCurrency(tx.total) : "-"}
+                              {tx.txType === "invoice" ? (tx.type === "credit-note" ? <span className="text-red-600">-{formatCurrency(tx.total)}</span> : formatCurrency(tx.total)) : "-"}
                             </td>
                             <td className="px-4 py-3 text-right font-medium">
                               {tx.txType === "payment" ? (
-                                <span className="text-emerald-600">{formatCurrency(tx.amount)}</span>
-                              ) : (tx.txType === "invoice" && (tx.paidAmount > 0 || tx.status === 'paid')) ? (
-                                <span className="text-emerald-600">{formatCurrency(tx.paidAmount || tx.total)}</span>
+                                <span className={tx.type === "paid" ? "text-red-600" : "text-emerald-600"}>
+                                  {tx.type === "paid" ? `-${formatCurrency(tx.amount)}` : formatCurrency(tx.amount)}
+                                </span>
                               ) : "-"}
                             </td>
                           </tr>

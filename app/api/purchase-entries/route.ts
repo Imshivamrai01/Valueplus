@@ -3,6 +3,7 @@ import connectToDatabase from "@/lib/db";
 import PurchaseEntry from "@/models/PurchaseEntry";
 import Supplier from "@/models/Supplier";
 import Item from "@/models/Item";
+import PurchaseOrder from "@/models/PurchaseOrder";
 
 export async function GET(req: Request) {
   try {
@@ -64,6 +65,14 @@ export async function POST(req: Request) {
           }
         }
       }
+    }
+
+    // Update Linked Purchase Order Status
+    if (body.linkedPoNo) {
+      await PurchaseOrder.findOneAndUpdate(
+        { poNo: body.linkedPoNo },
+        { status: "received" }
+      );
     }
 
     return NextResponse.json({ success: true, data: entry });

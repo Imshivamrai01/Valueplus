@@ -28,14 +28,14 @@ export async function GET(req: Request) {
       const purchases = await PurchaseEntry.find({}).sort({ date: 1 }).lean();
       const mappedGSTR2 = purchases.map((pur: any) => ({
         reportId: pur.billNo,
-        date: pur.date,
+        date: pur.billDate || pur.createdAt,
         partyName: pur.supplierName,
-        gstin: pur.supplierGST || "", // Schema might not have supplierGST, fallback gracefully
-        amount: pur.amount,
-        cgst: pur.cgst,
-        sgst: pur.sgst,
-        igst: pur.igst,
-        totalTax: pur.totalTax
+        gstin: pur.supplierGST || "URD", 
+        amount: pur.subtotal || 0,
+        cgst: (pur.gst || 0) / 2,
+        sgst: (pur.gst || 0) / 2,
+        igst: 0,
+        totalTax: pur.gst || 0
       }));
       return NextResponse.json({ success: true, data: mappedGSTR2 });
     }

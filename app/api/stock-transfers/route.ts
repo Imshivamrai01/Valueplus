@@ -23,6 +23,19 @@ export async function POST(req: Request) {
     };
 
     const transfer = await StockTransfer.create(payload);
+
+    // Deduct stock for each item
+    if (body.items && Array.isArray(body.items)) {
+      for (const item of body.items) {
+        if (item.itemId && item.quantity) {
+          const Item = (await import("@/models/Item")).default;
+          await Item.findByIdAndUpdate(item.itemId, {
+            $inc: { currentStock: -item.quantity }
+          });
+        }
+      }
+    }
+
     return NextResponse.json({ success: true, data: transfer });
   } catch (error: any) {
     if (error.code === 11000) {

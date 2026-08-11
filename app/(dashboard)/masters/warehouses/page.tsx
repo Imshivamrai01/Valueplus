@@ -52,7 +52,7 @@ export default function WarehousesPage() {
       city: formData.city,
       state: formData.state,
       contactPerson: formData.contact || "Store Manager",
-      phone: formData.phone,
+      phone: formData.phone.startsWith("+91") ? formData.phone : `+91 ${formData.phone}`,
       email: formData.name.replace(/\s+/g, '').toLowerCase() + "@valueplus.com",
       status: "active",
       isDefault: false,
@@ -105,7 +105,7 @@ export default function WarehousesPage() {
               </div>
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Phone className="w-3.5 h-3.5 flex-shrink-0" />
-                <span>{wh.contactPerson || wh.contact} · {wh.phone}</span>
+                <span>{wh.contactPerson || wh.contact} · <a href={`tel:${wh.phone}`} className="text-blue-600 hover:underline font-medium">{wh.phone}</a></span>
               </div>
             </div>
             <div className="mt-4 pt-4 border-t flex items-center justify-between">
@@ -201,12 +201,17 @@ export default function WarehousesPage() {
 
                 <div className="space-y-1.5 md:col-span-3">
                   <Label className="text-xs font-semibold text-slate-700">Store Contact Phone *</Label>
-                  <Input
-                    placeholder="9876543210"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="bg-slate-50 border-slate-300 font-mono"
-                  />
+                  <div className="flex items-center">
+                    <span className="flex items-center justify-center bg-slate-100 border border-r-0 border-slate-300 rounded-l-md h-9 px-3 text-sm font-medium text-slate-600">+91</span>
+                    <Input
+                      placeholder="9876543210"
+                      value={formData.phone}
+                      maxLength={10}
+                      onKeyDown={(e) => ["-", "+", "e", "E", "."].includes(e.key) && e.preventDefault()}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                      className="bg-slate-50 border-slate-300 font-mono rounded-l-none"
+                    />
+                  </div>
                 </div>
               </div>
             </div>

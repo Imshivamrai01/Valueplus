@@ -10,7 +10,8 @@ export async function GET(request: Request) {
     await connectToDatabase();
 
     const { searchParams } = new URL(request.url);
-    const period = searchParams.get("period") || "today";
+    const startDateParam = searchParams.get("startDate");
+    const endDateParam = searchParams.get("endDate");
 
     const allInvoices = await Invoice.find({}).sort({ createdAt: -1 }).lean();
     const allCustomers = await Customer.find({}).sort({ createdAt: -1 }).lean();
@@ -28,16 +29,18 @@ export async function GET(request: Request) {
     const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
 
     let filteredInvoices = allInvoices;
-    if (period === "today") {
-      filteredInvoices = allInvoices.filter((inv: any) => new Date(inv.date || inv.createdAt) >= today);
-    } else if (period === "yesterday") {
+    if (startDateParam && endDateParam) {
+      const start = new Date(startDateParam);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(endDateParam);
+      end.setHours(23, 59, 59, 999);
+      
       filteredInvoices = allInvoices.filter((inv: any) => {
         const d = new Date(inv.date || inv.createdAt);
-        return d >= yesterday && d < today;
+        return d >= start && d <= end;
       });
-    } else if (period === "week") {
-      filteredInvoices = allInvoices.filter((inv: any) => new Date(inv.date || inv.createdAt) >= startOfWeek);
-    } else if (period === "month") {
+    } else {
+      // Fallback to current month if no dates provided
       filteredInvoices = allInvoices.filter((inv: any) => new Date(inv.date || inv.createdAt) >= startOfMonth);
     }
 
@@ -112,7 +115,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       success: true,
-      period,
+      dateRange: { start: startDateParam, end: endDateParam },
       metrics: {
         totalRevenue: totalRevenue || 0,
         cashRevenue,

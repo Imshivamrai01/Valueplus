@@ -4,9 +4,12 @@ export interface IStockTransfer extends Document {
   transferNo: string;
   fromWarehouse: string;
   toWarehouse: string;
-  itemName: string;
-  quantity: number;
-  unit: string;
+  items: Array<{
+    itemId: string;
+    itemName: string;
+    quantity: number;
+    unit: string;
+  }>;
   date: string;
   status: string;
   createdAt: Date;
@@ -18,13 +21,21 @@ const StockTransferSchema: Schema = new Schema(
     transferNo: { type: String, required: true, unique: true },
     fromWarehouse: { type: String, required: true },
     toWarehouse: { type: String, required: true },
-    itemName: { type: String, required: true },
-    quantity: { type: Number, required: true },
-    unit: { type: String, required: true, default: "PCS" },
+    items: [
+      {
+        itemId: { type: String, required: true },
+        itemName: { type: String, required: true },
+        quantity: { type: Number, required: true },
+        unit: { type: String, default: "PCS" },
+      }
+    ],
     date: { type: String, required: true },
     status: { type: String, required: true, default: "in-transit" },
   },
   { timestamps: true }
 );
 
-export default mongoose.models.StockTransfer || mongoose.model<IStockTransfer>("StockTransfer", StockTransferSchema);
+if (mongoose.models.StockTransfer) {
+  delete mongoose.models.StockTransfer;
+}
+export default mongoose.model<IStockTransfer>("StockTransfer", StockTransferSchema);

@@ -23,15 +23,8 @@ import {
   BookOpen,
   RefreshCw,
   RotateCcw,
-  Hammer,
   Percent,
   BarChart,
-  Settings,
-  UserCog,
-  Building,
-  User,
-  Bot,
-  Sparkles,
   type LucideIcon,
 } from "lucide-react";
 
@@ -95,7 +88,6 @@ export const NAV_GROUPS: NavGroup[] = [
       { title: "Stock Journal", href: "/inventory/journal", icon: BookOpen },
       { title: "Stock Request", href: "/inventory/request", icon: RefreshCw },
       { title: "Stock Return", href: "/inventory/return", icon: RotateCcw },
-      { title: "Bill of Material", href: "/inventory/bom", icon: Hammer },
     ],
   },
   /* {
@@ -136,7 +128,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { title: "Reports", href: "/reports", icon: BarChart },
     ],
   },
-  {
+  /* {
     title: "AI Features",
     items: [
       { title: "AI Insights", href: "/ai/insights", icon: Sparkles, badge: 1 },
@@ -151,7 +143,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { title: "Company", href: "/settings/company", icon: Building },
       { title: "Profile", href: "/settings/profile", icon: User },
     ],
-  },
+  }, */
 ];
 
 export const COMPANY_NAME = "ValuePlus Trading Co. Pvt. Ltd.";

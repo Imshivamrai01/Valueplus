@@ -199,7 +199,7 @@ export default function CustomersPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b">
               <tr>
-                {["Code", "Customer Name", "Phone & Email", "Location", "GSTIN", "Group", "Outstanding", "Status", ""].map(h => (
+                {["Code", "Customer Name", "Phone & Email", "Location", "GSTIN", "Group", "Outstanding", "Status", "Action"].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">{h}</th>
                 ))}
               </tr>
@@ -220,11 +220,9 @@ export default function CustomersPage() {
                   <td className="px-4 py-3"><Badge variant={c.status === "active" ? "success" : "secondary"}>{c.status}</Badge></td>
                   <td className="px-4 py-3 text-center">
                     <div className="flex items-center justify-end gap-2">
-                      {(c.outstandingBalance > 0) && (
-                        <Button variant="outline" size="sm" className="h-8 gap-1.5 text-blue-600 hover:text-blue-700 bg-blue-50/50 border-blue-200" onClick={() => handleViewLedger(c)}>
-                          <FileText className="w-3.5 h-3.5" /> Ledger
-                        </Button>
-                      )}
+                      <Button variant="outline" size="sm" className="h-8 gap-1.5 text-blue-600 hover:text-blue-700 bg-blue-50/50 border-blue-200" onClick={() => handleViewLedger(c)}>
+                        <FileText className="w-3.5 h-3.5" /> Ledger
+                      </Button>
                       <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50" onClick={() => handleEdit(c)}>
                         <Edit className="w-4 h-4" />
                       </Button>
@@ -394,8 +392,8 @@ export default function CustomersPage() {
             const custInvoices = invoices.filter((i: any) => i.customer === cust.name || i.customerId === cust._id || i.customerName === cust.name);
             const custPayments = payments.filter((p: any) => p.partyId === cust._id || p.partyId === cust.code);
             
-            const totalBilled = custInvoices.reduce((a: any, i: any) => a + (i.total || i.totalAmount || 0), 0);
-            const totalPaid = custPayments.reduce((a: any, p: any) => a + p.amount, 0);
+            const totalBilled = custInvoices.reduce((a: any, i: any) => a + (i.type === "credit-note" ? -(i.total || i.totalAmount || 0) : (i.total || i.totalAmount || 0)), 0);
+            const totalPaid = custPayments.reduce((a: any, p: any) => a + (p.type === "paid" ? -p.amount : p.amount), 0);
             const balance = totalBilled - totalPaid;
 
             // Combine and sort by date descending
@@ -465,11 +463,15 @@ export default function CustomersPage() {
                                 )}
                               </td>
                               <td className="px-4 py-3 text-right font-medium">
-                                {tx.txType === "invoice" ? <span className="text-slate-800">{formatCurrency(tx.total || tx.totalAmount || 0)}</span> : "-"}
-                              </td>
-                              <td className="px-4 py-3 text-right font-medium">
-                                {tx.txType === "payment" ? <span className="text-emerald-600">{formatCurrency(tx.amount || 0)}</span> : "-"}
-                              </td>
+                              {tx.txType === "invoice" ? (tx.type === "credit-note" ? <span className="text-red-600">-{formatCurrency(tx.total || tx.totalAmount)}</span> : formatCurrency(tx.total || tx.totalAmount)) : "-"}
+                            </td>
+                            <td className="px-4 py-3 text-right font-medium">
+                              {tx.txType === "payment" ? (
+                                <span className={tx.type === "paid" ? "text-red-600" : "text-emerald-600"}>
+                                  {tx.type === "paid" ? `-${formatCurrency(tx.amount)}` : formatCurrency(tx.amount)}
+                                </span>
+                              ) : "-"}
+                            </td>
                             </tr>
                           ))}
                         </tbody>

@@ -196,7 +196,7 @@ export default function SuppliersPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b">
-              <tr>{["Code", "Supplier Name","Phone & Email","Location","GSTIN","Payable Outstanding","Status",""].map(h=><th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">{h}</th>)}</tr>
+              <tr>{["Code", "Supplier Name","Phone & Email","Location","GSTIN","Payable Outstanding","Status","Action"].map(h=><th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">{h}</th>)}</tr>
             </thead>
             <tbody className="divide-y">
               {loading ? <tr><td colSpan={8} className="text-center p-4">Loading...</td></tr> : paginated.map(s=>(
@@ -210,11 +210,9 @@ export default function SuppliersPage() {
                   <td className="px-4 py-3"><Badge variant={s.status==="active"?"success":"secondary"}>{s.status}</Badge></td>
                   <td className="px-4 py-3 text-center">
                     <div className="flex items-center justify-end gap-2">
-                      {(s.outstandingBalance > 0) && (
-                        <Button variant="outline" size="sm" className="h-8 gap-1.5 text-blue-600 hover:text-blue-700 bg-blue-50/50 border-blue-200" onClick={() => handleViewLedger(s)}>
-                          <FileText className="w-3.5 h-3.5" /> Ledger
-                        </Button>
-                      )}
+                      <Button variant="outline" size="sm" className="h-8 gap-1.5 text-blue-600 hover:text-blue-700 bg-blue-50/50 border-blue-200" onClick={() => handleViewLedger(s)}>
+                        <FileText className="w-3.5 h-3.5" /> Ledger
+                      </Button>
                       <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50" onClick={() => handleEdit(s)}>
                         <Edit className="w-4 h-4" />
                       </Button>

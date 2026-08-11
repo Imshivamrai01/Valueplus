@@ -4,39 +4,71 @@ import { PageShell } from "@/components/shared/page-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, WalletCards, ArrowDownLeft, Building2, User } from "lucide-react";
+import { Plus, Search, WalletCards, ArrowDownLeft, Building2, User, Trash2 } from "lucide-react";
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { PaymentModal } from "@/components/PaymentModal";
+import { toast } from "sonner";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function ReceivePaymentPage() {
   const [search, setSearch] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("customers");
+  const [deletePaymentId, setDeletePaymentId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/payments?id=${id}`, { method: "DELETE" });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+      return json;
+    },
+    onSuccess: () => {
+      toast.success("Payment deleted successfully");
+      queryClient.invalidateQueries({ queryKey: ["payments"] });
+      setDeletePaymentId(null);
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Failed to delete payment");
+      setDeletePaymentId(null);
+    }
+  });
 
   const { data: payments = [], isLoading } = useQuery({
     queryKey: ["payments"],
     queryFn: async () => {
       const res = await fetch("/api/payments");
       const json = await res.json();
-      return json.success ? json.data.filter((p: any) => p.type === "received") : [];
+      return json.success ? json.data : [];
     }
   });
 
+  const currentTabPayments = useMemo(() => {
+    if (activeTab === "customers") {
+      return payments.filter((p: any) => p.partyType !== "Supplier");
+    } else {
+      return payments.filter((p: any) => p.partyType === "Supplier");
+    }
+  }, [payments, activeTab]);
+
   const filtered = useMemo(() => {
-    return payments.filter(
+    return currentTabPayments.filter(
       (p: any) =>
         !search ||
         (p.transactionId || "").toLowerCase().includes(search.toLowerCase()) ||
         (p.partyName || "").toLowerCase().includes(search.toLowerCase()) ||
         (p.referenceId || "").toLowerCase().includes(search.toLowerCase())
     );
-  }, [payments, search]);
+  }, [currentTabPayments, search]);
 
-  const totalReceived = payments.reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
-  const todayReceived = payments
+  const totalReceived = currentTabPayments.reduce((sum: number, p: any) => sum + (p.type === "received" ? (p.amount || 0) : -(p.amount || 0)), 0);
+  const todayReceived = currentTabPayments
     .filter((p: any) => p.date === new Date().toISOString().split("T")[0])
-    .reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
+    .reduce((sum: number, p: any) => sum + (p.type === "received" ? (p.amount || 0) : -(p.amount || 0)), 0);
 
   return (
     <PageShell
@@ -49,8 +81,14 @@ export default function ReceivePaymentPage() {
         </Button>
       }
     >
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="mb-6 grid w-full max-w-md grid-cols-2">
+          <TabsTrigger value="customers">Customer Receipts</TabsTrigger>
+          <TabsTrigger value="suppliers">Supplier Payouts</TabsTrigger>
+        </TabsList>
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[{ label: "Total Transactions", value: payments.length }, { label: "Today's Receipts", value: formatCurrency(todayReceived) }, { label: "Total Collected", value: formatCurrency(totalReceived) }].map((s) => (
+        {[{ label: "Total Transactions", value: currentTabPayments.length }, { label: activeTab === "customers" ? "Today's Receipts" : "Today's Payouts", value: formatCurrency(todayReceived) }, { label: activeTab === "customers" ? "Total Collected" : "Total Paid", value: formatCurrency(totalReceived) }].map((s) => (
           <div key={s.label} className="metric-card bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center">
             <p className="text-2xl font-bold text-slate-800">{s.value}</p>
             <p className="text-xs text-slate-500 font-medium uppercase mt-1">{s.label}</p>
@@ -72,9 +110,11 @@ export default function ReceivePaymentPage() {
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Transaction ID</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Date</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Customer</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{activeTab === "customers" ? "Customer" : "Supplier"}</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Mode & Ref</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Type</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Amount</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -117,8 +157,20 @@ export default function ReceivePaymentPage() {
                       {p.referenceId && <span className="text-[10px] text-slate-500 font-mono mt-1">Ref: {p.referenceId}</span>}
                     </div>
                   </td>
+                  <td className="px-4 py-3">
+                    <Badge variant={p.type === "received" ? "success" : "secondary"}>
+                      {p.type === "received" ? "Received (In)" : "Paid (Out)"}
+                    </Badge>
+                  </td>
                   <td className="px-4 py-3 text-right">
-                    <span className="font-black text-emerald-600 text-base">{formatCurrency(p.amount)}</span>
+                    <span className={`font-black text-base ${p.type === "received" ? "text-emerald-600" : "text-red-600"}`}>
+                      {p.type === "received" ? "+" : "-"}{formatCurrency(p.amount)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => setDeletePaymentId(p._id)}>
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
                   </td>
                 </tr>
               ))}
@@ -127,11 +179,31 @@ export default function ReceivePaymentPage() {
         </div>
       </div>
 
+      </Tabs>
+
       <PaymentModal 
         isOpen={isFormOpen} 
         onClose={() => setIsFormOpen(false)} 
         onSuccess={() => setIsFormOpen(false)} 
+        defaultPartyType={activeTab === "customers" ? "Customer" : "Supplier"}
       />
+
+      <Dialog open={!!deletePaymentId} onOpenChange={(open) => !open && setDeletePaymentId(null)}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Delete Payment</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this payment? This will also revert the customer's outstanding balance. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeletePaymentId(null)} disabled={deleteMutation.isPending}>Cancel</Button>
+            <Button variant="destructive" onClick={() => deletePaymentId && deleteMutation.mutate(deletePaymentId)} disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending ? "Deleting..." : "Delete Payment"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageShell>
   );
 }

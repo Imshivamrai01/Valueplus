@@ -11,13 +11,22 @@ import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
 
-export function PaymentModal({ isOpen, onClose, onSuccess }: { isOpen: boolean; onClose: () => void; onSuccess?: () => void }) {
+export function PaymentModal({ isOpen, onClose, onSuccess, defaultPartyType = "Customer" }: { isOpen: boolean; onClose: () => void; onSuccess?: () => void; defaultPartyType?: "Customer" | "Supplier" }) {
   const queryClient = useQueryClient();
 
   const { data: customers = [] } = useQuery({
     queryKey: ["customers"],
     queryFn: async () => {
       const res = await fetch("/api/customers");
+      const json = await res.json();
+      return json.success ? json.data : [];
+    }
+  });
+
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ["suppliers"],
+    queryFn: async () => {
+      const res = await fetch("/api/suppliers");
       const json = await res.json();
       return json.success ? json.data : [];
     }
@@ -31,6 +40,7 @@ export function PaymentModal({ isOpen, onClose, onSuccess }: { isOpen: boolean; 
     date: new Date().toISOString().split("T")[0],
     referenceId: "",
     notes: "",
+    type: defaultPartyType === "Supplier" ? "paid" : "received",
   });
 
   // Reset form when modal opens
@@ -44,18 +54,34 @@ export function PaymentModal({ isOpen, onClose, onSuccess }: { isOpen: boolean; 
         date: new Date().toISOString().split("T")[0],
         referenceId: "",
         notes: "",
+        type: defaultPartyType === "Supplier" ? "paid" : "received",
       });
     }
-  }, [isOpen]);
+  }, [isOpen, defaultPartyType]);
 
-  const handleSelectCustomer = (custId: string) => {
-    const found = customers.find((c: any) => c._id === custId);
+  const parties = defaultPartyType === "Supplier" ? suppliers : customers;
+
+  const handleSelectParty = (partyId: string) => {
+    const found = parties.find((p: any) => p._id === partyId);
     if (found) {
-      setForm({ ...form, partyId: found._id, partyName: found.name });
+      let paymentType = defaultPartyType === "Supplier" ? "paid" : "received";
+      // If Customer has negative balance, we need to refund them (paid)
+      // If Supplier has negative balance, we need to receive refund from them (received)
+      const isNegative = (found.outstandingBalance || 0) < 0;
+      if (defaultPartyType === "Customer" && isNegative) paymentType = "paid";
+      if (defaultPartyType === "Supplier" && isNegative) paymentType = "received";
+
+      setForm({ 
+        ...form, 
+        partyId: found._id, 
+        partyName: found.name,
+        type: paymentType,
+        amount: isNegative ? Math.abs(found.outstandingBalance).toString() : ""
+      });
     }
   };
 
-  const selectedCustomer = customers.find((c: any) => c._id === form.partyId);
+  const selectedParty = parties.find((p: any) => p._id === form.partyId);
 
   const createPaymentMutation = useMutation({
     mutationFn: async (payload: any) => {
@@ -83,21 +109,21 @@ export function PaymentModal({ isOpen, onClose, onSuccess }: { isOpen: boolean; 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.partyId || !form.amount || Number(form.amount) <= 0) {
-      toast.error("Please select a customer and enter a valid amount.");
+      toast.error(`Please select a ${defaultPartyType.toLowerCase()} and enter a valid amount.`);
       return;
     }
 
     const payload = {
       transactionId: `TXN-${Date.now()}`,
       partyId: form.partyId,
-      partyType: "Customer",
+      partyType: defaultPartyType,
       partyName: form.partyName,
       amount: Number(form.amount),
       paymentMode: form.paymentMode,
       date: form.date,
       referenceId: form.referenceId,
       notes: form.notes,
-      type: "received"
+      type: form.type
     };
 
     createPaymentMutation.mutate(payload);
@@ -111,9 +137,9 @@ export function PaymentModal({ isOpen, onClose, onSuccess }: { isOpen: boolean; 
             <WalletCards className="w-6 h-6 text-[#76C043]" />
           </div>
           <div>
-            <DialogTitle className="text-xl font-bold tracking-tight">Record Incoming Payment</DialogTitle>
+            <DialogTitle className="text-xl font-bold tracking-tight">Record {defaultPartyType} Payment</DialogTitle>
             <DialogDescription className="text-slate-300 text-xs mt-0.5">
-              Receive and log payments from customers to clear outstanding dues.
+              {defaultPartyType === "Supplier" ? "Record payouts made to suppliers or refunds received." : "Receive payments from customers or issue refunds to clear dues."}
             </DialogDescription>
           </div>
         </div>
@@ -122,35 +148,50 @@ export function PaymentModal({ isOpen, onClose, onSuccess }: { isOpen: boolean; 
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
             
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-slate-700">Select Customer *</Label>
-              <Select value={form.partyId} onValueChange={handleSelectCustomer}>
+              <Label className="text-xs font-semibold text-slate-700">Select {defaultPartyType} *</Label>
+              <Select value={form.partyId} onValueChange={handleSelectParty}>
                 <SelectTrigger className="bg-slate-50 border-slate-300 font-semibold text-[#3F63AD]">
-                  <SelectValue placeholder="Search customer..." />
+                  <SelectValue placeholder={`Search ${defaultPartyType.toLowerCase()}...`} />
                 </SelectTrigger>
                 <SelectContent>
-                  {customers.map((c: any) => (
-                    <SelectItem key={c._id} value={c._id}>
-                      {c.name} {c.phone ? `(${c.phone})` : ""}
+                  {parties.map((p: any) => (
+                    <SelectItem key={p._id} value={p._id}>
+                      {p.name} {p.phone ? `(${p.phone})` : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            {selectedCustomer && (
+            {selectedParty && (
               <div className="bg-blue-50/50 p-3 rounded-lg border border-blue-100 flex items-center justify-between">
                 <div>
                   <p className="text-xs font-bold text-slate-500 uppercase">Current Outstanding Balance</p>
-                  <p className={`text-lg font-black ${selectedCustomer.outstandingBalance > 0 ? "text-red-600" : "text-emerald-600"}`}>
-                    {formatCurrency(selectedCustomer.outstandingBalance || 0)}
+                  <p className={`text-lg font-black ${selectedParty.outstandingBalance > 0 ? "text-red-600" : "text-emerald-600"}`}>
+                    {formatCurrency(selectedParty.outstandingBalance || 0)}
                   </p>
                 </div>
               </div>
             )}
 
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-slate-700">Transaction Type *</Label>
+              <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v })}>
+                <SelectTrigger className="bg-slate-50 border-slate-300">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="received">Receive Payment (In)</SelectItem>
+                  <SelectItem value="paid">{defaultPartyType === "Supplier" ? "Make Payout (Out)" : "Refund / Pay to Customer (Out)"}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-700">Amount Received (₹) *</Label>
+                <Label className="text-xs font-semibold text-slate-700">
+                  {form.type === "paid" ? "Amount Refunded / Paid (₹) *" : "Amount Received (₹) *"}
+                </Label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-slate-500">₹</span>
                   <Input 

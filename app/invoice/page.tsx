@@ -129,9 +129,10 @@ const INITIAL_FORM = {
 
 interface ValueplusInvoiceProps {
   invoiceData?: any;
+  onBack?: () => void;
 }
 
-export default function ValueplusInvoice({ invoiceData }: ValueplusInvoiceProps = {}) {
+export default function ValueplusInvoice({ invoiceData, onBack }: ValueplusInvoiceProps = {}) {
   const [formData, setFormData] = useState(INITIAL_FORM);
   const [isEditing, setIsEditing] = useState(false);
 
@@ -168,8 +169,8 @@ export default function ValueplusInvoice({ invoiceData }: ValueplusInvoiceProps 
         shippingPin: invoiceData.shippingPin || invoiceData.customerPin || invoiceData.pin || "",
         placeOfSupply: invoiceData.placeOfSupply || "",
         salesExecutive: invoiceData.salesExecutive || "",
-        invoiceDate: invoiceData.date || invoiceData.invoiceDate || invoiceData.createdAt || "",
-        dueDate: invoiceData.dueDate || "",
+        invoiceDate: (invoiceData.date || invoiceData.invoiceDate || invoiceData.createdAt || "").split("T")[0],
+        dueDate: (invoiceData.dueDate || "").split("T")[0],
         paymentStatus: invoiceData.status || invoiceData.paymentStatus || "pending",
         paymentMethod: invoiceData.paymentMode || invoiceData.paymentMethod || "Cash",
         financeCompany: invoiceData.financeCompany || "",
@@ -680,9 +681,15 @@ export default function ValueplusInvoice({ invoiceData }: ValueplusInvoiceProps 
       {/* TOP TOOLBAR */}
       <div className="toolbar no-print">
         <div className="brandmark">
-          <Link href="/sales/invoices" className="flex items-center gap-1.5 text-[#3F63AD] hover:underline mr-2">
-            <ArrowLeft className="w-4 h-4" /> Back to Invoices
-          </Link>
+          {onBack ? (
+            <button type="button" onClick={onBack} className="flex items-center gap-1.5 text-[#3F63AD] hover:underline mr-2">
+              <ArrowLeft className="w-4 h-4" /> Back to Invoices
+            </button>
+          ) : (
+            <Link href="/sales/invoices" className="flex items-center gap-1.5 text-[#3F63AD] hover:underline mr-2">
+              <ArrowLeft className="w-4 h-4" /> Back to Invoices
+            </Link>
+          )}
           <span className="dot"></span> 
           <span>VALUEPLUS ERP — GST Invoice Builder</span>
         </div>
@@ -820,19 +827,19 @@ export default function ValueplusInvoice({ invoiceData }: ValueplusInvoiceProps 
                           <input value={item.hsn} onChange={(e) => handleItemChange(idx, "hsn", e.target.value)} />
                         </td>
                         <td>
-                          <input type="number" value={item.qty} onChange={(e) => handleItemChange(idx, "qty", Number(e.target.value))} />
+                          <input type="number" min="1" value={item.qty} onChange={(e) => handleItemChange(idx, "qty", Math.max(1, Number(e.target.value)))} />
                         </td>
                         <td>
                           <input value={item.unit} onChange={(e) => handleItemChange(idx, "unit", e.target.value)} />
                         </td>
                         <td>
-                          <input type="number" value={item.rate} onChange={(e) => handleItemChange(idx, "rate", Number(e.target.value))} />
+                          <input type="number" min="0" value={item.rate} onChange={(e) => handleItemChange(idx, "rate", Math.max(0, Number(e.target.value)))} />
                         </td>
                         <td>
-                          <input type="number" value={item.discount} onChange={(e) => handleItemChange(idx, "discount", Number(e.target.value))} />
+                          <input type="number" min="0" value={item.discount} onChange={(e) => handleItemChange(idx, "discount", Math.max(0, Number(e.target.value)))} />
                         </td>
                         <td>
-                          <input type="number" value={item.gstRate} onChange={(e) => handleItemChange(idx, "gstRate", Number(e.target.value))} />
+                          <input type="number" min="0" value={item.gstRate} onChange={(e) => handleItemChange(idx, "gstRate", Math.max(0, Number(e.target.value)))} />
                         </td>
                         <td className="text-center">
                           <button onClick={() => removeItem(idx)} className="text-red-500 hover:text-red-700 p-1">
@@ -866,7 +873,7 @@ export default function ValueplusInvoice({ invoiceData }: ValueplusInvoiceProps 
                 </div>
                 <div className="form-field">
                   <label>Shipping Charges (₹)</label>
-                  <input type="number" value={formData.shippingCharges} onChange={(e) => setFormData({ ...formData, shippingCharges: Number(e.target.value) })} />
+                  <input type="number" min="0" value={formData.shippingCharges} onChange={(e) => setFormData({ ...formData, shippingCharges: Math.max(0, Number(e.target.value)) })} />
                 </div>
                 <div className="form-field">
                   <label>Bank Name</label>
@@ -935,8 +942,8 @@ export default function ValueplusInvoice({ invoiceData }: ValueplusInvoiceProps 
               <table>
                 <tbody>
                   <tr><td className="k">Invoice No.</td><td className="v mono">{formData.invoiceNo}</td></tr>
-                  <tr><td className="k">Invoice Date</td><td className="v">{formData.invoiceDate}</td></tr>
-                  <tr><td className="k">Due Date</td><td className="v">{formData.dueDate}</td></tr>
+                  <tr><td className="k">Invoice Date</td><td className="v">{formData.invoiceDate ? new Date(formData.invoiceDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}</td></tr>
+                  <tr><td className="k">Due Date</td><td className="v">{formData.dueDate ? new Date(formData.dueDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}</td></tr>
                   <tr><td className="k">Order No.</td><td className="v mono">{formData.orderNo}</td></tr>
                   <tr><td className="k">E-Way Bill No.</td><td className="v mono">{formData.ewayBillNo}</td></tr>
                   <tr><td className="k">Place of Supply</td><td className="v">{formData.placeOfSupply}</td></tr>

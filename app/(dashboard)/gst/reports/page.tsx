@@ -5,11 +5,15 @@ import { PageShell } from "@/components/shared/page-shell";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Download, FileText, ArrowUpRight, ArrowDownRight, Calculator } from "lucide-react";
-import { format } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
+import { downloadCSV, formatDate } from "@/lib/utils";
 
 export default function GSTReportsPage() {
   const [period, setPeriod] = useState("August 2026");
+
+  const safeFormatDate = (dateStr: any) => {
+    return formatDate(dateStr, "dd MMM, yyyy");
+  };
 
   const { data: gstr1 = [] } = useQuery({
     queryKey: ["gstr-reports", "GSTR1"],
@@ -54,9 +58,12 @@ export default function GSTReportsPage() {
             <option>July 2026</option>
             <option>June 2026</option>
           </select>
-          <Button size="sm" variant="outline">
+          <Button size="sm" variant="outline" onClick={() => {
+            const data = gstr1.concat(gstr2);
+            downloadCSV(data.map((i: any) => ({ ...i })), "gst_report.csv");
+          }}>
             <Download className="w-4 h-4 mr-2" />
-            Export JSON
+            Export Data
           </Button>
         </div>
       }
@@ -175,7 +182,7 @@ export default function GSTReportsPage() {
                   {gstr1.map((row: any) => (
                     <tr key={row._id || row.id || row.reportId} className="hover:bg-slate-50/50">
                       <td className="px-4 py-3 font-medium text-blue-600">{row.reportId}</td>
-                      <td className="px-4 py-3">{format(new Date(row.date), "dd MMM, yyyy")}</td>
+                      <td className="px-4 py-3">{safeFormatDate(row.date || row.createdAt)}</td>
                       <td className="px-4 py-3">{row.partyName}</td>
                       <td className="px-4 py-3 text-xs">{row.gstin || "URD"}</td>
                       <td className="px-4 py-3 text-right font-medium">₹{row.amount?.toLocaleString()}</td>
@@ -216,7 +223,7 @@ export default function GSTReportsPage() {
                   {gstr2.map((row: any) => (
                     <tr key={row._id || row.id || row.reportId} className="hover:bg-slate-50/50">
                       <td className="px-4 py-3 font-medium">{row.reportId}</td>
-                      <td className="px-4 py-3">{format(new Date(row.date), "dd MMM, yyyy")}</td>
+                      <td className="px-4 py-3">{safeFormatDate(row.date || row.createdAt)}</td>
                       <td className="px-4 py-3">{row.partyName}</td>
                       <td className="px-4 py-3 text-xs">{row.gstin}</td>
                       <td className="px-4 py-3 text-right font-medium">₹{row.amount?.toLocaleString()}</td>

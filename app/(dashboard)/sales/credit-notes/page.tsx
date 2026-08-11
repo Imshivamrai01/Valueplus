@@ -90,7 +90,7 @@ function CreditNotesContent() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b">
               <tr>
-                {["Credit Note #", "Customer Name", "Date", "Taxable", "GST", "Total Amount", ""].map((h) => (
+                {["Credit Note #", "Customer Name", "Date", "Taxable", "GST", "Total Amount", "Action"].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">{h}</th>
                 ))}
               </tr>
