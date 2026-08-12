@@ -497,11 +497,25 @@ export default function ItemsPage() {
                 <div className="md:col-span-2 space-y-1.5">
                   <Label className="text-xs font-semibold text-slate-700">Product Name & Model *</Label>
                   <Input
+                    list="item-names"
                     placeholder="e.g. iPhone 15 Pro Max 256GB"
                     value={formData.name}
-                    onChange={(e) => setFormData((f) => ({ ...f, name: e.target.value }))}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const existing = items.find((i: any) => i.name.toLowerCase() === val.toLowerCase());
+                      if (existing) {
+                        setFormData((f) => ({ ...f, name: val, hsn: existing.hsnCode || existing.hsn || "" }));
+                      } else {
+                        setFormData((f) => ({ ...f, name: val }));
+                      }
+                    }}
                     className="bg-slate-50 border-slate-300"
                   />
+                  <datalist id="item-names">
+                    {items.map((it: any) => (
+                      <option key={it._id || it.id} value={it.name} />
+                    ))}
+                  </datalist>
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold text-slate-700">Item Code (SKU)</Label>

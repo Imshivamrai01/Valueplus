@@ -26,14 +26,30 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     await connectToDatabase();
-    // body includes code, name, category, brand, unit, hsn, gstRate, purchasePrice, sellingPrice, mrp, currentStock, reorderLevel, warehouse, status
-    // map hsn to hsnCode for schema if needed, or update schema to use hsn. The schema uses hsnCode.
+    
     const payload = {
       ...body,
       hsnCode: body.hsn || body.hsnCode,
     };
-    const item = await Item.create(payload);
-    return NextResponse.json({ success: true, data: item });
+
+    // Check if item exists by exact name (case-insensitive)
+    // Escape regex characters in payload.name just in case
+    const escapedName = payload.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const existingItem = await Item.findOne({ name: { $regex: new RegExp(`^${escapedName}$`, "i") } });
+
+    if (existingItem) {
+      // Update existing item
+      existingItem.currentStock = (existingItem.currentStock || 0) + (Number(payload.currentStock) || 0);
+      if (payload.hsnCode) {
+        existingItem.hsnCode = payload.hsnCode;
+      }
+      await existingItem.save();
+      return NextResponse.json({ success: true, data: existingItem, message: "Existing item stock and HSN updated" });
+    } else {
+      // Create new item
+      const item = await Item.create(payload);
+      return NextResponse.json({ success: true, data: item });
+    }
   } catch (error: any) {
     if (error.code === 11000) {
        return NextResponse.json({ success: false, error: "Item code already exists" }, { status: 400 });
