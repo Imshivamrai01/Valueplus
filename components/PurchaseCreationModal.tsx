@@ -381,6 +381,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: { isO
                               type="number"
                               min={1}
                               value={item.quantity}
+                              onKeyDown={(e) => ["-", "+", "e", "E"].includes(e.key) && e.preventDefault()}
                               onChange={(e) => updateLineItem(item.id, "quantity", Math.max(1, Number(e.target.value)))}
                               className="h-8 text-xs text-right"
                             />

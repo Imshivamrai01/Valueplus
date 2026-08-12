@@ -52,62 +52,67 @@ export async function POST(req: Request) {
     // 2. Create Invoice
     const invoice = await Invoice.create(body);
     
-    // 2.5 Create Payment Transaction if paidAmount > 0
-    if (body.paidAmount > 0) {
-      const PaymentTransaction = (await import("@/models/PaymentTransaction")).default;
-      await PaymentTransaction.create({
-        transactionId: `TXN-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-        partyId: invoice.customerId,
-        partyType: "Customer",
-        partyName: invoice.customerName,
-        amount: body.paidAmount,
-        paymentMode: body.paymentMode || "Cash",
-        date: body.date || new Date().toISOString().split("T")[0],
-        referenceId: invoice.invoiceNumber,
-        notes: invoice.type === 'credit-note' ? `Refund for Credit Note ${invoice.invoiceNumber}` : `Initial payment for ${invoice.type === 'sales-order' ? 'order' : 'invoice'} ${invoice.invoiceNumber}`,
-        type: invoice.type === 'credit-note' ? "paid" : "received"
-      });
-    }
-    
-    // 3. Update Customer Balance and Master Data
-    const updateData: any = {};
-    if (body.balanceAmount > 0) {
-      updateData.$inc = { 
-        outstandingBalance: body.type === "credit-note" ? -body.balanceAmount : body.balanceAmount 
-      };
-    }
-    
-    if (body.customerId && body.customerId !== "new" && body.customerPin) {
-      if (!updateData.$set) updateData.$set = {};
-      updateData.$set["billingAddress.pincode"] = body.customerPin;
-    }
+    try {
+      // 2.5 Create Payment Transaction if paidAmount > 0
+      if (body.paidAmount > 0) {
+        const PaymentTransaction = (await import("@/models/PaymentTransaction")).default;
+        await PaymentTransaction.create({
+          transactionId: `TXN-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          partyId: invoice.customerId,
+          partyType: "Customer",
+          partyName: invoice.customerName,
+          amount: body.paidAmount,
+          paymentMode: body.paymentMode || "Cash",
+          date: body.date || new Date().toISOString().split("T")[0],
+          referenceId: invoice.invoiceNumber,
+          notes: invoice.type === 'credit-note' ? `Refund for Credit Note ${invoice.invoiceNumber}` : `Initial payment for ${invoice.type === 'sales-order' ? 'order' : 'invoice'} ${invoice.invoiceNumber}`,
+          type: invoice.type === 'credit-note' ? "paid" : "received"
+        });
+      }
+      
+      // 3. Update Customer Balance and Master Data
+      const updateData: any = {};
+      if (body.balanceAmount > 0) {
+        updateData.$inc = { 
+          outstandingBalance: body.type === "credit-note" ? -body.balanceAmount : body.balanceAmount 
+        };
+      }
+      
+      if (body.customerId && body.customerId !== "new" && body.customerPin) {
+        if (!updateData.$set) updateData.$set = {};
+        updateData.$set["billingAddress.pincode"] = body.customerPin;
+      }
 
-    if (Object.keys(updateData).length > 0) {
-      await Customer.findByIdAndUpdate(body.customerId, updateData);
-    }
+      if (Object.keys(updateData).length > 0) {
+        await Customer.findByIdAndUpdate(body.customerId, updateData);
+      }
 
-    // 4. Inventory Stock Deduction
-    if (body.type !== "proforma") {
-      if (body.items && body.items.length > 0) {
-        for (const item of body.items) {
-          if (item.itemId && item.itemId.length === 24) {
-            await Item.findByIdAndUpdate(item.itemId, {
-              $inc: { currentStock: body.type === "credit-note" ? item.quantity : -item.quantity }
-            });
+      // 4. Inventory Stock Deduction
+      if (body.type !== "proforma") {
+        if (body.items && body.items.length > 0) {
+          for (const item of body.items) {
+            if (item.itemId && item.itemId.length === 24) {
+              await Item.findByIdAndUpdate(item.itemId, {
+                $inc: { currentStock: body.type === "credit-note" ? item.quantity : -item.quantity }
+              });
+            }
           }
         }
       }
-    }
 
-    // 5. Update Estimate Status if linked
-    if (body.linkedEstimateNumber) {
-      await Estimate.findOneAndUpdate(
-        { estimateNumber: body.linkedEstimateNumber },
-        { status: "Converted" }
-      );
-    }
+      // 5. Update Estimate Status if linked
+      if (body.linkedEstimateNumber) {
+        await Estimate.findOneAndUpdate(
+          { estimateNumber: body.linkedEstimateNumber },
+          { status: "Converted" }
+        );
+      }
 
-    return NextResponse.json({ success: true, data: invoice });
+      return NextResponse.json({ success: true, data: invoice });
+    } catch (error: any) {
+      await Invoice.findByIdAndDelete(invoice._id);
+      throw new Error(error.message);
+    }
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 400 });
   }

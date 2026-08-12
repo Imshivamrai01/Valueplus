@@ -19,7 +19,7 @@ export async function POST(req: Request) {
 
     const payload = {
       ...body,
-      transferNo: body.transferNo || `STR-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000).toString().padStart(4, "0")}`,
+      transferNo: body.transferNo || `STR-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}-${Math.floor(Math.random() * 1000).toString().padStart(3, "0")}`,
     };
 
     const transfer = await StockTransfer.create(payload);

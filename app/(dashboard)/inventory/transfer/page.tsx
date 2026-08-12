@@ -124,7 +124,6 @@ export default function StockTransferPage() {
     }
 
     const payload = {
-      transferNo: `STR-${new Date().getFullYear()}-${String(transfers.length + 35).padStart(4, "0")}`,
       fromWarehouse: formData.fromWarehouse,
       toWarehouse: formData.toWarehouse,
       items: formData.items,
@@ -307,7 +306,8 @@ export default function StockTransferPage() {
                               min="1"
                               className="h-8 text-right bg-transparent"
                               value={line.quantity}
-                              onChange={(e) => handleItemChange(idx, "quantity", Number(e.target.value))}
+                              onKeyDown={(e) => ["-", "+", "e", "E"].includes(e.key) && e.preventDefault()}
+                              onChange={(e) => handleItemChange(idx, "quantity", Math.max(1, Number(e.target.value)))}
                             />
                           </td>
                           <td className="p-2 text-center">
