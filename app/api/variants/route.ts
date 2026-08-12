@@ -31,3 +31,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+export async function DELETE(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+    
+    if (!id) {
+      return NextResponse.json({ success: false, error: "ID is required" }, { status: 400 });
+    }
+    
+    await connectToDatabase();
+    const deletedVariant = await Variant.findByIdAndDelete(id);
+    
+    if (!deletedVariant) {
+      return NextResponse.json({ success: false, error: "Variant not found" }, { status: 404 });
+    }
+    
+    return NextResponse.json({ success: true, message: "Variant deleted successfully" });
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}

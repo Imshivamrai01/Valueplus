@@ -40,6 +40,22 @@ export default function WarehousesPage() {
     fetchWarehouses();
   }, []);
 
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this warehouse?")) return;
+    try {
+      const res = await fetch(`/api/warehouses?id=${id}`, { method: "DELETE" });
+      const json = await res.json();
+      if (json.success) {
+        toast.success(json.message || "Warehouse deleted successfully");
+        fetchWarehouses();
+      } else {
+        toast.error(json.error || "Failed to delete warehouse");
+      }
+    } catch (error) {
+      toast.error("An error occurred while deleting");
+    }
+  };
+
   const handleSave = async () => {
     if (!formData.name || !formData.phone) {
       toast.error("Please fill Warehouse Name and Phone");
@@ -116,7 +132,7 @@ export default function WarehousesPage() {
                 <p className="text-xs text-muted-foreground">Total SKUs</p>
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" className="text-red-500" onClick={() => { setWarehouses(prev => prev.filter(x => x._id !== wh._id)); toast.success("Warehouse removed locally (API not implemented)"); }}>Delete</Button>
+                <Button variant="outline" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => handleDelete(wh._id || wh.id)}>Delete</Button>
               </div>
             </div>
           </div>

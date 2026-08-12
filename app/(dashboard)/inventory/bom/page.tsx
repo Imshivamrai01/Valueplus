@@ -109,7 +109,7 @@ export default function BOMPage() {
                 </div>
                 <div>
                   <label className="text-sm font-medium">Expected Quantity</label>
-                  <Input type="number" min="1" value={newBom.expectedQuantity} onChange={e => setNewBom({...newBom, expectedQuantity: Number(e.target.value)})} required />
+                  <Input type="number" min="1" value={newBom.expectedQuantity} onKeyDown={(e) => ["-", "+", "e", "E"].includes(e.key) && e.preventDefault()} onChange={e => setNewBom({...newBom, expectedQuantity: Math.max(1, Number(e.target.value))})} required />
                 </div>
               </div>
               
@@ -133,8 +133,8 @@ export default function BOMPage() {
                             {items.map((it: any) => <option className="text-slate-900 bg-white" key={it._id} value={it._id}>{it.itemName}</option>)}
                           </select>
                         </td>
-                        <td className="p-2 w-24"><Input type="number" min="0.01" step="0.01" required value={comp.quantity} onChange={e => handleComponentChange(idx, "quantity", Number(e.target.value))} /></td>
-                        <td className="p-2 w-24"><Input type="number" min="0" step="0.01" required value={comp.cost} onChange={e => handleComponentChange(idx, "cost", Number(e.target.value))} /></td>
+                        <td className="p-2 w-24"><Input type="number" min="0.01" step="0.01" required value={comp.quantity} onKeyDown={(e) => ["-", "+", "e", "E"].includes(e.key) && e.preventDefault()} onChange={e => handleComponentChange(idx, "quantity", Math.max(0, Number(e.target.value)))} /></td>
+                        <td className="p-2 w-24"><Input type="number" min="0" step="0.01" required value={comp.cost} onKeyDown={(e) => ["-", "+", "e", "E"].includes(e.key) && e.preventDefault()} onChange={e => handleComponentChange(idx, "cost", Math.max(0, Number(e.target.value)))} /></td>
                         <td className="p-2 w-10">
                           <button type="button" onClick={() => setNewBom({...newBom, components: newBom.components.filter((_, i) => i !== idx)})} className="text-red-500">✕</button>
                         </td>

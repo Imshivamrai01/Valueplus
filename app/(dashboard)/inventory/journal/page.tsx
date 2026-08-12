@@ -138,7 +138,7 @@ export default function StockJournalPage() {
                             </SelectContent>
                           </Select>
                         </td>
-                        <td className="p-2 w-24"><Input type="number" min="1" required value={line.quantity} onChange={e => handleItemChange(idx, "quantity", Number(e.target.value))} /></td>
+                        <td className="p-2 w-24"><Input type="number" min="1" required value={line.quantity} onKeyDown={(e) => ["-", "+", "e", "E"].includes(e.key) && e.preventDefault()} onChange={e => handleItemChange(idx, "quantity", Math.max(1, Number(e.target.value)))} /></td>
                         <td className="p-2 w-10">
                           <button type="button" onClick={() => setNewJournal({...newJournal, items: newJournal.items.filter((_, i) => i !== idx)})} className="text-red-500">✕</button>
                         </td>

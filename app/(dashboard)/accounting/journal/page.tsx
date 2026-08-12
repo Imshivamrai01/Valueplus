@@ -163,10 +163,10 @@ export default function JournalPage() {
                           </select>
                         </td>
                         <td className="p-2 w-32">
-                          <Input type="number" min="0" step="0.01" value={line.debit || ""} onChange={e => handleLineChange(idx, "debit", e.target.value)} />
+                          <Input type="number" min="0" step="0.01" value={line.debit || ""} onKeyDown={(e) => ["-", "+", "e", "E"].includes(e.key) && e.preventDefault()} onChange={e => handleLineChange(idx, "debit", e.target.value)} />
                         </td>
                         <td className="p-2 w-32">
-                          <Input type="number" min="0" step="0.01" value={line.credit || ""} onChange={e => handleLineChange(idx, "credit", e.target.value)} />
+                          <Input type="number" min="0" step="0.01" value={line.credit || ""} onKeyDown={(e) => ["-", "+", "e", "E"].includes(e.key) && e.preventDefault()} onChange={e => handleLineChange(idx, "credit", e.target.value)} />
                         </td>
                         <td className="p-2 w-12 text-center">
                           {newEntry.lines.length > 2 && (

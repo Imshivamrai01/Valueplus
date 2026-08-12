@@ -33,12 +33,30 @@ export default function GSTReportsPage() {
     }
   });
 
+  const parsePeriod = (p: string) => {
+    const [month, year] = p.split(" ");
+    const monthIndex = new Date(`${month} 1, 2000`).getMonth();
+    return { month: monthIndex, year: parseInt(year) };
+  };
+
+  const selectedFilter = parsePeriod(period);
+
+  const filterByPeriod = (data: any[]) => {
+    return data.filter((row: any) => {
+      const d = new Date(row.date || row.createdAt);
+      return d.getMonth() === selectedFilter.month && d.getFullYear() === selectedFilter.year;
+    });
+  };
+
+  const filteredGstr1 = filterByPeriod(gstr1);
+  const filteredGstr2 = filterByPeriod(gstr2);
+
   // Calculations for GSTR-3B
-  const totalSalesAmount = gstr1.reduce((acc: any, curr: any) => acc + curr.amount, 0);
-  const totalOutputTax = gstr1.reduce((acc: any, curr: any) => acc + curr.totalTax, 0);
+  const totalSalesAmount = filteredGstr1.reduce((acc: any, curr: any) => acc + (curr.amount || 0), 0);
+  const totalOutputTax = filteredGstr1.reduce((acc: any, curr: any) => acc + (curr.totalTax || 0), 0);
   
-  const totalPurchaseAmount = gstr2.reduce((acc: any, curr: any) => acc + curr.amount, 0);
-  const totalInputTax = gstr2.reduce((acc: any, curr: any) => acc + curr.totalTax, 0);
+  const totalPurchaseAmount = filteredGstr2.reduce((acc: any, curr: any) => acc + (curr.amount || 0), 0);
+  const totalInputTax = filteredGstr2.reduce((acc: any, curr: any) => acc + (curr.totalTax || 0), 0);
 
   const netGstPayable = totalOutputTax - totalInputTax;
 
@@ -130,17 +148,17 @@ export default function GSTReportsPage() {
               <div className="flex justify-between p-4 hover:bg-slate-50 transition-colors">
                 <span className="font-medium">3.1 Outward supplies (GSTR-1)</span>
                 <span>₹{totalSalesAmount.toLocaleString('en-IN')}</span>
-                <span>₹{gstr1.reduce((a: any, c: any) => a + (c.igst || 0), 0).toLocaleString('en-IN')}</span>
-                <span>₹{gstr1.reduce((a: any, c: any) => a + (c.cgst || 0), 0).toLocaleString('en-IN')}</span>
-                <span>₹{gstr1.reduce((a: any, c: any) => a + (c.sgst || 0), 0).toLocaleString('en-IN')}</span>
+                <span>₹{filteredGstr1.reduce((a: any, c: any) => a + (c.igst || 0), 0).toLocaleString('en-IN')}</span>
+                <span>₹{filteredGstr1.reduce((a: any, c: any) => a + (c.cgst || 0), 0).toLocaleString('en-IN')}</span>
+                <span>₹{filteredGstr1.reduce((a: any, c: any) => a + (c.sgst || 0), 0).toLocaleString('en-IN')}</span>
                 <span className="font-semibold">₹{totalOutputTax.toLocaleString('en-IN')}</span>
               </div>
               <div className="flex justify-between p-4 hover:bg-slate-50 transition-colors">
                 <span className="font-medium">4. Eligible ITC (GSTR-2)</span>
                 <span>₹{totalPurchaseAmount.toLocaleString('en-IN')}</span>
-                <span>₹{gstr2.reduce((a: any, c: any) => a + (c.igst || 0), 0).toLocaleString('en-IN')}</span>
-                <span>₹{gstr2.reduce((a: any, c: any) => a + (c.cgst || 0), 0).toLocaleString('en-IN')}</span>
-                <span>₹{gstr2.reduce((a: any, c: any) => a + (c.sgst || 0), 0).toLocaleString('en-IN')}</span>
+                <span>₹{filteredGstr2.reduce((a: any, c: any) => a + (c.igst || 0), 0).toLocaleString('en-IN')}</span>
+                <span>₹{filteredGstr2.reduce((a: any, c: any) => a + (c.cgst || 0), 0).toLocaleString('en-IN')}</span>
+                <span>₹{filteredGstr2.reduce((a: any, c: any) => a + (c.sgst || 0), 0).toLocaleString('en-IN')}</span>
                 <span className="font-semibold text-emerald-600">₹{totalInputTax.toLocaleString('en-IN')}</span>
               </div>
               <div className="flex justify-between p-5 bg-slate-100/50 font-semibold text-base">
@@ -179,7 +197,7 @@ export default function GSTReportsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {gstr1.map((row: any) => (
+                  {filteredGstr1.map((row: any) => (
                     <tr key={row._id || row.id || row.reportId} className="hover:bg-slate-50/50">
                       <td className="px-4 py-3 font-medium text-blue-600">{row.reportId}</td>
                       <td className="px-4 py-3">{safeFormatDate(row.date || row.createdAt)}</td>
@@ -220,7 +238,7 @@ export default function GSTReportsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {gstr2.map((row: any) => (
+                  {filteredGstr2.map((row: any) => (
                     <tr key={row._id || row.id || row.reportId} className="hover:bg-slate-50/50">
                       <td className="px-4 py-3 font-medium">{row.reportId}</td>
                       <td className="px-4 py-3">{safeFormatDate(row.date || row.createdAt)}</td>

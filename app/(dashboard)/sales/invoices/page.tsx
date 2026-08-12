@@ -386,9 +386,7 @@ function SalesInvoicesContent() {
               variant="destructive" 
               onClick={() => {
                 if (invoiceToDelete) {
-                  // deleteInvoiceMutation.mutate(invoiceToDelete)
-                  toast.success("Invoice deleted");
-                  setInvoiceToDelete(null);
+                  deleteInvoiceMutation.mutate(invoiceToDelete)
                 }
               }}
             >

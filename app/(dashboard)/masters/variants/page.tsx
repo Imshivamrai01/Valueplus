@@ -33,6 +33,22 @@ export default function VariantsPage() {
     fetchVariants();
   }, []);
 
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this variant?")) return;
+    try {
+      const res = await fetch(`/api/variants?id=${id}`, { method: "DELETE" });
+      const json = await res.json();
+      if (json.success) {
+        toast.success(json.message || "Variant deleted successfully");
+        fetchVariants();
+      } else {
+        toast.error(json.error || "Failed to delete variant");
+      }
+    } catch (error) {
+      toast.error("An error occurred while deleting");
+    }
+  };
+
   const handleSave = async () => {
     if (!formData.name || !formData.values) {
       toast.error("Please fill Variant Name and Values");
@@ -84,7 +100,7 @@ export default function VariantsPage() {
               </div>
             </div>
             <Badge variant={v.status === "active" ? "success" : "secondary"}>{v.status}</Badge>
-            <Button variant="ghost" size="sm" className="text-red-500" onClick={() => { setVariants(prev => prev.filter(x => (x._id || x.id) !== (v._id || v.id))); toast.success("Variant deleted"); }}>Delete</Button>
+            <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => handleDelete(v._id || v.id)}>Delete</Button>
           </div>
         ))}
       </div>

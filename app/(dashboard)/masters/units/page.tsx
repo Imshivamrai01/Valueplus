@@ -33,6 +33,22 @@ export default function UnitsPage() {
     fetchUnits();
   }, []);
 
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this unit?")) return;
+    try {
+      const res = await fetch(`/api/units?id=${id}`, { method: "DELETE" });
+      const json = await res.json();
+      if (json.success) {
+        toast.success(json.message || "Unit deleted successfully");
+        fetchUnits();
+      } else {
+        toast.error(json.error || "Failed to delete unit");
+      }
+    } catch (error) {
+      toast.error("An error occurred while deleting");
+    }
+  };
+
   const handleSave = async () => {
     if (!formData.name || !formData.abbr) {
       toast.error("Please fill Unit Name and Abbreviation");
@@ -83,7 +99,7 @@ export default function UnitsPage() {
                 <td className="px-4 py-3 capitalize text-muted-foreground">{u.type}</td>
                 <td className="px-4 py-3"><Badge variant={u.status === "active" ? "success" : "secondary"}>{u.status}</Badge></td>
                 <td className="px-4 py-3 flex gap-2">
-                  <Button variant="ghost" size="sm" className="text-red-500" onClick={() => { setUnits(prev => prev.filter(x => (x._id || x.id) !== (u._id || u.id))); toast.success("Unit deleted"); }}>Delete</Button>
+                  <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => handleDelete(u._id || u.id)}>Delete</Button>
                 </td>
               </tr>
             ))}
