@@ -11,10 +11,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils";
+import { INDIA_STATES, INDIA_STATES_AND_DISTRICTS, normalizeStateName, normalizeCityName } from "@/lib/data/locations";
 
-const STATES = ["Maharashtra","Gujarat","Delhi","Karnataka","Tamil Nadu","Rajasthan","Uttar Pradesh","West Bengal"];
 const CUSTOMER_GROUPS = ["Retail","Wholesale","Distributor","Corporate","VIP"];
-const CITIES = ["Mumbai","Pune","Ahmedabad","Delhi","Bengaluru","Chennai","Jaipur","Kolkata","Surat","Hyderabad"];
 
 export default function CustomersPage() {
   const queryClient = useQueryClient();
@@ -128,13 +127,15 @@ export default function CustomersPage() {
 
   const handleEdit = (c: any) => {
     setEditingCustomer(c);
+    const stateName = normalizeStateName(c.billingAddress?.state || "Maharashtra");
+    const cityName = normalizeCityName(c.billingAddress?.city || "Mumbai", stateName);
     setFormData({
       code: c.code,
       name: c.name,
       email: c.email || "",
       phone: c.phone || "",
-      city: c.billingAddress?.city || "Mumbai",
-      state: c.billingAddress?.state || "Maharashtra",
+      city: cityName,
+      state: stateName,
       address: c.billingAddress?.line1 || "",
       pincode: c.billingAddress?.pincode || "",
       gst: c.gstNumber || "",
@@ -307,21 +308,40 @@ export default function CustomersPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">City</Label>
-                  <Input
-                    value={formData.city}
-                    onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                    className="bg-slate-50 border-slate-300"
-                  />
+                  <Label className="text-xs font-semibold text-slate-700">State</Label>
+                  <Select 
+                    value={formData.state} 
+                    onValueChange={(v) => setFormData({ ...formData, state: v, city: "" })}
+                  >
+                    <SelectTrigger className="bg-slate-50 border-slate-300">
+                      <SelectValue placeholder="Select State" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(INDIA_STATES.includes(formData.state) ? INDIA_STATES : [...INDIA_STATES, formData.state].filter(Boolean)).map(s => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">State</Label>
-                  <Input
-                    value={formData.state}
-                    onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                    className="bg-slate-50 border-slate-300"
-                  />
+                  <Label className="text-xs font-semibold text-slate-700">District / City</Label>
+                  <Select 
+                    value={formData.city} 
+                    onValueChange={(v) => setFormData({ ...formData, city: v })}
+                    disabled={!formData.state}
+                  >
+                    <SelectTrigger className="bg-slate-50 border-slate-300">
+                      <SelectValue placeholder="Select District" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(() => {
+                        const available = INDIA_STATES_AND_DISTRICTS[formData.state] || [];
+                        const options = available.includes(formData.city) ? available : [...available, formData.city].filter(Boolean);
+                        return options.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>);
+                      })()}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-1.5">

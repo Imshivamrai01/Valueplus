@@ -9,6 +9,7 @@ import { Receipt, Users, CreditCard, Sparkles, ShoppingCart, Plus, Trash2, Print
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { INDIA_STATES, INDIA_STATES_AND_DISTRICTS, normalizeStateName, normalizeCityName } from "@/lib/data/locations";
 
 function formatCurrency(val: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(val);
@@ -74,7 +75,7 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
     customerAddress: "",
     customerCity: "",
     customerPin: "",
-    placeOfSupply: "Uttar Pradesh (09)",
+    placeOfSupply: "Uttar Pradesh",
     paymentMode: "Cash Counter",
     paymentStatus: "Paid",
     financeCompany: "Bajaj Finserv",
@@ -177,6 +178,7 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
     }
     const found = customers.find((c: any) => c._id === custId);
     if (found) {
+      const normalizedState = normalizeStateName(found.billingAddress?.state || found.state || "");
       setBillingForm((prev) => ({
         ...prev,
         customerId: found._id,
@@ -184,8 +186,8 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
         customerPhone: found.phone || "",
         customerEmail: found.email || "",
         customerGstin: found.gstNumber || found.gst || "",
-        placeOfSupply: found.billingAddress?.state || found.state || "",
-        customerCity: found.billingAddress?.city || found.city || "",
+        placeOfSupply: normalizedState,
+        customerCity: normalizeCityName(found.billingAddress?.city || found.city || "", normalizedState),
         customerPin: found.billingAddress?.pincode || found.pin || found.pincode || "",
         customerAddress: found.billingAddress?.line1 ? `${found.billingAddress.line1}` : found.address || "",
       }));
@@ -533,19 +535,34 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
 
               <div className="space-y-1.5 md:col-span-1">
                 <Label className="text-xs font-semibold text-slate-700">Place of Supply (State)</Label>
-                <Select value={billingForm.placeOfSupply} onValueChange={(v) => setBillingForm({ ...billingForm, placeOfSupply: v })}>
-                  <SelectTrigger className="bg-slate-50 border-slate-300"><SelectValue /></SelectTrigger>
+                <Select value={billingForm.placeOfSupply} onValueChange={(v) => setBillingForm({ ...billingForm, placeOfSupply: v, customerCity: "" })}>
+                  <SelectTrigger className="bg-slate-50 border-slate-300"><SelectValue placeholder="Select State" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Uttar Pradesh (09)">Uttar Pradesh (09) — Intra-state</SelectItem>
-                    <SelectItem value="Maharashtra (27)">Maharashtra (27) — Inter-state</SelectItem>
-                    <SelectItem value="Delhi (07)">Delhi (07) — Inter-state</SelectItem>
+                    {(INDIA_STATES.includes(billingForm.placeOfSupply) ? INDIA_STATES : [...INDIA_STATES, billingForm.placeOfSupply].filter(Boolean)).map(s => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-1.5 md:col-span-1">
-                <Label className="text-xs font-semibold text-slate-700">City</Label>
-                <Input value={billingForm.customerCity} onChange={(e) => setBillingForm({ ...billingForm, customerCity: e.target.value })} className="bg-slate-50 border-slate-300" />
+                <Label className="text-xs font-semibold text-slate-700">District / City</Label>
+                <Select 
+                  value={billingForm.customerCity} 
+                  onValueChange={(v) => setBillingForm({ ...billingForm, customerCity: v })}
+                  disabled={!billingForm.placeOfSupply}
+                >
+                  <SelectTrigger className="bg-slate-50 border-slate-300">
+                    <SelectValue placeholder="Select District" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(() => {
+                      const available = INDIA_STATES_AND_DISTRICTS[billingForm.placeOfSupply] || [];
+                      const options = available.includes(billingForm.customerCity) ? available : [...available, billingForm.customerCity].filter(Boolean);
+                      return options.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>);
+                    })()}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-1.5 md:col-span-1">

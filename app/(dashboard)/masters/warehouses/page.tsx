@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { INDIA_STATES, INDIA_STATES_AND_DISTRICTS } from "@/lib/data/locations";
 
 export default function WarehousesPage() {
   const [warehouses, setWarehouses] = useState<any[]>([]);
@@ -190,21 +192,40 @@ export default function WarehousesPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">City</Label>
-                  <Input
-                    value={formData.city}
-                    onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                    className="bg-slate-50 border-slate-300"
-                  />
+                  <Label className="text-xs font-semibold text-slate-700">State</Label>
+                  <Select 
+                    value={formData.state} 
+                    onValueChange={(v) => setFormData({ ...formData, state: v, city: "" })}
+                  >
+                    <SelectTrigger className="bg-slate-50 border-slate-300">
+                      <SelectValue placeholder="Select State" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(INDIA_STATES.includes(formData.state) ? INDIA_STATES : [...INDIA_STATES, formData.state].filter(Boolean)).map(s => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">State</Label>
-                  <Input
-                    value={formData.state}
-                    onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                    className="bg-slate-50 border-slate-300"
-                  />
+                  <Label className="text-xs font-semibold text-slate-700">District / City</Label>
+                  <Select 
+                    value={formData.city} 
+                    onValueChange={(v) => setFormData({ ...formData, city: v })}
+                    disabled={!formData.state}
+                  >
+                    <SelectTrigger className="bg-slate-50 border-slate-300">
+                      <SelectValue placeholder="Select District" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(() => {
+                        const available = INDIA_STATES_AND_DISTRICTS[formData.state] || [];
+                        const options = available.includes(formData.city) ? available : [...available, formData.city].filter(Boolean);
+                        return options.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>);
+                      })()}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-1.5">

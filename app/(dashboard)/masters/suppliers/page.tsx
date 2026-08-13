@@ -8,8 +8,10 @@ import { Badge } from "@/components/ui/badge";
 import { Plus, Search, Building, Edit, Trash2, FileText } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils";
+import { INDIA_STATES, INDIA_STATES_AND_DISTRICTS, normalizeStateName, normalizeCityName } from "@/lib/data/locations";
 
 export default function SuppliersPage() {
   const queryClient = useQueryClient();
@@ -136,13 +138,15 @@ export default function SuppliersPage() {
 
   const handleEdit = (s: any) => {
     setEditingSupplier(s);
+    const stateName = normalizeStateName(s.address?.state || "Maharashtra");
+    const cityName = normalizeCityName(s.address?.city || "Mumbai", stateName);
     setFormData({
       code: s.code,
       name: s.name,
       email: s.email || "",
       phone: s.phone || "",
-      city: s.address?.city || "Mumbai",
-      state: s.address?.state || "Maharashtra",
+      city: cityName,
+      state: stateName,
       gst: s.gstNumber || "",
     });
     setIsFormOpen(true);
@@ -295,22 +299,41 @@ export default function SuppliersPage() {
                   />
                 </div>
 
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">City</Label>
-                  <Input
-                    value={formData.city}
-                    onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                    className="bg-slate-50 border-slate-300"
-                  />
-                </div>
-
                 <div className="space-y-1.5 md:col-span-2">
                   <Label className="text-xs font-semibold text-slate-700">State / Region</Label>
-                  <Input
-                    value={formData.state}
-                    onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                    className="bg-slate-50 border-slate-300"
-                  />
+                  <Select 
+                    value={formData.state} 
+                    onValueChange={(v) => setFormData({ ...formData, state: v, city: "" })}
+                  >
+                    <SelectTrigger className="bg-slate-50 border-slate-300">
+                      <SelectValue placeholder="Select State" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(INDIA_STATES.includes(formData.state) ? INDIA_STATES : [...INDIA_STATES, formData.state].filter(Boolean)).map(s => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">District / City</Label>
+                  <Select 
+                    value={formData.city} 
+                    onValueChange={(v) => setFormData({ ...formData, city: v })}
+                    disabled={!formData.state}
+                  >
+                    <SelectTrigger className="bg-slate-50 border-slate-300">
+                      <SelectValue placeholder="Select District" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(() => {
+                        const available = INDIA_STATES_AND_DISTRICTS[formData.state] || [];
+                        const options = available.includes(formData.city) ? available : [...available, formData.city].filter(Boolean);
+                        return options.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>);
+                      })()}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </div>
