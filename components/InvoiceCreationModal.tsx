@@ -5,11 +5,12 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Receipt, Users, CreditCard, Sparkles, ShoppingCart, Plus, Trash2, Printer, XCircle } from "lucide-react";
+import { Receipt, Users, CreditCard, Sparkles, ShoppingCart, Plus, Trash2, Printer, XCircle, Phone, UserCheck, UserPlus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { INDIA_STATES, INDIA_STATES_AND_DISTRICTS, normalizeStateName, normalizeCityName } from "@/lib/data/locations";
+import { saveOfflineInvoice, getCachedCatalogItems, getCachedCustomers } from "@/lib/offline-storage";
 
 function formatCurrency(val: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(val);
@@ -17,22 +18,31 @@ function formatCurrency(val: number) {
 
 export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoice" }: { isOpen: boolean; onClose: () => void; onSuccess?: () => void; mode?: "invoice" | "estimate" | "sales-order" | "credit-note" }) {
   const queryClient = useQueryClient();
+  const [offlineInvoiceToPrint, setOfflineInvoiceToPrint] = useState<any>(null);
 
-  const { data: customers = [] } = useQuery({
+  const { data: customers = getCachedCustomers() } = useQuery({
     queryKey: ["customers"],
     queryFn: async () => {
-      const res = await fetch("/api/customers");
-      const json = await res.json();
-      return json.success ? json.data : [];
+      try {
+        const res = await fetch("/api/customers");
+        const json = await res.json();
+        return json.success ? json.data : getCachedCustomers();
+      } catch (e) {
+        return getCachedCustomers();
+      }
     }
   });
 
-  const { data: catalogItems = [] } = useQuery({
+  const { data: catalogItems = getCachedCatalogItems() } = useQuery({
     queryKey: ["items"],
     queryFn: async () => {
-      const res = await fetch("/api/items");
-      const json = await res.json();
-      return json.success ? json.data : [];
+      try {
+        const res = await fetch("/api/items");
+        const json = await res.json();
+        return json.success ? json.data : getCachedCatalogItems();
+      } catch (e) {
+        return getCachedCatalogItems();
+      }
     }
   });
 
@@ -168,12 +178,60 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
     }
   }, [billCalculations.grandTotal, billingForm.downPayment, billingForm.financeSchemeType, billingForm.financeInterestRate, billingForm.financeTenureMonths]);
 
+  const [phoneLookupStatus, setPhoneLookupStatus] = useState<"idle" | "existing" | "new">("idle");
+
+  const handlePhoneLookup = (phone: string) => {
+    const cleanPhone = phone.replace(/\D/g, '');
+    setBillingForm((prev) => ({ ...prev, customerPhone: cleanPhone }));
+
+    if (cleanPhone.length < 10) {
+      setPhoneLookupStatus("idle");
+      return;
+    }
+
+    if (cleanPhone.length === 10) {
+      const found = customers.find((c: any) => c.phone === cleanPhone);
+      if (found) {
+        const normalizedState = normalizeStateName(found.billingAddress?.state || found.state || "");
+        setBillingForm((prev) => ({
+          ...prev,
+          customerId: found._id,
+          customerName: found.name,
+          customerPhone: cleanPhone,
+          customerEmail: found.email || "",
+          customerGstin: found.gstNumber || found.gst || "",
+          placeOfSupply: normalizedState,
+          customerCity: normalizeCityName(found.billingAddress?.city || found.city || "", normalizedState),
+          customerPin: found.billingAddress?.pincode || found.pin || found.pincode || "",
+          customerAddress: found.billingAddress?.line1 ? `${found.billingAddress.line1}` : found.address || "",
+        }));
+        setPhoneLookupStatus("existing");
+        toast.success(`Customer found: ${found.name}`);
+      } else {
+        setBillingForm((prev) => ({
+          ...prev,
+          customerId: "new",
+          customerName: "",
+          customerPhone: cleanPhone,
+          customerEmail: "",
+          customerGstin: "",
+          customerAddress: "",
+          customerCity: "",
+          customerPin: "",
+        }));
+        setPhoneLookupStatus("new");
+      }
+    }
+  };
+
+  // Keep old function for estimate loading compatibility
   const handleSelectCustomer = (custId: string) => {
     if (custId === "new") {
       setBillingForm((prev) => ({
         ...prev,
         customerId: "new", customerName: "", customerPhone: "", customerEmail: "", customerGstin: "", customerAddress: "", customerCity: "", customerPin: ""
       }));
+      setPhoneLookupStatus("new");
       return;
     }
     const found = customers.find((c: any) => c._id === custId);
@@ -191,6 +249,7 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
         customerPin: found.billingAddress?.pincode || found.pin || found.pincode || "",
         customerAddress: found.billingAddress?.line1 ? `${found.billingAddress.line1}` : found.address || "",
       }));
+      setPhoneLookupStatus("existing");
     }
   };
 
@@ -284,20 +343,45 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
 
   const createInvoiceMutation = useMutation({
     mutationFn: async (payload: any) => {
-      const res = await fetch("/api/invoices", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      const json = await res.json();
-      if (!json.success) throw new Error(json.error || "Failed to generate invoice");
-      return json.data;
+      // If offline, save directly to offline queue without throwing
+      if (!navigator.onLine) {
+        const offlineRecord = saveOfflineInvoice(payload);
+        return { isOffline: true, data: offlineRecord };
+      }
+
+      try {
+        const res = await fetch("/api/invoices", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error || "Failed to generate invoice");
+        return { isOffline: false, data: json.data };
+      } catch (err: any) {
+        // Network drop during request -> fallback to local offline queue
+        console.warn("Network request failed, saving to offline storage:", err);
+        const offlineRecord = saveOfflineInvoice(payload);
+        return { isOffline: true, data: offlineRecord };
+      }
     },
-    onSuccess: () => {
-      toast.success("Invoice generated successfully");
-      queryClient.invalidateQueries({ queryKey: ["invoices"] });
-      onSuccess && onSuccess();
-      onClose();
+    onSuccess: (result: any) => {
+      if (result.isOffline) {
+        toast.warning("⚡ Offline Mode: Tax Invoice generated & queued locally. It will auto-sync when internet reconnects!", { duration: 6000 });
+        setOfflineInvoiceToPrint(result.data);
+      } else {
+        toast.success("Invoice generated successfully");
+        queryClient.invalidateQueries({ queryKey: ["invoices"] });
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+        queryClient.invalidateQueries({ queryKey: ["items"] });
+        queryClient.invalidateQueries({ queryKey: ["customers"] });
+        queryClient.invalidateQueries({ queryKey: ["reports"] });
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("erp-invoice-created"));
+        }
+        onSuccess && onSuccess();
+        onClose();
+      }
     },
     onError: (error: any) => {
       toast.error(error.message || "Failed to generate invoice");
@@ -306,9 +390,44 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
 
   const handleFinalSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!billingForm.customerPhone || billingForm.customerPhone.length !== 10) {
+      toast.error("Mobile number (10 digits) is mandatory.");
+      return;
+    }
     if (!billingForm.customerName || billingForm.lineItems.length === 0) {
       toast.error("Customer Name and at least 1 item are required.");
       return;
+    }
+
+    // Auto-create new customer in MongoDB if phone is new
+    if (billingForm.customerId === "new" && billingForm.customerPhone) {
+      try {
+        const newCustPayload = {
+          name: billingForm.customerName,
+          phone: billingForm.customerPhone,
+          email: billingForm.customerEmail,
+          gstNumber: billingForm.customerGstin,
+          state: billingForm.placeOfSupply,
+          city: billingForm.customerCity,
+          address: billingForm.customerAddress,
+          pincode: billingForm.customerPin,
+          customerGroup: "Retail",
+          creditLimit: 100000,
+          status: "active",
+        };
+        const custRes = await fetch("/api/customers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(newCustPayload)
+        });
+        const custJson = await custRes.json();
+        if (custJson.success && custJson.data?._id) {
+          billingForm.customerId = custJson.data._id;
+          queryClient.invalidateQueries({ queryKey: ["customers"] });
+        }
+      } catch (err) {
+        console.error("Auto-create customer failed:", err);
+      }
     }
     const formattedItems = billingForm.lineItems.map(item => {
       const lineTaxable = ((item.rate || 0) - (item.discount || 0)) * (item.qty || 1);
@@ -405,7 +524,8 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <>
+      <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto p-0 rounded-2xl border-none shadow-2xl">
         {/* Header */}
         <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-6 rounded-t-2xl flex items-center justify-between">
@@ -459,47 +579,62 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
               )}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-1.5 md:col-span-2">
-                <Label className="text-xs font-semibold text-slate-700">Customer / Business Name *</Label>
-                {billingForm.customerId === "new" ? (
-                  <div className="flex items-center gap-2">
-                    <Input placeholder="Enter New Customer Name" value={billingForm.customerName} onChange={(e) => setBillingForm({ ...billingForm, customerName: e.target.value })} className="bg-slate-50 border-slate-300" autoFocus />
-                    <Button type="button" variant="ghost" size="icon" className="shrink-0 h-9 w-9" onClick={() => setBillingForm({ ...billingForm, customerId: "", customerName: "" })}><XCircle className="w-4 h-4" /></Button>
-                  </div>
-                ) : (
-                  <Select value={billingForm.customerId} onValueChange={handleSelectCustomer}>
-                    <SelectTrigger className="bg-slate-50 border-slate-300">
-                      <SelectValue placeholder="Search customer or walk-in..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="new" className="font-bold text-[#3F63AD] bg-blue-50/50 mb-1">+ Create New Walk-in Customer...</SelectItem>
-                      {customers.map((c: any) => (
-                        <SelectItem key={c._id} value={c._id}>{c.name} ({c.phone || c.billingAddress?.city || ""})</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+              {/* MOBILE NUMBER — PRIMARY FIELD */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-[#3F63AD]" /> Customer Mobile Number *
+                </Label>
+                <div className="relative">
+                  <Input 
+                    type="text"
+                    maxLength={10}
+                    placeholder="Enter 10-digit mobile number"
+                    value={billingForm.customerPhone} 
+                    onChange={(e) => handlePhoneLookup(e.target.value)}
+                    className={cn(
+                      "bg-slate-50 border-slate-300 font-mono text-base tracking-wider pr-10",
+                      phoneLookupStatus === "existing" && "border-emerald-400 bg-emerald-50/50 ring-2 ring-emerald-100",
+                      phoneLookupStatus === "new" && "border-amber-400 bg-amber-50/50 ring-2 ring-amber-100"
+                    )}
+                    autoFocus
+                  />
+                  {phoneLookupStatus === "existing" && (
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2">
+                      <UserCheck className="w-4 h-4 text-emerald-600" />
+                    </span>
+                  )}
+                  {phoneLookupStatus === "new" && (
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2">
+                      <UserPlus className="w-4 h-4 text-amber-600" />
+                    </span>
+                  )}
+                </div>
+                {phoneLookupStatus === "existing" && (
+                  <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1 mt-0.5"><UserCheck className="w-3 h-3" /> Existing Customer — Data Prefilled</span>
+                )}
+                {phoneLookupStatus === "new" && (
+                  <span className="text-[10px] font-bold text-amber-600 flex items-center gap-1 mt-0.5"><UserPlus className="w-3 h-3" /> New Customer — Will be auto-created</span>
                 )}
               </div>
 
-                <div className="space-y-1">
-                  <Label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{mode === "estimate" ? "Estimate No." : mode === "sales-order" ? "Order No." : "Invoice No."}</Label>
-                  <Input value={billingForm.invoiceNo} onChange={e => setBillingForm({ ...billingForm, invoiceNo: e.target.value })} className="h-8 font-mono text-xs font-bold text-[#3F63AD] bg-blue-50 border-blue-200" />
-                </div>
-
+              {/* CUSTOMER NAME — Always a text input */}
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-700">Phone Contact</Label>
+                <Label className="text-xs font-semibold text-slate-700">Customer Name *</Label>
                 <Input 
-                  type="text"
-                  maxLength={10}
-                  value={billingForm.customerPhone} 
-                  onChange={(e) => {
-                    const val = e.target.value.replace(/\D/g, '');
-                    if (val.length <= 10) {
-                      setBillingForm({ ...billingForm, customerPhone: val });
-                    }
-                  }} 
-                  className="bg-slate-50 border-slate-300 font-mono" 
+                  placeholder="Enter Customer Name" 
+                  value={billingForm.customerName} 
+                  onChange={(e) => setBillingForm({ ...billingForm, customerName: e.target.value })} 
+                  className={cn(
+                    "bg-slate-50 border-slate-300",
+                    phoneLookupStatus === "existing" && "bg-emerald-50/30"
+                  )}
+                  readOnly={phoneLookupStatus === "existing"}
                 />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{mode === "estimate" ? "Estimate No." : mode === "sales-order" ? "Order No." : "Invoice No."}</Label>
+                <Input value={billingForm.invoiceNo} onChange={e => setBillingForm({ ...billingForm, invoiceNo: e.target.value })} className="h-8 font-mono text-xs font-bold text-[#3F63AD] bg-blue-50 border-blue-200" />
               </div>
 
                 <div className="space-y-1">
@@ -817,5 +952,130 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
         </form>
       </DialogContent>
     </Dialog>
+
+    {/* ─── OFFLINE INVOICE PRINT & PDF PREVIEW DIALOG ───────────────── */}
+    <Dialog open={!!offlineInvoiceToPrint} onOpenChange={(open) => {
+      if (!open) {
+        setOfflineInvoiceToPrint(null);
+        onSuccess?.();
+        onClose();
+      }
+    }}>
+      <DialogContent className="max-w-3xl p-0 rounded-2xl border-none shadow-2xl overflow-hidden bg-white max-h-[92vh] flex flex-col">
+        {offlineInvoiceToPrint && (
+          <div className="flex flex-col h-full">
+            {/* Offline Alert Banner */}
+            <div className="bg-amber-500 text-slate-950 px-6 py-2.5 text-xs font-bold flex items-center justify-between">
+              <span>⚡ OFFLINE MODE INVOICE — Saved locally & queued for cloud sync</span>
+              <span className="font-mono text-[11px] bg-black/10 px-2 py-0.5 rounded">
+                Ref: {offlineInvoiceToPrint.offlineId}
+              </span>
+            </div>
+
+            <div className="p-8 space-y-6 overflow-y-auto flex-1">
+              {/* Company Header */}
+              <div className="flex items-center justify-between border-b pb-4">
+                <div>
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tight">VALUEPLUS RETAIL PVT LTD</h2>
+                  <p className="text-xs text-slate-500">Official GST Tax Invoice • Electronics & Appliances</p>
+                  <p className="text-xs text-slate-500 font-mono mt-0.5">GSTIN: 09AABCV1234F1Z8</p>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs font-bold text-slate-400 uppercase">Invoice #</span>
+                  <p className="text-lg font-black font-mono text-[#3F63AD]">{offlineInvoiceToPrint.invoiceNumber || offlineInvoiceToPrint.invoiceNo}</p>
+                  <p className="text-xs text-slate-500">{offlineInvoiceToPrint.date || new Date().toISOString().split("T")[0]}</p>
+                </div>
+              </div>
+
+              {/* Customer Info */}
+              <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl text-xs">
+                <div>
+                  <span className="text-slate-400 block font-semibold uppercase text-[10px]">Billed To (Customer)</span>
+                  <p className="font-bold text-slate-900 text-sm">{offlineInvoiceToPrint.customerName}</p>
+                  <p className="text-slate-600">Phone: {offlineInvoiceToPrint.customerPhone || "N/A"}</p>
+                  <p className="text-slate-600">{offlineInvoiceToPrint.customerAddress || "Retail Counter Sale"}</p>
+                </div>
+                <div className="text-right">
+                  <span className="text-slate-400 block font-semibold uppercase text-[10px]">Payment Details</span>
+                  <p className="font-bold text-slate-800">{offlineInvoiceToPrint.paymentMode || "Cash Counter"}</p>
+                  <p className="font-bold text-emerald-600 uppercase mt-1">Status: Paid</p>
+                </div>
+              </div>
+
+              {/* Items Table */}
+              <div className="border rounded-xl overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-100 border-b font-bold text-slate-700">
+                    <tr>
+                      <th className="px-3 py-2 text-left">#</th>
+                      <th className="px-3 py-2 text-left">Item Description</th>
+                      <th className="px-3 py-2 text-right">Qty</th>
+                      <th className="px-3 py-2 text-right">Rate</th>
+                      <th className="px-3 py-2 text-right">GST</th>
+                      <th className="px-3 py-2 text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {(offlineInvoiceToPrint.items || []).map((it: any, idx: number) => (
+                      <tr key={idx}>
+                        <td className="px-3 py-2 text-slate-400">{idx + 1}</td>
+                        <td className="px-3 py-2 font-bold text-slate-900">
+                          {it.itemName || it.name}
+                          {it.description && <span className="block font-mono text-[10px] text-slate-500 font-normal">{it.description}</span>}
+                        </td>
+                        <td className="px-3 py-2 text-right font-medium">{it.quantity}</td>
+                        <td className="px-3 py-2 text-right">{formatCurrency(it.rate)}</td>
+                        <td className="px-3 py-2 text-right">{it.gstRate || 18}%</td>
+                        <td className="px-3 py-2 text-right font-bold text-slate-900">{formatCurrency(it.amount || ((it.quantity * it.rate) * 1.18))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Totals */}
+              <div className="border-t pt-4 flex flex-col items-end space-y-1 text-xs">
+                <div className="flex justify-between w-60 text-slate-600">
+                  <span>Taxable Subtotal:</span>
+                  <span className="font-mono">{formatCurrency(offlineInvoiceToPrint.taxableAmount || offlineInvoiceToPrint.subtotal)}</span>
+                </div>
+                <div className="flex justify-between w-60 text-slate-600">
+                  <span>Total GST:</span>
+                  <span className="font-mono">{formatCurrency(offlineInvoiceToPrint.totalGST || offlineInvoiceToPrint.gst)}</span>
+                </div>
+                <div className="flex justify-between w-60 text-base font-black text-slate-900 pt-2 border-t mt-2">
+                  <span>Grand Total:</span>
+                  <span className="font-mono text-[#3F63AD]">{formatCurrency(offlineInvoiceToPrint.total)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="bg-slate-100 px-6 py-4 border-t flex items-center justify-between shrink-0">
+              <span className="text-xs text-slate-500 font-medium">Customer receipt ready to print on counter.</span>
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  onClick={() => {
+                    setOfflineInvoiceToPrint(null);
+                    onSuccess?.();
+                    onClose();
+                  }}
+                >
+                  Close & Done
+                </Button>
+                <Button 
+                  onClick={() => window.print()} 
+                  className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white font-bold"
+                >
+                  <Printer className="w-4 h-4 mr-2" /> Print Tax Invoice
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  </>
   );
 }

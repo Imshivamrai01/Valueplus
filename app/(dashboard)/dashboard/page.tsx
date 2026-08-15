@@ -7,10 +7,10 @@ import {
   Users, AlertTriangle, ArrowRight, Eye, MoreHorizontal,
   IndianRupee, Receipt, Wallet, CreditCard, Activity,
   Star, Sparkles, Calendar, Clock, CheckCircle2, Search,
-  X, Filter, ExternalLink, Printer, Send, ShieldAlert, Plus, FileText, Download, Trash2, Building, Building2, UserCheck, Tv, Smartphone, Laptop, Fan, HardDrive, Headphones,
+  X, Filter, ExternalLink, Printer, Send, ShieldAlert, Plus, FileText, Download, Trash2, Building, Building2, UserCheck, Tv, Smartphone, Laptop, Fan, HardDrive, Headphones, BarChart3, PieChart as PieChartIcon, ArrowUpRight, MessageCircle
 } from "lucide-react";
 import {
-  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
+  AreaChart, Area, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import { Badge } from "@/components/ui/badge";
@@ -36,11 +36,18 @@ import {
 import { cn, formatCurrency, indianNumberFormat, formatDateShort } from "@/lib/utils";
 import ValueplusInvoice from "@/app/invoice/page";
 import { InvoiceCreationModal } from "@/components/InvoiceCreationModal";
+import { DateRangeFilter, resolveDateRange } from "@/components/shared/date-range-filter";
 
 
 
 // ─── DUMMY DATA FOR CHARTS ────────────────────────────────────
-const DAILY_REVENUE = [
+const BASE_PAYMENT_MODES = [
+  { name: "Cash", value: 222789, color: "#76C043" },
+  { name: "UPI/Online", value: 316111, color: "#3F63AD" },
+  { name: "Finance", value: 176989, color: "#F59E0B" },
+];
+
+const BASE_DAILY_REVENUE = [
   { date: "25 Jul", revenue: 85000, expense: 52000, profit: 33000 },
   { date: "26 Jul", revenue: 92000, expense: 58000, profit: 34000 },
   { date: "27 Jul", revenue: 110000, expense: 65000, profit: 45000 },
@@ -74,18 +81,24 @@ const TOP_CUSTOMERS = [
 // ─── CUSTOM TOOLTIP ────────────────────────────────────────────
 function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string }>; label?: string }) {
   if (active && payload && payload.length) {
+    const total = payload.reduce((acc, curr) => acc + (curr.value || 0), 0);
     return (
-      <div className="bg-white border border-border rounded-xl shadow-xl p-3 text-sm">
-        <p className="font-semibold text-foreground mb-1.5">{label}</p>
-        {payload.map((entry) => (
-          <div key={entry.name} className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-1.5">
-              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
-              <span className="text-muted-foreground capitalize">{entry.name}</span>
+      <div className="bg-[#1B2537]/95 backdrop-blur-md border border-white/20 rounded-xl shadow-2xl p-3.5 text-xs text-white min-w-[210px] space-y-2">
+        <div className="flex items-center justify-between pb-1.5 border-b border-white/10">
+          <span className="font-bold text-slate-300">{label}</span>
+          <span className="font-mono font-extrabold text-[#76C043]">{formatCurrency(total)}</span>
+        </div>
+        <div className="space-y-1.5">
+          {payload.map((entry) => (
+            <div key={entry.name} className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full shadow-sm" style={{ backgroundColor: entry.color }} />
+                <span className="text-slate-300 capitalize">{entry.name}</span>
+              </div>
+              <span className="font-mono font-bold text-slate-100">{formatCurrency(entry.value)}</span>
             </div>
-            <span className="font-semibold">{indianNumberFormat(entry.value)}</span>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     );
   }
@@ -113,18 +126,35 @@ export default function DashboardPage() {
   const router = useRouter();
 
   // Period Filter State
-  const [startDate, setStartDate] = useState(() => {
-    const d = new Date();
-    d.setDate(1);
-    return d.toISOString().split("T")[0];
-  });
+  const [dateFilter, setDateFilter] = useState("Today");
+  const [startDate, setStartDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split("T")[0]);
 
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<any>(null);
 
+  // Widget specific states
+  const [widgetFilters, setWidgetFilters] = useState({
+    trends: "Today",
+    pie: "Today",
+    expenses: "Today",
+    products: "Today",
+    customers: "Today",
+    logs: "Today",
+    recent: "Today"
+  });
+  const [widgetData, setWidgetData] = useState<any>({});
+  const [widgetLoading, setWidgetLoading] = useState({
+    trends: false,
+    pie: false,
+    expenses: false,
+    products: false,
+    customers: false,
+    logs: false,
+    recent: false
+  });
+
   // Drilldown Modal State
-  const [activeModal, setActiveModal] = useState<"cash" | "online" | "finance" | "orders" | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
   // Form Modals State
@@ -140,13 +170,97 @@ export default function DashboardPage() {
   // Submitting State
   const [submitting, setSubmitting] = useState(false);
 
-
-
   // Simple Forms
   const [estimateForm, setEstimateForm] = useState({ customerName: "", total: "", notes: "" });
   const [customerForm, setCustomerForm] = useState({ name: "", phone: "", email: "", gstNumber: "", city: "Mumbai", creditLimit: "50000" });
   const [itemForm, setItemForm] = useState({ name: "", hsnCode: "8471", gstRate: "18", purchasePrice: "", sellingPrice: "", openingStock: "10" });
   const [paymentForm, setPaymentForm] = useState({ partyName: "", amount: "", paymentMode: "Cash Counter", notes: "" });
+
+  const fetchWidgetData = async (widgetName: string, filterValue: string, customStart?: string, customEnd?: string) => {
+    setWidgetLoading(prev => ({ ...prev, [widgetName]: true }));
+    try {
+      const { start, end } = resolveDateRange(filterValue, customStart, customEnd);
+      const res = await fetch(`/api/dashboard/stats?startDate=${start}&endDate=${end}`);
+      const json = await res.json();
+      if (json.success) {
+        setWidgetData((prev: any) => ({ ...prev, [widgetName]: json }));
+      }
+    } catch (err) {
+      console.error(`Error fetching widget ${widgetName}:`, err);
+    } finally {
+      setWidgetLoading(prev => ({ ...prev, [widgetName]: false }));
+    }
+  };
+
+  const refreshAllDashboard = () => {
+    fetchStats();
+    Object.keys(widgetFilters).forEach(key => {
+      fetchWidgetData(key, widgetFilters[key as keyof typeof widgetFilters]);
+    });
+  };
+
+  useEffect(() => {
+    Object.keys(widgetFilters).forEach(key => {
+      fetchWidgetData(key, widgetFilters[key as keyof typeof widgetFilters]);
+    });
+
+    const handleSync = () => {
+      refreshAllDashboard();
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("erp-invoice-created", handleSync);
+      window.addEventListener("erp-purchase-created", handleSync);
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("erp-invoice-created", handleSync);
+        window.removeEventListener("erp-purchase-created", handleSync);
+      }
+    };
+  }, []);
+
+  const handleWidgetFilterChange = (widgetName: string, val: string, customStart?: string, customEnd?: string) => {
+    setWidgetFilters(prev => ({ ...prev, [widgetName]: val }));
+    fetchWidgetData(widgetName, val, customStart, customEnd);
+  };
+
+  const handleUniversalFilterChange = (val: string, customStart?: string, customEnd?: string) => {
+    setDateFilter(val);
+    if (val === "Custom Date" && customStart && customEnd) {
+      setStartDate(customStart);
+      setEndDate(customEnd);
+      const newFilters = {
+        trends: val,
+        pie: val,
+        expenses: val,
+        products: val,
+        customers: val,
+        logs: val,
+        recent: val
+      };
+      setWidgetFilters(newFilters);
+      Object.keys(newFilters).forEach(key => {
+        fetchWidgetData(key, val, customStart, customEnd);
+      });
+    } else if (val !== "Custom Date") {
+      const { start, end } = resolveDateRange(val);
+      setStartDate(start);
+      setEndDate(end);
+      const newFilters = {
+        trends: val,
+        pie: val,
+        expenses: val,
+        products: val,
+        customers: val,
+        logs: val,
+        recent: val
+      };
+      setWidgetFilters(newFilters);
+      Object.keys(newFilters).forEach(key => {
+        fetchWidgetData(key, val);
+      });
+    }
+  };
 
   // Fetch Dashboard Stats
   const fetchStats = async () => {
@@ -163,6 +277,48 @@ export default function DashboardPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    
+    if (dateFilter === "Today") {
+      setStartDate(new Date().toISOString().split("T")[0]);
+      setEndDate(new Date().toISOString().split("T")[0]);
+    } else if (dateFilter === "Yesterday") {
+      const y = new Date();
+      y.setDate(y.getDate() - 1);
+      setStartDate(y.toISOString().split("T")[0]);
+      setEndDate(y.toISOString().split("T")[0]);
+    } else if (dateFilter === "Last 7 Days") {
+      const d = new Date();
+      d.setDate(d.getDate() - 7);
+      setStartDate(d.toISOString().split("T")[0]);
+      setEndDate(new Date().toISOString().split("T")[0]);
+    } else if (dateFilter === "This Month") {
+      const d = new Date();
+      d.setDate(1);
+      setStartDate(d.toISOString().split("T")[0]);
+      setEndDate(new Date().toISOString().split("T")[0]);
+    } else if (dateFilter === "Last Month") {
+      const d = new Date();
+      d.setMonth(d.getMonth() - 1);
+      d.setDate(1);
+      const endD = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+      setStartDate(d.toISOString().split("T")[0]);
+      setEndDate(endD.toISOString().split("T")[0]);
+    } else if (dateFilter === "Last 3 Months") {
+      const d = new Date();
+      d.setMonth(d.getMonth() - 3);
+      setStartDate(d.toISOString().split("T")[0]);
+      setEndDate(new Date().toISOString().split("T")[0]);
+    } else if (dateFilter === "Last Year") {
+      const d = new Date();
+      d.setFullYear(d.getFullYear() - 1);
+      setStartDate(d.toISOString().split("T")[0]);
+      setEndDate(new Date().toISOString().split("T")[0]);
+    }
+  }, [dateFilter]);
 
   useEffect(() => {
     fetchStats();
@@ -187,7 +343,7 @@ export default function DashboardPage() {
       if (json.success) {
         setOpenEstimateModal(false);
         setEstimateForm({ customerName: "", total: "", notes: "" });
-        await fetchStats();
+        refreshAllDashboard();
       }
     } catch (err) {
       console.error(err);
@@ -210,7 +366,7 @@ export default function DashboardPage() {
       if (json.success) {
         setOpenCustomerModal(false);
         setCustomerForm({ name: "", phone: "", email: "", gstNumber: "", city: "Mumbai", creditLimit: "50000" });
-        await fetchStats();
+        refreshAllDashboard();
       }
     } catch (err) {
       console.error(err);
@@ -233,7 +389,7 @@ export default function DashboardPage() {
       if (json.success) {
         setOpenItemModal(false);
         setItemForm({ name: "", hsnCode: "8471", gstRate: "18", purchasePrice: "", sellingPrice: "", openingStock: "10" });
-        await fetchStats();
+        refreshAllDashboard();
       }
     } catch (err) {
       console.error(err);
@@ -256,7 +412,7 @@ export default function DashboardPage() {
       if (json.success) {
         setOpenPaymentModal(false);
         setPaymentForm({ partyName: "", amount: "", paymentMode: "Cash Counter", notes: "" });
-        await fetchStats();
+        refreshAllDashboard();
       }
     } catch (err) {
       console.error(err);
@@ -265,15 +421,24 @@ export default function DashboardPage() {
     }
   };
 
+  // Derived metrics based on real API data
   const metrics = data?.metrics || {
-    totalRevenue: 493100,
-    cashRevenue: 222789,
-    onlineRevenue: 316111,
-    financeRevenue: 176989,
-    totalOrders: 6,
-    pendingOrders: 2,
-    lowStockItems: 2,
+    totalRevenue: 0,
+    cashRevenue: 0,
+    onlineRevenue: 0,
+    financeRevenue: 0,
+    totalOrders: 0,
+    pendingOrders: 0,
+    lowStockItems: 0,
   };
+
+  const PAYMENT_MODES = [
+    { name: "Cash", value: metrics.cashRevenue || 0, color: "#76C043" },
+    { name: "UPI/Online", value: metrics.onlineRevenue || 0, color: "#3F63AD" },
+    { name: "Finance", value: metrics.financeRevenue || 0, color: "#F59E0B" },
+  ];
+
+  const DAILY_REVENUE = data?.dailyRevenue || [];
 
   const transactions = data?.transactions || { cash: [], online: [], finance: [] };
   const recentInvoices = data?.recentInvoices || [];
@@ -301,59 +466,29 @@ export default function DashboardPage() {
   return (
     <div className="page-container">
       {/* ─── HEADER WITH PERIOD FILTER TABS ────────────────────────── */}
-      <div className="flex flex-col xl:flex-row gap-6 items-start xl:items-center justify-between bg-white p-6 rounded-[24px] border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
+      <div className="flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between bg-white px-6 py-4 rounded-[8px] border border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
         <div className="flex items-center gap-4 flex-1">
-          <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center border border-blue-100/50 flex-shrink-0">
-            <Activity className="w-6 h-6 text-[#3F63AD]" />
-          </div>
           <div className="min-w-0">
-            <h1 className="text-2xl font-black text-slate-900 tracking-tight flex flex-wrap items-center gap-3">
-              Executive Dashboard
-              <Badge variant="success" className="text-[10px] px-2.5 py-1 uppercase tracking-widest bg-emerald-50 text-emerald-600 border border-emerald-200/50 font-bold shadow-sm whitespace-nowrap flex items-center flex-shrink-0">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse mr-1.5" />
-                Live Sync
-              </Badge>
+            <h1 className="text-xl font-bold text-slate-800 tracking-tight">
+              Business Overview
             </h1>
-            <p className="text-sm text-slate-500 font-medium mt-1">
-              Real-time Sales, Cash, Online & Finance Audit · <span className="whitespace-nowrap">FY 2026–27</span>
-            </p>
           </div>
         </div>
 
-        {/* PERIOD FILTER DATE PICKERS */}
+        {/* UNIVERSAL TIME FILTER */}
         <div className="flex flex-col sm:flex-row items-center gap-3 w-full xl:w-auto mt-2 xl:mt-0">
-          <div className="flex items-center gap-2">
-            {/* FROM DATE */}
-            <div className="flex items-center bg-slate-50 border border-slate-200 rounded-[12px] px-3 h-11 shadow-sm focus-within:border-blue-300 focus-within:ring-2 focus-within:ring-blue-100 transition-all">
-              <span className="text-[11px] text-slate-500 font-bold uppercase mr-2 tracking-wide">From</span>
-              <input 
-                type="date" 
-                value={startDate} 
-                onChange={(e) => setStartDate(e.target.value)}
-                className="bg-transparent text-sm font-bold text-slate-700 outline-none w-[115px] cursor-pointer"
-              />
-            </div>
-
-            {/* TO DATE */}
-            <div className="flex items-center bg-slate-50 border border-slate-200 rounded-[12px] px-3 h-11 shadow-sm focus-within:border-blue-300 focus-within:ring-2 focus-within:ring-blue-100 transition-all">
-              <span className="text-[11px] text-slate-500 font-bold uppercase mr-2 tracking-wide">To</span>
-              <input 
-                type="date" 
-                value={endDate} 
-                onChange={(e) => setEndDate(e.target.value)}
-                className="bg-transparent text-sm font-bold text-slate-700 outline-none w-[115px] cursor-pointer"
-              />
-            </div>
-          </div>
+          <DateRangeFilter 
+            value={dateFilter} 
+            onChange={handleUniversalFilterChange} 
+            showIcon={true} 
+            className="w-[180px] h-9" 
+          />
         </div>
 
         {/* HEADER QUICK BUTTONS */}
-        <div className="flex flex-col sm:flex-row items-center gap-3 w-full xl:w-auto mt-2 xl:mt-0">
-          <Button variant="outline" onClick={() => router.push("/reports")} className="h-11 px-5 rounded-[14px] font-semibold border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm w-full sm:w-auto">
-            <Eye className="w-4 h-4 mr-2 text-[#3F63AD]" /> View Reports
-          </Button>
-          <Button onClick={handleOpenInvoiceModal} className="h-11 px-6 rounded-[14px] font-bold bg-gradient-to-r from-[#3F63AD] to-[#2C4A85] text-white hover:shadow-lg hover:shadow-blue-500/25 transition-all w-full sm:w-auto border-none">
-            <Receipt className="w-4 h-4 mr-2" /> Create Invoice
+        <div className="flex flex-col sm:flex-row items-center gap-3 w-full xl:w-auto mt-2 xl:mt-0 border-l pl-4 border-slate-200">
+          <Button onClick={handleOpenInvoiceModal} className="h-9 px-5 rounded-[4px] font-bold bg-[#76C043] hover:bg-[#60a82c] text-white shadow-sm transition-all w-full sm:w-auto border-none">
+            <Receipt className="w-4 h-4 mr-2" /> New Bill
           </Button>
         </div>
       </div>
@@ -363,326 +498,728 @@ export default function DashboardPage() {
         <div>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-bold text-foreground uppercase tracking-wider flex items-center gap-2">
-              <CreditCard className="w-4 h-4 text-[#3F63AD]" /> Payment & Sales Audit
+              <CreditCard className="w-4 h-4 text-[#3F63AD]" /> Key Business Metrics
             </h2>
             <span className="text-xs text-muted-foreground font-medium">Click any card to open detailed transaction ledger</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* CASH PAYMENT CARD */}
-            <div
-              onClick={() => { setActiveModal("cash"); setSearchQuery(""); }}
-              className="metric-card cursor-pointer hover:border-[#76C043] transition-all hover:shadow-md group relative overflow-hidden bg-gradient-to-br from-white to-emerald-50/40"
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-[#76C043]" />
-                    <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Cash Collections</p>
+            {loading ? (
+              Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="bg-white rounded-[8px] border border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.05)] p-4 flex flex-col justify-between animate-pulse">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="h-3 bg-slate-200 rounded w-24"></div>
+                    <div className="w-5 h-5 bg-slate-200 rounded-full"></div>
                   </div>
-                  <p className="text-2xl font-black text-slate-900 mt-2">
-                    {formatCurrency(metrics.cashRevenue || 0)}
-                  </p>
-                  <p className="text-xs font-medium text-emerald-700 mt-1 flex items-center gap-1">
-                    <Clock className="w-3 h-3" /> {(transactions.cash || []).length} Cash Transactions
-                  </p>
+                  <div className="mb-2">
+                    <div className="h-7 bg-slate-200 rounded w-32"></div>
+                  </div>
+                  <div className="flex items-center justify-between mt-auto pt-3 border-t border-slate-100">
+                    <div className="h-2 bg-slate-200 rounded w-28"></div>
+                  </div>
                 </div>
-                <div className="w-12 h-12 rounded-2xl bg-[#76C043]/15 flex items-center justify-center text-[#76C043] group-hover:scale-110 transition-transform">
-                  <IndianRupee className="w-6 h-6" />
+              ))
+            ) : (
+              <>
+                {/* GROSS SALES CARD */}
+                <div
+                  onClick={() => router.push(`/dashboard/reports?type=all&dateFilter=${dateFilter}`)}
+                  className="bg-white rounded-[8px] border border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.05)] p-4 cursor-pointer hover:border-[#76C043] hover:shadow-lg hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between"
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Gross Sales</span>
+                    <IndianRupee className="w-5 h-5 text-slate-400" />
+                  </div>
+                  <div className="mb-2">
+                    <p className="text-[26px] leading-none font-bold text-slate-900">
+                      {formatCurrency(metrics.cashRevenue + metrics.onlineRevenue + metrics.financeRevenue)}
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-between mt-auto pt-3 border-t border-slate-100">
+                    <span className="text-[11px] font-semibold text-emerald-600 flex items-center gap-1">
+                      <TrendingUp className="w-3 h-3" /> +12.4% vs last week
+                    </span>
+                    <ArrowRight className="w-3 h-3 text-slate-300" />
+                  </div>
                 </div>
-              </div>
-              <div className="mt-4 pt-3 border-t border-emerald-100 flex items-center justify-between text-xs text-[#76C043] font-semibold">
-                <span>Audit Cash Ledger</span>
-                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-              </div>
-            </div>
 
-            {/* ONLINE / UPI PAYMENT CARD */}
-            <div
-              onClick={() => { setActiveModal("online"); setSearchQuery(""); }}
-              className="metric-card cursor-pointer hover:border-[#3F63AD] transition-all hover:shadow-md group relative overflow-hidden bg-gradient-to-br from-white to-blue-50/40"
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-[#3F63AD]" />
-                    <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Digital / UPI Receipts</p>
+                {/* TOTAL BILLS CARD */}
+                <div
+                  onClick={() => router.push(`/dashboard/reports?type=orders&dateFilter=${dateFilter}`)}
+                  className="bg-white rounded-[8px] border border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.05)] p-4 cursor-pointer hover:border-blue-500 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between"
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Bills</span>
+                    <Receipt className="w-5 h-5 text-slate-400" />
                   </div>
-                  <p className="text-2xl font-black text-slate-900 mt-2">
-                    {formatCurrency(metrics.onlineRevenue || 0)}
-                  </p>
-                  <p className="text-xs font-medium text-blue-700 mt-1 flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" /> {(transactions.online || []).length} Online Transactions
-                  </p>
+                  <div className="mb-2">
+                    <p className="text-[26px] leading-none font-bold text-slate-900">
+                      {metrics.totalOrders || 0}
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-between mt-auto pt-3 border-t border-slate-100">
+                    <span className="text-[11px] font-semibold text-amber-500 flex items-center gap-1">
+                      <Clock className="w-3 h-3" /> Peak hours: 1PM - 3PM
+                    </span>
+                    <ArrowRight className="w-3 h-3 text-slate-300" />
+                  </div>
                 </div>
-                <div className="w-12 h-12 rounded-2xl bg-[#3F63AD]/15 flex items-center justify-center text-[#3F63AD] group-hover:scale-110 transition-transform">
-                  <CreditCard className="w-6 h-6" />
-                </div>
-              </div>
-              <div className="mt-4 pt-3 border-t border-blue-100 flex items-center justify-between text-xs text-[#3F63AD] font-semibold">
-                <span>Audit Digital Receipts</span>
-                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-              </div>
-            </div>
 
-            {/* FINANCE / CREDIT CARD */}
-            <div
-              onClick={() => { setActiveModal("finance"); setSearchQuery(""); }}
-              className="metric-card cursor-pointer hover:border-amber-500 transition-all hover:shadow-md group relative overflow-hidden bg-gradient-to-br from-white to-amber-50/40"
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-amber-500" />
-                    <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Finance & Khata Credit</p>
+                {/* AOV CARD */}
+                <div
+                  onClick={() => router.push(`/dashboard/reports?type=aov&dateFilter=${dateFilter}`)}
+                  className="bg-white rounded-[8px] border border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.05)] p-4 cursor-pointer hover:border-indigo-500 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between"
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Avg Order Value (AOV)</span>
+                    <TrendingUp className="w-5 h-5 text-slate-400" />
                   </div>
-                  <p className="text-2xl font-black text-slate-900 mt-2">
-                    {formatCurrency(metrics.financeRevenue || 0)}
-                  </p>
-                  <p className="text-xs font-medium text-amber-700 mt-1 flex items-center gap-1">
-                    <ShieldAlert className="w-3 h-3" /> {(transactions.finance || []).length} Finance & Credit Trx
-                  </p>
+                  <div className="mb-2">
+                    <p className="text-[26px] leading-none font-bold text-slate-900">
+                      {formatCurrency(metrics.totalOrders ? ((metrics.cashRevenue + metrics.onlineRevenue + metrics.financeRevenue) / metrics.totalOrders) : 0)}
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-between mt-auto pt-3 border-t border-slate-100">
+                    <span className="text-[11px] font-medium text-slate-500 flex items-center gap-1">
+                      Revenue per invoice
+                    </span>
+                    <ArrowRight className="w-3 h-3 text-slate-300" />
+                  </div>
                 </div>
-                <div className="w-12 h-12 rounded-2xl bg-amber-500/15 flex items-center justify-center text-amber-600 group-hover:scale-110 transition-transform">
-                  <Wallet className="w-6 h-6" />
-                </div>
-              </div>
-              <div className="mt-4 pt-3 border-t border-amber-100 flex items-center justify-between text-xs text-amber-700 font-semibold">
-                <span>Audit Credit & Due Dates</span>
-                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-              </div>
-            </div>
 
-            {/* TOTAL ORDERS CARD */}
-            <div
-              onClick={() => { setActiveModal("orders"); setSearchQuery(""); }}
-              className="metric-card cursor-pointer hover:border-purple-500 transition-all hover:shadow-md group relative overflow-hidden bg-gradient-to-br from-white to-purple-50/40"
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-purple-500" />
-                    <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Total Sales Orders</p>
+                {/* LOW STOCK CARD */}
+                <div
+                  onClick={() => router.push(`/inventory/low-stock`)}
+                  className="bg-white rounded-[8px] border border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.05)] p-4 cursor-pointer hover:border-rose-500 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between"
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Low Stock Alerts</span>
+                    <Package className="w-5 h-5 text-slate-400" />
                   </div>
-                  <p className="text-2xl font-black text-slate-900 mt-2">
-                    {metrics.totalOrders || 0} Orders
-                  </p>
-                  <p className="text-xs font-medium text-purple-700 mt-1 flex items-center gap-1">
-                    <ShoppingCart className="w-3 h-3" /> {formatCurrency(metrics.totalRevenue || 0)} Revenue
-                  </p>
+                  <div className="mb-2">
+                    <p className="text-[26px] leading-none font-bold text-rose-500">
+                      {metrics.lowStockItems || 0}
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-between mt-auto pt-3 border-t border-slate-100">
+                    <span className="text-[11px] font-semibold text-rose-500 flex items-center gap-1">
+                      <ShieldAlert className="w-3 h-3" /> Requires attention
+                    </span>
+                    <ArrowRight className="w-3 h-3 text-slate-300" />
+                  </div>
                 </div>
-                <div className="w-12 h-12 rounded-2xl bg-purple-500/15 flex items-center justify-center text-purple-600 group-hover:scale-110 transition-transform">
-                  <Package className="w-6 h-6" />
-                </div>
-              </div>
-              <div className="mt-4 pt-3 border-t border-purple-100 flex items-center justify-between text-xs text-purple-700 font-semibold">
-                <span>Audit Order Details</span>
-                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-              </div>
-            </div>
+              </>
+            )}
           </div>
         </div>
 
-        {/* ─── QUICK ACTION BUTTONS STRIP ───────────────────────────────── */}
-        <div className="bg-slate-900 text-white p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-md">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center font-bold text-[#76C043]">
-              VP
-            </div>
-            <div>
-              <p className="text-sm font-bold">Quick Actions Form Launchers</p>
-              <p className="text-xs text-slate-400">Click any button to open inline creation forms directly on this dashboard</p>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" onClick={handleOpenInvoiceModal} className="bg-[#3F63AD] hover:bg-[#2E4F95] text-xs h-8 font-semibold">
-              + Create Invoice
-            </Button>
-            <Button size="sm" onClick={() => setOpenEstimateModal(true)} className="bg-slate-800 hover:bg-slate-700 text-xs h-8 font-medium">
-              + New Estimate
-            </Button>
-            <Button size="sm" onClick={() => setOpenCustomerModal(true)} className="bg-slate-800 hover:bg-slate-700 text-xs h-8 font-medium">
-              + Add Customer
-            </Button>
-            <Button size="sm" onClick={() => setOpenItemModal(true)} className="bg-slate-800 hover:bg-slate-700 text-xs h-8 font-medium">
-              + Add Item
-            </Button>
-            <Button size="sm" onClick={() => setOpenPaymentModal(true)} className="bg-[#76C043] hover:bg-emerald-600 text-xs h-8 font-bold text-slate-950">
-              Record Payment
-            </Button>
-          </div>
-        </div>
-
-        {/* ─── REVENUE & PROFIT CHARTS ──────────────────────────────────── */}
-        <div className="grid lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 data-table-container p-6">
-            <div className="flex items-center justify-between mb-6">
+        {/* ─── SALES & PAYMENT CHARTS (PETPOOJA STYLE) ──────────────────────────────────── */}
+        <div className="grid lg:grid-cols-3 gap-6 mt-6">
+          <div className="lg:col-span-2 bg-white rounded-[12px] shadow-[0_2px_8px_rgba(0,0,0,0.06)] hover:shadow-xl transition-all duration-300 border border-slate-200 p-6 flex flex-col justify-between">
+            {/* Header with Live Stats Pills */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-100">
               <div>
-                <h3 className="font-bold text-foreground text-base">Sales Revenue & Operational Analytics</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">Live performance tracking from MongoDB</p>
+                <div className="flex items-center gap-2.5">
+                  <h3 className="font-extrabold text-slate-900 text-lg tracking-tight">Sales & Order Trends</h3>
+                  <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-[#3F63AD] border border-blue-200 text-xs font-bold font-mono">
+                    {formatCurrency(
+                      ((widgetData.trends?.metrics?.cashRevenue || 0) + (widgetData.trends?.metrics?.onlineRevenue || 0) + (widgetData.trends?.metrics?.financeRevenue || 0)) || (widgetData.trends?.dailyRevenue?.reduce((acc: number, curr: any) => acc + (curr.revenue || 0), 0) || 0)
+                    )} Total
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-slate-400" />
+                  {widgetFilters.trends === 'Today' ? 'Hourly Business Trajectory' : 'Daily Sales Timeline'}
+                </p>
               </div>
-              <Badge variant="secondary" className="px-3 py-1 font-semibold">{formatDateShort(startDate)} to {formatDateShort(endDate)}</Badge>
+
+              <div className="flex items-center gap-2.5">
+                {/* Live Mode Badges */}
+                <div className="hidden md:flex items-center gap-2 text-[11px] font-semibold">
+                  <span className="px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#76C043]" />
+                    Cash: {formatCurrency(widgetData.trends?.metrics?.cashRevenue || 0)}
+                  </span>
+                  <span className="px-2 py-1 rounded-md bg-blue-50 text-[#3F63AD] border border-blue-200 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#3F63AD]" />
+                    Online: {formatCurrency(widgetData.trends?.metrics?.onlineRevenue || 0)}
+                  </span>
+                  <span className="px-2 py-1 rounded-md bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#F59E0B]" />
+                    Finance: {formatCurrency(widgetData.trends?.metrics?.financeRevenue || 0)}
+                  </span>
+                </div>
+
+                <DateRangeFilter 
+                  value={widgetFilters.trends} 
+                  onChange={(val, start, end) => handleWidgetFilterChange('trends', val, start, end)}
+                  className="w-[125px]"
+                />
+              </div>
             </div>
-            <ResponsiveContainer width="100%" height={260}>
-              <AreaChart data={DAILY_REVENUE} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="revGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3F63AD" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="#3F63AD" stopOpacity={0.01} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
-                <Area type="monotone" dataKey="revenue" name="Total Revenue" stroke="#3F63AD" strokeWidth={2.5} fill="url(#revGradient)" />
-                <Area type="monotone" dataKey="expense" name="Operational Cost" stroke="#EF4444" strokeWidth={2} fill="none" />
-                <Area type="monotone" dataKey="profit" name="Net Profit Margin" stroke="#76C043" strokeWidth={2} fill="none" strokeDasharray="4 2" />
-              </AreaChart>
-            </ResponsiveContainer>
+
+            {widgetLoading.trends ? (
+              <div className="w-full h-[260px] flex items-end justify-between px-4 animate-pulse pt-10">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div key={i} className="w-[8%] bg-slate-200 rounded-t-sm" style={{ height: `${Math.random() * 60 + 20}%` }}></div>
+                ))}
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={260}>
+                <AreaChart data={widgetData.trends?.dailyRevenue || []} margin={{ top: 10, right: 10, left: -5, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorCash" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#76C043" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#76C043" stopOpacity={0}/>
+                    </linearGradient>
+                    <linearGradient id="colorOnline" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3F63AD" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#3F63AD" stopOpacity={0}/>
+                    </linearGradient>
+                    <linearGradient id="colorFinance" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#F59E0B" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#F59E0B" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#64748B", fontWeight: 500 }} axisLine={false} tickLine={false} />
+                  <YAxis yAxisId="left" tick={{ fontSize: 11, fill: "#64748B", fontWeight: 500 }} axisLine={false} tickLine={false} tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: '12px', fontWeight: 600 }} />
+                  <Area yAxisId="left" type="monotone" dataKey="cash" name="Cash (₹)" stroke="#76C043" strokeWidth={3} fillOpacity={1} fill="url(#colorCash)" dot={{ r: 4, stroke: "#76C043", strokeWidth: 2, fill: "#fff" }} activeDot={{ r: 6, stroke: "#76C043", strokeWidth: 2, fill: "#fff" }} />
+                  <Area yAxisId="left" type="monotone" dataKey="online" name="Online (₹)" stroke="#3F63AD" strokeWidth={3} fillOpacity={1} fill="url(#colorOnline)" dot={{ r: 4, stroke: "#3F63AD", strokeWidth: 2, fill: "#fff" }} activeDot={{ r: 6, stroke: "#3F63AD", strokeWidth: 2, fill: "#fff" }} />
+                  <Area yAxisId="left" type="monotone" dataKey="finance" name="Finance (₹)" stroke="#F59E0B" strokeWidth={3} fillOpacity={1} fill="url(#colorFinance)" dot={{ r: 4, stroke: "#F59E0B", strokeWidth: 2, fill: "#fff" }} activeDot={{ r: 6, stroke: "#F59E0B", strokeWidth: 2, fill: "#fff" }} />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
           </div>
 
-          {/* INVENTORY STATUS */}
-          <div className="data-table-container p-6">
+          {/* PAYMENT MODE BREAKDOWN */}
+          <div className="bg-white rounded-[12px] shadow-[0_2px_8px_rgba(0,0,0,0.06)] hover:shadow-xl transition-all duration-300 border border-slate-200 p-6 flex flex-col justify-between">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-foreground text-base">Inventory Distribution</h3>
-              <Button variant="ghost" size="sm" onClick={() => setOpenItemModal(true)} className="h-7 px-2 text-xs text-[#3F63AD]">
-                + Add Item <Plus className="w-3 h-3 ml-1" />
+              <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
+                <PieChartIcon className="w-4 h-4 text-slate-500" /> Payment Modes
+              </h3>
+              <DateRangeFilter 
+                value={widgetFilters.pie} 
+                onChange={(val, start, end) => handleWidgetFilterChange('pie', val, start, end)}
+                className="w-[120px]"
+              />
+            </div>
+            {widgetLoading.pie ? (
+              <div className="flex flex-col items-center justify-center animate-pulse py-4">
+                <div className="w-[140px] h-[140px] rounded-full border-[20px] border-slate-200"></div>
+                <div className="w-full space-y-3 mt-8">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-slate-200"></div>
+                        <div className="h-3 w-20 bg-slate-200 rounded"></div>
+                      </div>
+                      <div className="h-3 w-16 bg-slate-200 rounded"></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              (() => {
+                const pieMetrics = widgetData.pie?.metrics || { cashRevenue: 0, onlineRevenue: 0, financeRevenue: 0 };
+                const pieModes = [
+                  { name: "Cash Counter", value: pieMetrics.cashRevenue || 0, color: "#76C043" },
+                  { name: "Online / UPI", value: pieMetrics.onlineRevenue || 0, color: "#3F63AD" },
+                  { name: "Finance", value: pieMetrics.financeRevenue || 0, color: "#F59E0B" },
+                ];
+                return (
+              <>
+                <ResponsiveContainer width="100%" height={180}>
+                  <PieChart>
+                    <Pie data={pieModes} cx="50%" cy="50%" innerRadius={55} outerRadius={80} paddingAngle={2} dataKey="value">
+                      {pieModes.map((entry, i) => {
+                        const mapMode = entry.name === "Cash Counter" ? "cash" : entry.name === "Online / UPI" ? "online" : "finance";
+                        return (
+                          <Cell 
+                            key={i} 
+                            fill={entry.color} 
+                            className="cursor-pointer hover:opacity-80 transition-opacity"
+                            onClick={() => router.push(`/dashboard/reports?type=${mapMode}&dateFilter=${dateFilter}`)} 
+                          />
+                        );
+                      })}
+                    </Pie>
+                    <Tooltip formatter={(v: number) => [`₹${indianNumberFormat(v)}`, ""]} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="space-y-3 mt-4">
+                  {pieModes.map((item) => {
+                    const mapMode = item.name === "Cash Counter" ? "cash" : item.name === "Online / UPI" ? "online" : "finance";
+                    return (
+                      <div 
+                        key={item.name} 
+                        className="flex items-center justify-between text-xs cursor-pointer hover:bg-slate-50 p-2 rounded-lg transition-colors"
+                        onClick={() => router.push(`/dashboard/reports?type=${mapMode}&dateFilter=${widgetFilters.pie}`)}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
+                          <span className="text-slate-700 font-medium">{item.name}</span>
+                        </div>
+                        <span className="font-bold text-slate-900">₹{indianNumberFormat(item.value)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+                );
+              })()
+            )}
+          </div>
+        </div>
+
+        {/* ─── SHOWROOM OPERATING EXPENSES SECTION (NEW) ──────────────────── */}
+        <div className="bg-white rounded-[12px] shadow-[0_2px_8px_rgba(0,0,0,0.06)] hover:shadow-xl transition-all duration-300 border border-slate-200 p-6 mt-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-100">
+            <div>
+              <div className="flex items-center gap-2.5">
+                <h3 className="font-extrabold text-slate-900 text-lg tracking-tight flex items-center gap-2">
+                  <Receipt className="w-5 h-5 text-rose-600" /> Showroom Operating Expenses
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-xs font-bold font-mono">
+                  {formatCurrency(widgetData.expenses?.expenses?.total || widgetData.expenses?.metrics?.totalExpenses || 0)} Total
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-slate-400" />
+                Store rent, staff payroll, electricity, freight & operational overheads
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2.5">
+              <DateRangeFilter 
+                value={widgetFilters.expenses} 
+                onChange={(val, start, end) => handleWidgetFilterChange('expenses', val, start, end)}
+                className="w-[125px]"
+              />
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => router.push(`/purchase/expenses?dateFilter=${widgetFilters.expenses}`)}
+                className="text-xs h-8 font-bold text-rose-600 border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+              >
+                Detailed Report <ArrowRight className="w-3.5 h-3.5 ml-1" />
+              </Button>
+              <Button 
+                size="sm" 
+                onClick={() => router.push("/purchase/expenses")} 
+                className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs h-8 shadow-sm"
+              >
+                + Add Expense
               </Button>
             </div>
-            <ResponsiveContainer width="100%" height={180}>
-              <PieChart>
-                <Pie data={INVENTORY_STATUS} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={3} dataKey="value">
-                  {INVENTORY_STATUS.map((entry, i) => (
-                    <Cell key={i} fill={entry.color} />
+          </div>
+
+          <div className="grid lg:grid-cols-3 gap-6">
+            {/* Category Breakdown */}
+            <div className="lg:col-span-1 border-r border-slate-100 pr-0 lg:pr-6 space-y-4">
+              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Expense Distribution by Category</h4>
+              {widgetLoading.expenses ? (
+                <div className="space-y-3 animate-pulse">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="space-y-1">
+                      <div className="h-3 w-24 bg-slate-200 rounded"></div>
+                      <div className="h-2 w-full bg-slate-200 rounded"></div>
+                    </div>
                   ))}
-                </Pie>
-                <Tooltip formatter={(v: number) => [`${v}%`, ""]} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="space-y-2 mt-2">
-              {INVENTORY_STATUS.map((item) => (
-                <div key={item.name} className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-                    <span className="text-muted-foreground">{item.name}</span>
-                  </div>
-                  <span className="font-bold">{item.value}%</span>
                 </div>
-              ))}
+              ) : (
+                (() => {
+                  const categories = widgetData.expenses?.expenses?.categories || [];
+                  if (categories.length === 0) {
+                    return <p className="text-xs text-slate-400 py-6">No categorized expenses recorded for this timeframe.</p>;
+                  }
+                  return (
+                    <div className="space-y-3.5">
+                      {categories.slice(0, 5).map((cat: any, i: number) => {
+                        const colors = ["bg-rose-500", "bg-amber-500", "bg-blue-500", "bg-purple-500", "bg-emerald-500"];
+                        const color = colors[i % colors.length];
+                        return (
+                          <div key={cat.category} className="space-y-1.5">
+                            <div className="flex items-center justify-between text-xs font-semibold">
+                              <span className="text-slate-700">{cat.category}</span>
+                              <span className="font-mono text-slate-900">{formatCurrency(cat.amount)} ({cat.percentage}%)</span>
+                            </div>
+                            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                              <div className={`h-full ${color} rounded-full transition-all duration-500`} style={{ width: `${cat.percentage}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()
+              )}
+            </div>
+
+            {/* Recent Expenses List */}
+            <div className="lg:col-span-2 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Recent Expense Vouchers</h4>
+                <span className="text-[11px] text-muted-foreground">Showing latest transactions</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-50 text-slate-500 font-semibold uppercase border-b border-slate-200">
+                    <tr>
+                      <th className="px-3 py-2.5">Date</th>
+                      <th className="px-3 py-2.5">Voucher #</th>
+                      <th className="px-3 py-2.5">Category</th>
+                      <th className="px-3 py-2.5">Description</th>
+                      <th className="px-3 py-2.5">Payment</th>
+                      <th className="px-3 py-2.5 text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {widgetLoading.expenses ? (
+                      Array.from({ length: 4 }).map((_, i) => (
+                        <tr key={i} className="animate-pulse">
+                          <td className="px-3 py-2.5"><div className="h-3 w-16 bg-slate-200 rounded"></div></td>
+                          <td className="px-3 py-2.5"><div className="h-3 w-20 bg-slate-200 rounded"></div></td>
+                          <td className="px-3 py-2.5"><div className="h-3 w-24 bg-slate-200 rounded"></div></td>
+                          <td className="px-3 py-2.5"><div className="h-3 w-32 bg-slate-200 rounded"></div></td>
+                          <td className="px-3 py-2.5"><div className="h-3 w-16 bg-slate-200 rounded"></div></td>
+                          <td className="px-3 py-2.5"><div className="h-3 w-16 bg-slate-200 rounded ml-auto"></div></td>
+                        </tr>
+                      ))
+                    ) : (
+                      (() => {
+                        const recent = widgetData.expenses?.expenses?.recent || [];
+                        if (recent.length === 0) {
+                          return (
+                            <tr>
+                              <td colSpan={6} className="px-3 py-8 text-center text-slate-400 font-medium">
+                                No expenses logged for this timeframe
+                              </td>
+                            </tr>
+                          );
+                        }
+                        return recent.slice(0, 5).map((exp: any) => (
+                          <tr key={exp._id || exp.expenseNo} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{formatDateShort(exp.date || exp.createdAt)}</td>
+                            <td className="px-3 py-2.5 font-bold text-slate-700">{exp.expenseNo}</td>
+                            <td className="px-3 py-2.5">
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200 whitespace-nowrap">
+                                {exp.category}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2.5 text-slate-600 max-w-[200px] truncate">{exp.description || "-"}</td>
+                            <td className="px-3 py-2.5 text-slate-500">{exp.paymentMode || "Cash"}</td>
+                            <td className="px-3 py-2.5 text-right font-bold text-rose-600 font-mono">{formatCurrency(exp.amount)}</td>
+                          </tr>
+                        ));
+                      })()
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>
 
         {/* ─── TOP PRODUCTS & TOP CUSTOMERS ─────────────────────────────── */}
-        <div className="grid lg:grid-cols-2 gap-6">
-          <div className="data-table-container p-6">
+        <div className="grid lg:grid-cols-2 gap-6 mt-6">
+          <div className="bg-white rounded-[8px] shadow-[0_1px_2px_rgba(0,0,0,0.05)] hover:shadow-lg hover:-translate-y-1 transition-all duration-300 border border-slate-200 p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-foreground text-base">Top Selling Products</h3>
-              <Button variant="ghost" size="sm" onClick={() => router.push("/masters/items")} className="text-[#3F63AD] h-7 text-xs">
-                View Items <ArrowRight className="w-3 h-3 ml-1" />
-              </Button>
+              <div className="flex items-center gap-2">
+                <DateRangeFilter 
+                  value={widgetFilters.products} 
+                  onChange={(val, start, end) => handleWidgetFilterChange('products', val, start, end)}
+                  className="w-[120px]"
+                />
+                <Button variant="ghost" size="sm" onClick={() => router.push("/masters/items")} className="text-[#3F63AD] h-8 text-xs px-2 hidden sm:flex">
+                  View <ArrowRight className="w-3 h-3 ml-1" />
+                </Button>
+              </div>
             </div>
             <div className="space-y-3">
-              {TOP_PRODUCTS.map((prod, i) => (
-                <div key={prod.name} className="flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-200">
-                  <div className="flex items-center gap-3">
-                    <div className="w-7 h-7 rounded-lg bg-[#3F63AD]/10 text-[#3F63AD] font-bold text-xs flex items-center justify-center">
-                      {i + 1}
+              {widgetLoading.products ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="flex items-center justify-between p-2.5 rounded-xl border border-transparent animate-pulse">
+                    <div className="flex items-center gap-3">
+                      <div className="w-7 h-7 rounded-lg bg-slate-200"></div>
+                      <div className="space-y-1">
+                        <div className="h-3 w-24 bg-slate-200 rounded"></div>
+                        <div className="h-2 w-16 bg-slate-200 rounded"></div>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">{prod.name}</p>
-                      <p className="text-xs text-muted-foreground">{prod.sales} units sold</p>
+                    <div className="text-right space-y-1">
+                      <div className="h-3 w-16 bg-slate-200 rounded ml-auto"></div>
+                      <div className="h-2 w-12 bg-slate-200 rounded ml-auto"></div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-sm font-bold text-foreground">{formatCurrency(prod.revenue)}</p>
-                    <span className="text-[10px] text-emerald-600 font-semibold">+{prod.growth}% growth</span>
+                ))
+              ) : (
+                (widgetData.products?.topProducts || TOP_PRODUCTS).map((prod: any, i: number) => (
+                  <div key={prod.name} className="flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-200">
+                    <div className="flex items-center gap-3">
+                      <div className="w-7 h-7 rounded-lg bg-[#3F63AD]/10 text-[#3F63AD] font-bold text-xs flex items-center justify-center">
+                        {i + 1}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">{prod.name}</p>
+                        <p className="text-xs text-muted-foreground">{prod.sales} units sold</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-foreground">{formatCurrency(prod.revenue)}</p>
+                      <span className="text-[10px] text-emerald-600 font-semibold">+{prod.growth}% growth</span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
 
-          <div className="data-table-container p-6">
+          <div className="bg-white rounded-[8px] shadow-[0_1px_2px_rgba(0,0,0,0.05)] hover:shadow-lg hover:-translate-y-1 transition-all duration-300 border border-slate-200 p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-foreground text-base">Top Purchasing Customers</h3>
-              <Button variant="ghost" size="sm" onClick={() => setOpenCustomerModal(true)} className="text-[#3F63AD] h-7 text-xs">
-                + New Customer <Plus className="w-3 h-3 ml-1" />
-              </Button>
+              <div className="flex items-center gap-2">
+                <DateRangeFilter 
+                  value={widgetFilters.customers} 
+                  onChange={(val, start, end) => handleWidgetFilterChange('customers', val, start, end)}
+                  className="w-[120px]"
+                />
+                <Button variant="ghost" size="sm" onClick={() => setOpenCustomerModal(true)} className="text-[#3F63AD] h-8 text-xs px-2 hidden sm:flex">
+                  + New <Plus className="w-3 h-3 ml-1" />
+                </Button>
+              </div>
             </div>
             <div className="space-y-3">
-              {TOP_CUSTOMERS.map((cust) => (
-                <div key={cust.name} className="flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-200">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#3F63AD] to-[#2E4F95] text-white font-bold text-xs flex items-center justify-center">
-                      {cust.name.charAt(0)}
+              {widgetLoading.customers ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="flex items-center justify-between p-2.5 rounded-xl border border-transparent animate-pulse">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-slate-200"></div>
+                      <div className="space-y-1">
+                        <div className="h-3 w-24 bg-slate-200 rounded"></div>
+                        <div className="h-2 w-20 bg-slate-200 rounded"></div>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">{cust.name}</p>
-                      <p className="text-xs text-muted-foreground">{cust.city} · {cust.invoices} invoices</p>
+                    <div className="text-right space-y-1">
+                      <div className="h-3 w-16 bg-slate-200 rounded ml-auto"></div>
+                      <div className="h-3 w-12 bg-slate-200 rounded ml-auto"></div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-sm font-bold text-foreground">{formatCurrency(cust.amount)}</p>
-                    <Badge variant="success" className="text-[10px]">Active Khata</Badge>
+                ))
+              ) : (
+                (widgetData.customers?.topCustomers || TOP_CUSTOMERS).map((cust: any) => (
+                  <div key={cust.name} className="flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-200">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#3F63AD] to-[#2E4F95] text-white font-bold text-xs flex items-center justify-center uppercase">
+                        {cust.name.charAt(0)}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">{cust.name}</p>
+                        <p className="text-xs text-muted-foreground">{cust.city || "Mumbai"} · {cust.invoices} invoices</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-foreground">{formatCurrency(cust.amount)}</p>
+                      <Badge variant="success" className="text-[10px]">Active Ledger</Badge>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </div>
 
-        {/* ─── RECENT INVOICES LIST ─────────────────────────────────────── */}
-        <div className="data-table-container">
-          <div className="flex items-center justify-between p-5 border-b">
+        {/* ─── DETAILED PAYMENT LOG REPORT ─────────────────────────────────────── */}
+        <div className="bg-white rounded-[8px] shadow-[0_1px_2px_rgba(0,0,0,0.05)] hover:shadow-lg hover:-translate-y-1 transition-all duration-300 border border-slate-200 mt-6">
+          <div className="flex items-center justify-between p-5 border-b border-slate-200">
             <div>
-              <h3 className="font-bold text-foreground text-base">Recent Invoices & Transactions</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">Click any invoice to preview & print official GST Tax Invoice template</p>
+              <h3 className="font-bold text-slate-800 text-base">Detailed Payment Log Report</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">Real-time log of all received payments</p>
             </div>
-            <Button size="sm" onClick={handleOpenInvoiceModal} className="bg-[#3F63AD] hover:bg-[#2E4F95] text-xs">
-              + Create Invoice
-            </Button>
+            <div className="flex items-center gap-2">
+              <DateRangeFilter 
+                value={widgetFilters.logs} 
+                onChange={(val, start, end) => handleWidgetFilterChange('logs', val, start, end)}
+                className="w-[120px]"
+              />
+              <Button size="sm" variant="outline" className="text-xs h-8 hidden sm:flex" onClick={() => router.push(`/dashboard/reports?type=all&dateFilter=${widgetFilters.logs}`)}>
+                <Eye className="w-3 h-3 mr-1" /> View Full Report
+              </Button>
+            </div>
+          </div>
+          <div className="p-0 overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-slate-50 text-slate-500 font-semibold text-xs uppercase border-b border-slate-200">
+                <tr>
+                  <th className="px-5 py-3">Time</th>
+                  <th className="px-5 py-3">Invoice #</th>
+                  <th className="px-5 py-3">Customer</th>
+                  <th className="px-5 py-3">Payment Mode</th>
+                  <th className="px-5 py-3 text-right">Amount</th>
+                  <th className="px-5 py-3 text-center">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {widgetLoading.logs ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <tr key={i} className="animate-pulse">
+                      <td className="px-5 py-4"><div className="h-3 w-20 bg-slate-200 rounded"></div></td>
+                      <td className="px-5 py-4"><div className="h-3 w-24 bg-slate-200 rounded"></div></td>
+                      <td className="px-5 py-4"><div className="h-3 w-32 bg-slate-200 rounded"></div></td>
+                      <td className="px-5 py-4"><div className="h-4 w-16 bg-slate-200 rounded"></div></td>
+                      <td className="px-5 py-4"><div className="h-3 w-20 bg-slate-200 rounded ml-auto"></div></td>
+                      <td className="px-5 py-4"><div className="h-6 w-16 bg-slate-200 rounded mx-auto"></div></td>
+                    </tr>
+                  ))
+                ) : (
+                  (() => {
+                    const txns = widgetData.logs?.transactions || { cash: [], online: [], finance: [] };
+                    const combined = [...(txns.cash || []), ...(txns.online || []), ...(txns.finance || [])]
+                      .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
+                      .slice(0, 10);
+                    return (
+                  <>
+                    {combined.map((txn: any, i) => (
+                      <tr key={i} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-5 py-3 text-xs text-slate-500 whitespace-nowrap">{txn.time}</td>
+                        <td className="px-5 py-3 font-semibold text-slate-700">{txn.id}</td>
+                        <td className="px-5 py-3 font-medium">{txn.customer}</td>
+                        <td className="px-5 py-3">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 whitespace-nowrap">
+                            {txn.mode}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3 text-right font-bold text-slate-900">{formatCurrency(txn.amount)}</td>
+                        <td className="px-5 py-3">
+                          <div className="flex items-center justify-center gap-2">
+                            <Button size="icon" variant="ghost" className="h-7 w-7 text-slate-400 hover:text-[#3F63AD] hover:bg-[#3F63AD]/10" onClick={() => window.print()}>
+                              <Printer className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button size="icon" variant="ghost" className="h-7 w-7 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50" onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(`Dear ${txn.customer}, your payment of ${formatCurrency(txn.amount)} has been received. Invoice: ${txn.id}. Thank you for your business!`)}`, '_blank')}>
+                              <MessageCircle className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {(combined.length === 0) && (
+                      <tr>
+                        <td colSpan={6} className="px-5 py-8 text-center text-slate-400 font-medium">
+                          No payments found for this period
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                    );
+                  })()
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* ─── TODAY'S SALES REPORT (RECENT INVOICES) ─────────────────────────────────────── */}
+        <div className="bg-white rounded-[8px] shadow-[0_1px_2px_rgba(0,0,0,0.05)] hover:shadow-lg hover:-translate-y-1 transition-all duration-300 border border-slate-200 mt-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-5 border-b border-slate-200 gap-4">
+            <div>
+              <h3 className="font-bold text-slate-800 text-base">{widgetFilters.recent === 'Today' ? "Today's Sales Report" : "Recent Invoices & Transactions"}</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">Click any invoice to preview & print official GST Tax Invoice template</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <DateRangeFilter 
+                value={widgetFilters.recent} 
+                onChange={(val, start, end) => handleWidgetFilterChange('recent', val, start, end)}
+                className="w-[120px]"
+              />
+              <Button 
+                size="sm" 
+                variant="outline"
+                onClick={() => router.push("/sales/invoices")} 
+                className="text-xs h-8 font-bold text-[#3F63AD] border-[#3F63AD]/30 hover:bg-blue-50"
+              >
+                View All Invoices <ArrowUpRight className="w-3.5 h-3.5 ml-1" />
+              </Button>
+              <Button size="sm" onClick={handleOpenInvoiceModal} className="bg-[#76C043] hover:bg-[#60a82c] text-white border-none text-xs h-8">
+                + New Bill
+              </Button>
+            </div>
           </div>
 
           <div className="divide-y divide-border">
-            {recentInvoices.map((inv: any) => (
-              <div
-                key={inv._id || inv.invoiceNumber}
-                onClick={() => handlePrintTrigger(inv)}
-                className="flex items-center justify-between p-4 hover:bg-slate-50 transition-colors cursor-pointer group"
-              >
-                <div className="flex items-center gap-3.5">
-                  <div className="w-10 h-10 rounded-xl bg-[#3F63AD]/10 flex items-center justify-center text-[#3F63AD] group-hover:bg-[#3F63AD] group-hover:text-white transition-colors">
-                    <Printer className="w-5 h-5" />
+            {widgetLoading.recent ? (
+              Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="flex items-center justify-between p-4 border-transparent animate-pulse">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-10 h-10 rounded-xl bg-slate-200"></div>
+                    <div className="space-y-1">
+                      <div className="h-3 w-24 bg-slate-200 rounded"></div>
+                      <div className="h-2 w-32 bg-slate-200 rounded"></div>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm font-bold text-foreground group-hover:text-[#3F63AD] transition-colors">{inv.invoiceNumber}</p>
-                    <p className="text-xs text-muted-foreground">{inv.customerName} · {inv.date}</p>
+                  <div className="flex items-center gap-6">
+                    <div className="text-right space-y-1">
+                      <div className="h-3 w-20 bg-slate-200 rounded ml-auto"></div>
+                      <div className="h-2 w-12 bg-slate-200 rounded ml-auto"></div>
+                    </div>
+                    <div className="w-16 h-5 bg-slate-200 rounded-full"></div>
+                    <div className="w-24 h-8 bg-slate-200 rounded"></div>
                   </div>
                 </div>
+              ))
+            ) : (
+              (widgetData.recent?.recentInvoices || []).map((inv: any) => (
+                <div
+                  key={inv._id || inv.invoiceNumber}
+                  onClick={() => handlePrintTrigger(inv)}
+                  className="flex items-center justify-between p-4 hover:bg-slate-50 transition-colors cursor-pointer group"
+                >
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-10 h-10 rounded-xl bg-[#3F63AD]/10 flex items-center justify-center text-[#3F63AD] group-hover:bg-[#3F63AD] group-hover:text-white transition-colors">
+                      <Printer className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-foreground group-hover:text-[#3F63AD] transition-colors">{inv.invoiceNumber}</p>
+                      <p className="text-xs text-muted-foreground">{inv.customerName} · {inv.date}</p>
+                    </div>
+                  </div>
 
-                <div className="flex items-center gap-6">
-                  <div className="text-right">
-                    <p className="text-sm font-bold text-foreground">{formatCurrency(inv.total)}</p>
-                    <p className="text-[11px] text-muted-foreground">{inv.paymentTerms || "Net 30"}</p>
+                  <div className="flex items-center gap-6">
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-foreground">{formatCurrency(inv.total)}</p>
+                      <p className="text-[11px] text-muted-foreground">{inv.paymentTerms || "Net 30"}</p>
+                    </div>
+                    <StatusBadge status={inv.status} />
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handlePrintTrigger(inv);
+                        }}
+                        className="h-8 text-xs font-semibold border-[#3F63AD] text-[#3F63AD] hover:bg-[#3F63AD] hover:text-white"
+                      >
+                        <Printer className="w-3.5 h-3.5 mr-1" /> View Official Invoice
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.open(`https://wa.me/?text=${encodeURIComponent(`Dear ${inv.customerName}, your invoice ${inv.invoiceNumber} for ${formatCurrency(inv.total)} has been generated. Thank you!`)}`, '_blank');
+                        }}
+                        className="h-8 w-8 p-0 text-xs font-semibold border-emerald-500 text-emerald-600 hover:bg-emerald-500 hover:text-white"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
                   </div>
-                  <StatusBadge status={inv.status} />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handlePrintTrigger(inv);
-                    }}
-                    className="h-8 text-xs font-semibold border-[#3F63AD] text-[#3F63AD] hover:bg-[#3F63AD] hover:text-white"
-                  >
-                    <Printer className="w-3.5 h-3.5 mr-1" /> View Official Invoice
-                  </Button>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       </div>
@@ -700,7 +1237,7 @@ export default function DashboardPage() {
         onClose={() => setOpenInvoiceModal(false)}
         onSuccess={() => {
           setOpenInvoiceModal(false);
-          fetchStats();
+          refreshAllDashboard();
         }}
       />
 
@@ -771,10 +1308,10 @@ export default function DashboardPage() {
           </DialogHeader>
           <form onSubmit={handleAddCustomer} className="space-y-3 mt-2">
             <div>
-              <Label className="text-xs font-semibold">Customer / Business Name *</Label>
+              <Label className="text-xs font-semibold">Customer Name *</Label>
               <Input
                 required
-                placeholder="e.g. Apex Enterprises Pvt Ltd"
+                placeholder="e.g. Ramesh Kumar / Apex Enterprises"
                 value={customerForm.name}
                 onChange={(e) => setCustomerForm({ ...customerForm, name: e.target.value })}
                 className="h-9 text-xs mt-1"
@@ -782,7 +1319,7 @@ export default function DashboardPage() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs font-semibold">Phone Number *</Label>
+                <Label className="text-xs font-semibold">Customer Mobile Number *</Label>
                 <Input
                   required
                   placeholder="+91 98200 12345"
@@ -940,10 +1477,10 @@ export default function DashboardPage() {
           </DialogHeader>
           <form onSubmit={handleRecordPayment} className="space-y-3 mt-2">
             <div>
-              <Label className="text-xs font-semibold">Customer / Party Name *</Label>
+              <Label className="text-xs font-semibold">Customer Name *</Label>
               <Input
                 required
-                placeholder="e.g. Reliance Retail Ltd"
+                placeholder="e.g. Ramesh Kumar / Reliance Retail"
                 value={paymentForm.partyName}
                 onChange={(e) => setPaymentForm({ ...paymentForm, partyName: e.target.value })}
                 className="h-9 text-xs mt-1"
@@ -996,116 +1533,7 @@ export default function DashboardPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ─── PETPOOJA INTERACTIVE DRILLDOWN MODAL ───────────────────────── */}
-      <Dialog open={!!activeModal} onOpenChange={() => setActiveModal(null)}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-xl font-bold flex items-center gap-2">
-              {activeModal === "cash" && <><IndianRupee className="w-6 h-6 text-[#76C043]" /> Cash Payment Transactions Ledger</>}
-              {activeModal === "online" && <><CreditCard className="w-6 h-6 text-[#3F63AD]" /> Online & Digital Payment Receipts</>}
-              {activeModal === "finance" && <><Wallet className="w-6 h-6 text-amber-600" /> Finance & Credit Ledger (Udhaar)</>}
-              {activeModal === "orders" && <><Package className="w-6 h-6 text-purple-600" /> Total Orders & Breakdown</>}
-            </DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground">
-              Selected Date Filter: <span className="font-bold uppercase text-foreground">{formatDateShort(startDate)} - {formatDateShort(endDate)}</span> · Transaction Audit Log
-            </DialogDescription>
-          </DialogHeader>
-
-          {/* SEARCH BAR IN MODAL */}
-          <div className="relative my-2">
-            <Search className="w-4 h-4 absolute left-3 top-3 text-muted-foreground" />
-            <Input
-              placeholder="Search by customer name or invoice number..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 text-xs h-9"
-            />
-          </div>
-
-          {/* DRILLDOWN TABLE */}
-          <div className="border rounded-xl overflow-hidden mt-2">
-            <table className="w-full text-xs text-left">
-              <thead className="bg-slate-100 text-slate-700 font-bold border-b">
-                <tr>
-                  <th className="p-3">Invoice / Ref #</th>
-                  <th className="p-3">Customer Name</th>
-                  <th className="p-3">Date & Timestamp</th>
-                  <th className="p-3">Payment Mode</th>
-                  <th className="p-3 text-right">Amount</th>
-                  <th className="p-3 text-center">Status</th>
-                  <th className="p-3 text-center">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {getFilteredTransactions().length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="text-center p-6 text-muted-foreground">
-                      No matching transactions found for this filter.
-                    </td>
-                  </tr>
-                ) : (
-                  getFilteredTransactions().map((tx: any, idx: number) => (
-                    <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                      <td
-                        className="p-3 font-bold text-[#3F63AD] cursor-pointer hover:underline"
-                        onClick={() => handlePrintTrigger(tx)}
-                      >
-                        {tx.id || tx.invoiceNumber}
-                      </td>
-                      <td className="p-3 font-medium text-foreground">{tx.customer || tx.customerName}</td>
-                      <td className="p-3 text-muted-foreground flex items-center gap-1 mt-1">
-                        <Clock className="w-3 h-3 text-slate-400" /> {tx.time || tx.date}
-                      </td>
-                      <td className="p-3 font-medium">
-                        <Badge variant="outline" className="text-[10px]">
-                          {tx.mode || tx.paymentTerms || "Cash"}
-                        </Badge>
-                      </td>
-                      <td className="p-3 font-bold text-right text-foreground">
-                        {formatCurrency(tx.amount || tx.total)}
-                      </td>
-                      <td className="p-3 text-center">
-                        <StatusBadge status={tx.status} />
-                      </td>
-                      <td className="p-3 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            title="Print Invoice"
-                            onClick={() => handlePrintTrigger(tx)}
-                          >
-                            <Printer className="w-3.5 h-3.5 text-[#3F63AD]" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            title="Send WhatsApp Reminder"
-                            onClick={() => alert(`Sending reminder to ${tx.customer || tx.customerName}`)}
-                          >
-                            <Send className="w-3.5 h-3.5 text-emerald-600" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="flex items-center justify-between pt-4 border-t mt-4 text-xs">
-            <span className="text-muted-foreground font-medium">
-              Showing {getFilteredTransactions().length} entries for selected date filter
-            </span>
-            <Button size="sm" onClick={() => setActiveModal(null)} className="h-8">
-              Close Audit
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
+

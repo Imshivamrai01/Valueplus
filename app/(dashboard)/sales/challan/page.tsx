@@ -13,11 +13,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Label } from "@/components/ui/label";
 import { 
   Plus, Search, Truck, ArrowLeftRight, PackageCheck, Printer, Download, Eye, RotateCcw, 
-  Building, Sparkles, FileText, CheckCircle2, ShieldCheck, FileCheck, ArrowRight, UserCheck, PhoneCall
+  Building, Sparkles, FileText, CheckCircle2, ShieldCheck, FileCheck, ArrowRight, UserCheck, PhoneCall, X
 } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
-import { toast } from "sonner";
 import { formatDate } from "@/lib/utils";
+import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/shared/date-range-filter";
 
 interface ChallanItem {
   id: string;
@@ -135,6 +135,8 @@ export default function DeliveryChallanPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [dateFilter, setDateFilter] = useState("This Month");
+  const [dateRange, setDateRange] = useState(() => resolveDateRange("This Month"));
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedChallan, setSelectedChallan] = useState<any | null>(null);
   const [isPrintOpen, setIsPrintOpen] = useState(false);
@@ -172,6 +174,7 @@ export default function DeliveryChallanPage() {
   const [formData, setFormData] = useState({
     type: "Customer Return",
     sourceParty: "",
+    sourcePhone: "",
     sourceAddress: "",
     destinationParty: "VALUEPLUS Head Warehouse (Mumbai)",
     destinationAddress: "Plot 45, MIDC Industrial Area, Andheri East, Mumbai",
@@ -195,11 +198,16 @@ export default function DeliveryChallanPage() {
         (c.itemName && c.itemName.toLowerCase().includes(search.toLowerCase())) ||
         (c.serialImei && c.serialImei.toLowerCase().includes(search.toLowerCase()));
       const matchType = typeFilter === "all" || c.type === typeFilter;
-      return matchSearch && matchType;
+      const matchDate = isDateInRange(c.date || c.createdAt, dateRange.start, dateRange.end);
+      return matchSearch && matchType && matchDate;
     });
-  }, [challans, search, typeFilter]);
+  }, [challans, search, typeFilter, dateRange]);
 
   const handleSave = async () => {
+    if (!formData.sourcePhone || formData.sourcePhone.replace(/\D/g, '').length !== 10) {
+      toast.error("Please enter a valid 10-digit source party mobile number");
+      return;
+    }
     if (!formData.sourceParty || !formData.itemName) {
       toast.error("Please fill Source Party and Item details");
       return;
@@ -226,6 +234,7 @@ export default function DeliveryChallanPage() {
         setFormData({
           type: "Customer Return",
           sourceParty: "",
+          sourcePhone: "",
           sourceAddress: "",
           destinationParty: "VALUEPLUS Head Warehouse (Mumbai)",
           destinationAddress: "Plot 45, MIDC Industrial Area, Andheri East, Mumbai",
@@ -335,6 +344,15 @@ export default function DeliveryChallanPage() {
               <SelectItem value="Client Return">Client Return</SelectItem>
             </SelectContent>
           </Select>
+          <DateRangeFilter 
+            value={dateFilter} 
+            onChange={(val, s, e) => {
+              setDateFilter(val);
+              if (s && e) setDateRange({ start: s, end: e });
+            }}
+            className="w-40"
+            showIcon={true}
+          />
         </div>
 
         <div className="overflow-x-auto">
@@ -450,10 +468,40 @@ export default function DeliveryChallanPage() {
                   </Select>
                 </div>
 
-                <div className="space-y-1.5 md:col-span-2">
-                  <Label className="text-xs font-semibold text-slate-700">Source Party (Originating From) *</Label>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">
+                    {formData.type === "Supplier Return" 
+                      ? "Supplier Mobile Number *" 
+                      : formData.type === "Warehouse Return" 
+                      ? "Source Warehouse Mobile *" 
+                      : "Customer Mobile Number *"}
+                  </Label>
                   <Input
-                    placeholder="e.g. Sharma Enterprises (Prayagraj, UP)"
+                    type="text"
+                    maxLength={10}
+                    placeholder="Enter 10-digit mobile number"
+                    value={formData.sourcePhone}
+                    onChange={(e) => setFormData({ ...formData, sourcePhone: e.target.value.replace(/\D/g, '') })}
+                    className="bg-slate-50 border-slate-300 font-mono"
+                  />
+                </div>
+
+                <div className="space-y-1.5 md:col-span-2">
+                  <Label className="text-xs font-semibold text-slate-700">
+                    {formData.type === "Supplier Return" 
+                      ? "Supplier Name *" 
+                      : formData.type === "Warehouse Return" 
+                      ? "Source Warehouse Name *" 
+                      : "Customer Name *"}
+                  </Label>
+                  <Input
+                    placeholder={
+                      formData.type === "Supplier Return"
+                        ? "e.g. Apple India Pvt Ltd / boAt Lifestyle"
+                        : formData.type === "Warehouse Return"
+                        ? "e.g. Pune Branch / Delhi Hub"
+                        : "e.g. Ramesh Kumar / Sharma Electronics"
+                    }
                     value={formData.sourceParty}
                     onChange={(e) => setFormData({ ...formData, sourceParty: e.target.value })}
                     className="bg-slate-50 border-slate-300 focus:bg-white"

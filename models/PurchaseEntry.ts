@@ -3,6 +3,7 @@ import mongoose, { Schema, Document, Model } from "mongoose";
 export interface IPurchaseEntry extends Document {
   billNo: string;
   supplierName: string;
+  linkedPoNo?: string;
   type: "entry" | "debit-note";
   billDate: string;
   dueDate?: string;
@@ -12,6 +13,7 @@ export interface IPurchaseEntry extends Document {
     quantity: number;
     rate: number;
     gstRate: number;
+    serialNumbers?: string[];
   }>;
   subtotal: number;
   gst: number;
@@ -25,6 +27,7 @@ const PurchaseEntrySchema = new Schema<IPurchaseEntry>(
   {
     billNo: { type: String, required: true },
     supplierName: { type: String, required: true },
+    linkedPoNo: { type: String },
     type: { type: String, enum: ["entry", "debit-note"], default: "entry" },
     billDate: { type: String, required: true },
     dueDate: { type: String },
@@ -35,6 +38,7 @@ const PurchaseEntrySchema = new Schema<IPurchaseEntry>(
         quantity: { type: Number },
         rate: { type: Number },
         gstRate: { type: Number },
+        serialNumbers: [{ type: String }],
       }
     ],
     subtotal: { type: Number, default: 0 },

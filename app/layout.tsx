@@ -9,6 +9,7 @@ export const metadata: Metadata = {
 
 import AuthProvider from "@/components/providers/AuthProvider";
 import QueryProvider from "@/components/providers/QueryProvider";
+import { OfflineSyncProvider } from "@/components/shared/offline-sync-provider";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -24,7 +25,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="antialiased">
         <QueryProvider>
           <AuthProvider>
-            {children}
+            <OfflineSyncProvider>
+              {children}
+            </OfflineSyncProvider>
           </AuthProvider>
         </QueryProvider>
       </body>

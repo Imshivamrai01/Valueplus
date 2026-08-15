@@ -49,7 +49,12 @@ export async function POST(req: Request) {
       body.customerId = newCustomer._id.toString();
     }
     
-    // 2. Create Invoice
+    // 2. Create Invoice with offline deduplication check
+    const existingInvoice = await Invoice.findOne({ invoiceNumber: body.invoiceNumber });
+    if (existingInvoice) {
+      return NextResponse.json({ success: true, data: existingInvoice, message: "Invoice already synced" });
+    }
+
     const invoice = await Invoice.create(body);
     
     try {

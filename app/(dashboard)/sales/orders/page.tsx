@@ -13,11 +13,14 @@ import { toast } from "sonner";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { InvoiceCreationModal } from "@/components/InvoiceCreationModal";
+import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/shared/date-range-filter";
 
 export default function SalesOrdersPage() {
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [dateFilter, setDateFilter] = useState("This Month");
+  const [dateRange, setDateRange] = useState(() => resolveDateRange("This Month"));
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
@@ -50,13 +53,14 @@ export default function SalesOrdersPage() {
   });
 
   const filtered = useMemo(() => {
-    return orders.filter(
-      (o) =>
-        !search ||
+    return orders.filter((o) => {
+      const matchesSearch = !search ||
         o.invoiceNumber?.toLowerCase().includes(search.toLowerCase()) ||
-        o.customerName?.toLowerCase().includes(search.toLowerCase())
-    );
-  }, [orders, search]);
+        o.customerName?.toLowerCase().includes(search.toLowerCase());
+      const matchesDate = isDateInRange(o.date || o.createdAt, dateRange.start, dateRange.end);
+      return matchesSearch && matchesDate;
+    });
+  }, [orders, search, dateRange]);
 
 
   return (
@@ -80,11 +84,20 @@ export default function SalesOrdersPage() {
       </div>
 
       <div className="data-table-container">
-        <div className="flex items-center justify-between p-4 border-b">
+        <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input placeholder="Search orders, customers..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
           </div>
+          <DateRangeFilter 
+            value={dateFilter} 
+            onChange={(val, s, e) => {
+              setDateFilter(val);
+              if (s && e) setDateRange({ start: s, end: e });
+            }}
+            className="w-40"
+            showIcon={true}
+          />
         </div>
 
         <div className="overflow-x-auto">

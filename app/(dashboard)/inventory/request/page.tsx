@@ -62,10 +62,11 @@ export default function StockRequestPage() {
     r.requestNumber.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const lowStockItems = items.filter((it: any) => it.currentStock <= (it.minStock || 5));
+  const lowStockItems = items.filter((it: any) => Number(it.currentStock) <= (Number(it.reorderLevel || it.minStock || 5) + 5));
 
   const handleQuickRequest = (it: any) => {
-    const qtyNeeded = Math.max(1, (it.minStock || 5) - (it.currentStock || 0));
+    const min = Number(it.reorderLevel || it.minStock || 5);
+    const qtyNeeded = Math.max(1, min - Number(it.currentStock || 0));
     setNewRequest({
       date: format(new Date(), "yyyy-MM-dd"),
       requestingWarehouseId: "",

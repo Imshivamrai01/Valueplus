@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, Search, ArrowLeftRight, Warehouse, Trash2, AlertTriangle } from "lucide-react";
+import { Plus, Search, ArrowLeftRight, Warehouse, Trash2, AlertTriangle, X } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { formatDate } from "@/lib/utils";

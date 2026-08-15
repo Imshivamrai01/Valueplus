@@ -4,6 +4,7 @@ import { PageShell } from "@/components/shared/page-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { AutocompleteSearch } from "@/components/shared/autocomplete-search";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Plus, Search, ClipboardList, Trash2, AlertTriangle, MoreHorizontal, XCircle } from "lucide-react";
@@ -14,6 +15,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PurchaseCreationModal } from "@/components/PurchaseCreationModal";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/shared/date-range-filter";
 
 interface PurchaseEntryItem {
   id: string;
@@ -50,6 +52,8 @@ export default function PurchaseEntriesPage() {
   });
 
   const [search, setSearch] = useState("");
+  const [dateFilter, setDateFilter] = useState("This Month");
+  const [dateRange, setDateRange] = useState(() => resolveDateRange("This Month"));
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [entryToDelete, setEntryToDelete] = useState<string | null>(null);
 
@@ -71,13 +75,14 @@ export default function PurchaseEntriesPage() {
   });
 
   const filtered = useMemo(() => {
-    return entries.filter(
-      (e: any) =>
-        !search ||
-        e.billNo.toLowerCase().includes(search.toLowerCase()) ||
-        e.supplierName.toLowerCase().includes(search.toLowerCase())
-    );
-  }, [entries, search]);
+    return entries.filter((e: any) => {
+      const matchesSearch = !search ||
+        (e.billNo || e.billNumber || "").toLowerCase().includes(search.toLowerCase()) ||
+        (e.supplierName || e.supplier || "").toLowerCase().includes(search.toLowerCase());
+      const matchesDate = isDateInRange(e.date || e.billDate || e.createdAt, dateRange.start, dateRange.end);
+      return matchesSearch && matchesDate;
+    });
+  }, [entries, search, dateRange]);
 
   return (
     <PageShell
@@ -91,7 +96,7 @@ export default function PurchaseEntriesPage() {
       }
     >
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[{ label: "Total Billed", value: formatCurrency(entries.reduce((a, b) => a + b.total, 0)) }, { label: "Paid to Suppliers", value: formatCurrency(entries.reduce((a, b) => a + b.paid, 0)) }, { label: "Payables Balance", value: formatCurrency(entries.reduce((a, b) => a + b.balance, 0)) }, { label: "Total Bills", value: entries.length }].map((s) => (
+        {[{ label: "Total Billed", value: formatCurrency(entries.reduce((a: any, b: any) => a + (b.total || b.totalAmount || 0), 0)) }, { label: "Paid to Suppliers", value: formatCurrency(entries.reduce((a: any, b: any) => a + (b.paid || 0), 0)) }, { label: "Payables Balance", value: formatCurrency(entries.reduce((a: any, b: any) => a + (b.balance || 0), 0)) }, { label: "Total Bills", value: entries.length }].map((s) => (
           <div key={s.label} className="metric-card">
             <p className="text-2xl font-bold">{s.value}</p>
             <p className="text-xs text-muted-foreground mt-1">{s.label}</p>
@@ -100,11 +105,26 @@ export default function PurchaseEntriesPage() {
       </div>
 
       <div className="data-table-container">
-        <div className="flex items-center justify-between p-4 border-b">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Search Bill #, Supplier..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
-          </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b">
+          <AutocompleteSearch
+            data={entries}
+            searchKeys={["billNumber", "supplierName"]}
+            displayKey="billNumber"
+            subDisplayKey="supplierName"
+            placeholder="Search Bill #, Supplier..."
+            value={search}
+            onSearchChange={(val) => setSearch(val)}
+            className="flex-1 max-w-sm"
+          />
+          <DateRangeFilter 
+            value={dateFilter} 
+            onChange={(val, s, e) => {
+              setDateFilter(val);
+              if (s && e) setDateRange({ start: s, end: e });
+            }}
+            className="w-40"
+            showIcon={true}
+          />
         </div>
 
         <div className="overflow-x-auto">
@@ -113,6 +133,7 @@ export default function PurchaseEntriesPage() {
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Supplier Bill #</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Supplier Name</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Linked PO</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Bill Date</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Subtotal</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">GST</th>
@@ -124,17 +145,26 @@ export default function PurchaseEntriesPage() {
             <tbody className="divide-y">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">Loading...</td>
+                  <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">Loading...</td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">No purchase entries found</td>
+                  <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">No purchase entries found</td>
                 </tr>
               ) : (
-                filtered.map((e) => (
+                filtered.map((e: any) => (
                   <tr key={e._id || e.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-4 py-3 font-mono font-bold text-[#3F63AD]">{e.billNo}</td>
                     <td className="px-4 py-3 font-medium text-foreground">{e.supplierName}</td>
+                    <td className="px-4 py-3">
+                      {e.linkedPoNo ? (
+                        <span className="font-mono text-xs font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                          {e.linkedPoNo}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-400">Direct Inward</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-muted-foreground text-xs">{formatDate(e.date || e.billDate)}</td>
                     <td className="px-4 py-3 text-right">{formatCurrency(e.amount || e.subtotal)}</td>
                     <td className="px-4 py-3 text-right text-muted-foreground">{formatCurrency(e.totalTax || e.gst)}</td>

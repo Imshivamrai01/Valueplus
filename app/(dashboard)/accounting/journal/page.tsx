@@ -9,10 +9,13 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/shared/date-range-filter";
 
 export default function JournalPage() {
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
+  const [dateFilter, setDateFilter] = useState("This Month");
+  const [dateRange, setDateRange] = useState(() => resolveDateRange("This Month"));
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [newEntry, setNewEntry] = useState({
     date: format(new Date(), "yyyy-MM-dd"),
@@ -89,10 +92,13 @@ export default function JournalPage() {
     addEntryMutation.mutate(newEntry);
   };
 
-  const filteredEntries = entries.filter((entry: any) => 
-    entry.description.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    entry.entryNumber.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredEntries = entries.filter((entry: any) => {
+    const matchSearch =
+      entry.description.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      entry.entryNumber.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchDate = isDateInRange(entry.date || entry.createdAt, dateRange.start, dateRange.end);
+    return matchSearch && matchDate;
+  });
 
   return (
     <PageShell 
@@ -100,14 +106,25 @@ export default function JournalPage() {
       subtitle="Double-entry bookkeeping"
       breadcrumbs={[{ label: "Accounting" }, { label: "Journal Entries" }]}
     >
-      <div className="flex justify-between items-center mb-6">
-        <div className="relative w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input 
-            placeholder="Search entries..." 
-            className="pl-9"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div className="flex items-center gap-3 flex-1 max-w-xl">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input 
+              placeholder="Search entries..." 
+              className="pl-9"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <DateRangeFilter 
+            value={dateFilter} 
+            onChange={(val, s, e) => {
+              setDateFilter(val);
+              if (s && e) setDateRange({ start: s, end: e });
+            }}
+            className="w-40"
+            showIcon={true}
           />
         </div>
         

@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { 
   Plus, Search, Download, Eye, Edit, Trash2, MoreHorizontal, Receipt, CheckCircle, 
   Clock, AlertTriangle, XCircle, Printer, ShoppingCart, User, Building, CreditCard, 
-  Sparkles, CheckCircle2, FileText, Calendar, MapPin, Calculator, ShieldCheck
+  Sparkles, CheckCircle2, FileText, Calendar, MapPin, Calculator, ShieldCheck, Ban
 } from "lucide-react";
 import { InvoiceCreationModal } from "@/components/InvoiceCreationModal";
 import { toast } from "sonner";
@@ -15,33 +15,50 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { AutocompleteSearch } from "@/components/shared/autocomplete-search";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { formatCurrency, formatDate, downloadCSV } from "@/lib/utils";
+import { formatCurrency, formatDate, downloadCSV, cn } from "@/lib/utils";
+import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/shared/date-range-filter";
 import ValueplusInvoice from "@/app/invoice/page";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { getOfflineInvoices, OfflineInvoice } from "@/lib/offline-storage";
+import { useOfflineSync } from "@/components/shared/offline-sync-provider";
+import { WifiOff, RefreshCw, CloudUpload } from "lucide-react";
 
-const STATUSES = ["paid", "pending", "overdue", "partial", "cancelled", "draft"] as const;
+const STATUSES = ["paid", "pending", "overdue", "partial", "cancelled", "draft", "offline"] as const;
 
-const STATUS_CONFIG = {
-  paid: { variant: "success" as const, icon: CheckCircle, label: "Paid" },
+const STATUS_CONFIG: Record<string, any> = {
+  paid: { variant: "success" as const, icon: CheckCircle2, label: "Paid" },
   pending: { variant: "warning" as const, icon: Clock, label: "Pending" },
   overdue: { variant: "destructive" as const, icon: AlertTriangle, label: "Overdue" },
   partial: { variant: "info" as const, icon: Clock, label: "Partial" },
-  cancelled: { variant: "secondary" as const, icon: XCircle, label: "Cancelled" },
+  cancelled: { variant: "secondary" as const, icon: Ban, label: "Cancelled" },
   draft: { variant: "secondary" as const, icon: Receipt, label: "Draft" },
+  offline: { variant: "warning" as const, icon: AlertTriangle, label: "Offline (Queued)" },
 };
 
 function SalesInvoicesContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
+  const { isOnline, pendingCount, isSyncing, syncNow } = useOfflineSync();
+  const [offlineInvoices, setOfflineInvoices] = useState<OfflineInvoice[]>([]);
+
+  useEffect(() => {
+    setOfflineInvoices(getOfflineInvoices());
+    const handleQueueChange = () => setOfflineInvoices(getOfflineInvoices());
+    window.addEventListener("valueplus-offline-queue-changed", handleQueueChange);
+    return () => window.removeEventListener("valueplus-offline-queue-changed", handleQueueChange);
+  }, []);
   const [activeTab, setActiveTab] = useState("customers");
   
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [dateFilter, setDateFilter] = useState("This Month");
+  const [dateRange, setDateRange] = useState(() => resolveDateRange("This Month"));
   const [page, setPage] = useState(1);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [activePrintInvoice, setActivePrintInvoice] = useState<any | null>(null);
@@ -70,6 +87,17 @@ function SalesInvoicesContent() {
       return json.success ? json.data : [];
     }
   });
+
+  const allInvoices = useMemo(() => {
+    const serverNos = new Set(invoices.map((i: any) => i.invoiceNumber));
+    const pending = offlineInvoices.filter((i: any) => !serverNos.has(i.invoiceNumber)).map(i => ({ 
+      ...i, 
+      status: "offline",
+      paidAmount: i.paidAmount || i.total,
+      balanceAmount: i.balanceAmount || 0,
+    }));
+    return [...pending, ...invoices];
+  }, [invoices, offlineInvoices]);
 
   const { data: customers = [] } = useQuery({
     queryKey: ["customers"],
@@ -118,8 +146,6 @@ function SalesInvoicesContent() {
 
   const loading = loadingInvoices;
 
-
-
   const deleteInvoiceMutation = useMutation({
     mutationFn: async (invoiceNumber: string) => {
       const res = await fetch(`/api/invoices?invoiceNumber=${encodeURIComponent(invoiceNumber)}`, { method: "DELETE" });
@@ -140,14 +166,26 @@ function SalesInvoicesContent() {
   return (
     <PageShell
       title="Invoices & GST Billing"
-      subtitle={`${invoices.length} GST Tax Invoices generated`}
+      subtitle={`${allInvoices.length} GST Tax Invoices (${offlineInvoices.length} queued offline)`}
       breadcrumbs={[{ label: "Sales", href: "/sales/invoices" }, { label: "Invoices" }]}
       actions={
         <>
-          <Button variant="outline" size="sm" onClick={() => downloadCSV(invoices.map(i => ({ ...i })), "invoices.csv")}>
+          {pendingCount > 0 && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={syncNow} 
+              disabled={!isOnline || isSyncing}
+              className="bg-amber-50 border-amber-300 text-amber-900 font-bold hover:bg-amber-100 h-9"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isSyncing ? "animate-spin" : ""}`} />
+              {isSyncing ? "Syncing..." : `Sync Offline (${pendingCount})`}
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={() => downloadCSV(allInvoices.map(i => ({ ...i })), "invoices.csv")} className="h-9">
             <Download className="w-4 h-4 mr-1.5" /> Export
           </Button>
-          <Button size="sm" onClick={() => setIsBillingFormOpen(true)} className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white font-bold shadow-md">
+          <Button size="sm" onClick={() => setIsBillingFormOpen(true)} className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white font-bold shadow-md h-9">
             <Plus className="w-4 h-4 mr-1.5" /> New Invoice Billing
           </Button>
         </>
@@ -163,17 +201,33 @@ function SalesInvoicesContent() {
       {/* Table */}
       <div className="data-table-container">
         <div className="flex flex-wrap items-center gap-3 p-4 border-b">
-          <div className="relative flex-1 min-w-48">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Search invoice #, customer..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} className="pl-9" />
-          </div>
+          <AutocompleteSearch
+            data={allInvoices}
+            searchKeys={["invoiceNumber", "customerName", "phone"]}
+            displayKey="invoiceNumber"
+            subDisplayKey="customerName"
+            placeholder="Search invoice #, customer..."
+            value={search}
+            onSearchChange={(val) => { setSearch(val); setPage(1); }}
+            className="flex-1 min-w-48"
+          />
           <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
-            <SelectTrigger className="w-36"><SelectValue placeholder="Status" /></SelectTrigger>
+            <SelectTrigger className="w-40"><SelectValue placeholder="Status" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
               {Object.entries(STATUS_CONFIG).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
             </SelectContent>
           </Select>
+          <DateRangeFilter 
+            value={dateFilter} 
+            onChange={(val, s, e) => { 
+              setDateFilter(val); 
+              if (s && e) setDateRange({ start: s, end: e }); 
+              setPage(1); 
+            }} 
+            className="w-40" 
+            showIcon={true} 
+          />
         </div>
 
         <div className="overflow-x-auto">
@@ -188,15 +242,16 @@ function SalesInvoicesContent() {
             <tbody className="divide-y">
               {loading ? (
                 <tr><td colSpan={11} className="py-16 text-center text-muted-foreground">Loading invoices...</td></tr>
-              ) : invoices.length === 0 ? (
+              ) : allInvoices.length === 0 ? (
                 <tr><td colSpan={11} className="py-16 text-center text-muted-foreground">No invoices found</td></tr>
               ) : (
-                invoices
+                allInvoices
                   .filter((inv: any) => {
                     const matchesSearch = inv.invoiceNumber?.toLowerCase().includes(search.toLowerCase()) || 
                                           inv.customerName?.toLowerCase().includes(search.toLowerCase());
                     const matchesStatus = statusFilter === "all" || inv.status === statusFilter;
-                    return matchesSearch && matchesStatus;
+                    const matchesDate = isDateInRange(inv.date || inv.createdAt, dateRange.start, dateRange.end);
+                    return matchesSearch && matchesStatus && matchesDate;
                   })
                   .slice((page - 1) * 10, page * 10)
                   .map((inv: any) => {
@@ -269,7 +324,7 @@ function SalesInvoicesContent() {
           </table>
         </div>
         {(() => {
-          const filtered = invoices.filter((inv: any) => {
+          const filtered = allInvoices.filter((inv: any) => {
             const matchesSearch = inv.invoiceNumber?.toLowerCase().includes(search.toLowerCase()) || 
                                   inv.customerName?.toLowerCase().includes(search.toLowerCase());
             const matchesStatus = statusFilter === "all" || inv.status === statusFilter;

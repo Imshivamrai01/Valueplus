@@ -5,10 +5,11 @@ import { PageShell } from "@/components/shared/page-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Building, Edit, Trash2, FileText } from "lucide-react";
+import { Plus, Search, Edit, Trash2, Building, Download, Eye, FileText, CheckCircle, Clock, AlertTriangle, XCircle, X } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AutocompleteSearch } from "@/components/shared/autocomplete-search";
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils";
 import { INDIA_STATES, INDIA_STATES_AND_DISTRICTS, normalizeStateName, normalizeCityName } from "@/lib/data/locations";
@@ -109,8 +110,12 @@ export default function SuppliersPage() {
   });
 
   const handleSave = () => {
-    if (!formData.name || !formData.phone) {
-      toast.error("Please fill Supplier Name and Phone");
+    if (!formData.name) {
+      toast.error("Please fill Supplier Name");
+      return;
+    }
+    if (!formData.phone || formData.phone.replace(/\D/g, '').length !== 10) {
+      toast.error("Please enter a valid 10-digit mobile number");
       return;
     }
 
@@ -192,10 +197,16 @@ export default function SuppliersPage() {
       </div>
       <div className="data-table-container">
         <div className="flex items-center gap-3 p-4 border-b">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Search suppliers..." value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}} className="pl-9" />
-          </div>
+          <AutocompleteSearch
+            data={suppliers}
+            searchKeys={["name", "code", "phone", "email", "gstin"]}
+            displayKey="name"
+            subDisplayKey="phone"
+            placeholder="Search suppliers..."
+            value={search}
+            onSearchChange={(val) => { setSearch(val); setPage(1); }}
+            className="flex-1 max-w-sm"
+          />
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -260,9 +271,9 @@ export default function SuppliersPage() {
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1.5 md:col-span-2">
-                  <Label className="text-xs font-semibold text-slate-700">Supplier Company Name *</Label>
+                  <Label className="text-xs font-semibold text-slate-700">Supplier Name *</Label>
                   <Input
-                    placeholder="e.g. Apple India Pvt Ltd"
+                    placeholder="e.g. Apple India Pvt Ltd / boAt Lifestyle"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     className="bg-slate-50 border-slate-300"
@@ -270,7 +281,7 @@ export default function SuppliersPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Phone Contact Number *</Label>
+                  <Label className="text-xs font-semibold text-slate-700">Supplier Mobile Number *</Label>
                   <Input
                     placeholder="9876543210"
                     value={formData.phone}

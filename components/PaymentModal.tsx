@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { WalletCards, Banknote, CreditCard, Send, XCircle } from "lucide-react";
+import { WalletCards, Banknote, CreditCard, Send, XCircle, X } from "lucide-react";
 import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
@@ -137,7 +137,9 @@ export function PaymentModal({ isOpen, onClose, onSuccess, defaultPartyType = "C
             <WalletCards className="w-6 h-6 text-[#76C043]" />
           </div>
           <div>
-            <DialogTitle className="text-xl font-bold tracking-tight">Record {defaultPartyType} Payment</DialogTitle>
+            <DialogTitle className="text-xl font-bold tracking-tight">
+              {defaultPartyType === "Supplier" ? "Record Supplier Payout" : "Record Customer Payment Receipt"}
+            </DialogTitle>
             <DialogDescription className="text-slate-300 text-xs mt-0.5">
               {defaultPartyType === "Supplier" ? "Record payouts made to suppliers or refunds received." : "Receive payments from customers or issue refunds to clear dues."}
             </DialogDescription>
@@ -148,10 +150,12 @@ export function PaymentModal({ isOpen, onClose, onSuccess, defaultPartyType = "C
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
             
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-slate-700">Select {defaultPartyType} *</Label>
+              <Label className="text-xs font-semibold text-slate-700">
+                {defaultPartyType === "Supplier" ? "Supplier Name *" : "Customer Name *"}
+              </Label>
               <Select value={form.partyId} onValueChange={handleSelectParty}>
                 <SelectTrigger className="bg-slate-50 border-slate-300 font-semibold text-[#3F63AD]">
-                  <SelectValue placeholder={`Search ${defaultPartyType.toLowerCase()}...`} />
+                  <SelectValue placeholder={defaultPartyType === "Supplier" ? "Select Supplier..." : "Select Customer..."} />
                 </SelectTrigger>
                 <SelectContent>
                   {parties.map((p: any) => (

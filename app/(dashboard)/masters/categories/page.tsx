@@ -3,6 +3,8 @@ import { PageShell } from "@/components/shared/page-shell";
 import { Button } from "@/components/ui/button";
 import { Plus, Tag, Search, Trash2, Edit } from "lucide-react";
 import { useState, useMemo } from "react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { AutocompleteSearch } from "@/components/shared/autocomplete-search";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -151,15 +153,15 @@ export default function CategoriesPage() {
       {/* Table */}
       <div className="data-table-container">
         <div className="flex items-center justify-between p-4 border-b">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Search categories..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9"
-            />
-          </div>
+          <AutocompleteSearch
+            data={categories}
+            searchKeys={["name", "description"]}
+            displayKey="name"
+            placeholder="Search categories..."
+            value={search}
+            onSearchChange={(val) => setSearch(val)}
+            className="flex-1 max-w-sm"
+          />
           <span className="text-sm font-semibold text-muted-foreground">{filtered.length} Categories</span>
         </div>
 

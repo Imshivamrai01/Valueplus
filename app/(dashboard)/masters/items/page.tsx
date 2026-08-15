@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Search, Filter, Download, Upload, Printer, MoreHorizontal, Edit, Trash2, Eye, Package, TrendingUp, AlertTriangle, CheckCircle } from "lucide-react";
+import { Plus, Search, Filter, Download, Upload, Printer, MoreHorizontal, Edit, Trash2, Eye, Package, TrendingUp, AlertTriangle, CheckCircle, X } from "lucide-react";
 import { toast } from "sonner";
 import { PageShell } from "@/components/shared/page-shell";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { AutocompleteSearch } from "@/components/shared/autocomplete-search";
 import { formatCurrency, downloadCSV, formatDate } from "@/lib/utils";
 
 const WAREHOUSES = ["Main Store - Mumbai", "Pune Branch", "Delhi Hub", "Bengaluru Store"];
@@ -285,15 +286,16 @@ export default function ItemsPage() {
       <div className="data-table-container">
         {/* Toolbar */}
         <div className="flex flex-wrap items-center gap-3 p-4 border-b">
-          <div className="relative flex-1 min-w-48">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Search items, code, brand..."
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-              className="pl-9"
-            />
-          </div>
+          <AutocompleteSearch
+            data={items}
+            searchKeys={["name", "code", "brand", "category"]}
+            displayKey="name"
+            subDisplayKey="code"
+            placeholder="Search items, code, brand, category..."
+            value={search}
+            onSearchChange={(val) => { setSearch(val); setPage(1); }}
+            className="flex-1 min-w-48"
+          />
           <Select value={categoryFilter} onValueChange={(v) => { setCategoryFilter(v); setPage(1); }}>
             <SelectTrigger className="w-44">
               <SelectValue placeholder="Category" />

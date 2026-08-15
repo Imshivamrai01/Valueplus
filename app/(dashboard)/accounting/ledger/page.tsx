@@ -6,9 +6,12 @@ import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Card } from "@/components/ui/card";
 import { FileText } from "lucide-react";
+import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/shared/date-range-filter";
 
 export default function LedgerPage() {
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
+  const [dateFilter, setDateFilter] = useState("This Month");
+  const [dateRange, setDateRange] = useState(() => resolveDateRange("This Month"));
 
   const { data: accountsData } = useQuery({
     queryKey: ["accounts"],
@@ -28,7 +31,7 @@ export default function LedgerPage() {
     },
     enabled: !!selectedAccountId
   });
-  const entries = journalData?.data || [];
+  const entries = (journalData?.data || []).filter((e: any) => isDateInRange(e.date || e.createdAt, dateRange.start, dateRange.end));
 
   const selectedAccount = accounts.find((a: any) => a._id === selectedAccountId);
 
@@ -38,20 +41,34 @@ export default function LedgerPage() {
       subtitle="Complete account ledger"
       breadcrumbs={[{ label: "Accounting" }, { label: "General Ledger" }]}
     >
-      <div className="mb-6 max-w-md">
-        <label className="text-sm font-medium mb-1.5 block">Select Account</label>
-        <select 
-          className="w-full border rounded-md p-2 text-sm bg-white"
-          value={selectedAccountId}
-          onChange={(e) => setSelectedAccountId(e.target.value)}
-        >
-          <option value="">-- Choose an Account --</option>
-          {accounts.map((acc: any) => (
-            <option key={acc._id} value={acc._id}>
-              {acc.code} - {acc.name} ({acc.type})
-            </option>
-          ))}
-        </select>
+      <div className="mb-6 flex flex-wrap items-end gap-4">
+        <div className="flex-1 max-w-md">
+          <label className="text-sm font-medium mb-1.5 block">Select Account</label>
+          <select 
+            className="w-full border rounded-md p-2 text-sm bg-white"
+            value={selectedAccountId}
+            onChange={(e) => setSelectedAccountId(e.target.value)}
+          >
+            <option value="">-- Choose an Account --</option>
+            {accounts.map((acc: any) => (
+              <option key={acc._id} value={acc._id}>
+                {acc.code} - {acc.name} ({acc.type})
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="text-sm font-medium mb-1.5 block">Time Period</label>
+          <DateRangeFilter 
+            value={dateFilter} 
+            onChange={(val, s, e) => {
+              setDateFilter(val);
+              if (s && e) setDateRange({ start: s, end: e });
+            }}
+            className="w-44"
+            showIcon={true}
+          />
+        </div>
       </div>
 
       {selectedAccountId ? (

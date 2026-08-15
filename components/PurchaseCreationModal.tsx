@@ -1,10 +1,17 @@
+"use client";
+
 import React, { useState, useMemo, useEffect } from "react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Plus, Trash2, ClipboardList, FileMinus, ShoppingBag } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { 
+  Plus, Trash2, ClipboardList, FileMinus, ShoppingBag, Phone, UserCheck, UserPlus, X, 
+  AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Barcode, ShieldAlert, Sparkles, ArrowRight
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -12,8 +19,22 @@ function formatCurrency(val: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(val);
 }
 
-export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: { isOpen: boolean; onClose: () => void; mode?: "entry" | "debit-note" | "order" }) {
+interface PurchaseCreationModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  mode?: "entry" | "debit-note" | "order";
+}
+
+export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: PurchaseCreationModalProps) {
   const queryClient = useQueryClient();
+  const [currentMode, setCurrentMode] = useState<"entry" | "debit-note" | "order">(mode);
+
+  // Sync mode prop with local state when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setCurrentMode(mode);
+    }
+  }, [isOpen, mode]);
 
   const { data: suppliers = [] } = useQuery({
     queryKey: ["suppliers"],
@@ -55,9 +76,82 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: { isO
     billNo: "",
     billDate: new Date().toISOString().split("T")[0],
     supplierName: "",
+    supplierPhone: "",
+    supplierId: "" as string,
     linkedPoNo: "",
-    items: [] as any[],
+    items: [] as Array<{
+      id: string;
+      itemId: string;
+      name: string;
+      quantity: number;
+      rate: number;
+      gstRate: number;
+      serialNumbers: string[];
+      showSerials?: boolean;
+    }>,
   });
+
+  const [supplierLookupStatus, setSupplierLookupStatus] = useState<"idle" | "existing" | "new">("idle");
+
+  // Get active pending POs for the selected supplier
+  const supplierPendingPOs = useMemo(() => {
+    if (!form.supplierName) return [];
+    return purchaseOrders.filter((po: any) => 
+      po.supplierName?.trim().toLowerCase() === form.supplierName.trim().toLowerCase() && 
+      po.status !== "received"
+    );
+  }, [purchaseOrders, form.supplierName]);
+
+  const handleSupplierPhoneLookup = (phone: string) => {
+    const cleanPhone = phone.replace(/\D/g, '');
+    setForm((prev) => ({ ...prev, supplierPhone: cleanPhone }));
+
+    if (cleanPhone.length < 10) {
+      setSupplierLookupStatus("idle");
+      return;
+    }
+
+    if (cleanPhone.length === 10) {
+      const found = suppliers.find((s: any) => s.phone === cleanPhone);
+      if (found) {
+        setForm((prev) => ({
+          ...prev,
+          supplierId: found._id,
+          supplierName: found.name,
+          supplierPhone: cleanPhone,
+          linkedPoNo: "",
+          items: [],
+        }));
+        setSupplierLookupStatus("existing");
+        toast.success(`Supplier found: ${found.name}`);
+      } else {
+        setForm((prev) => ({
+          ...prev,
+          supplierId: "new",
+          supplierName: "",
+          supplierPhone: cleanPhone,
+          linkedPoNo: "",
+          items: [],
+        }));
+        setSupplierLookupStatus("new");
+      }
+    }
+  };
+
+  const handleSupplierSelect = (supplierName: string) => {
+    const found = suppliers.find((s: any) => s.name === supplierName);
+    if (found) {
+      setForm(prev => ({
+        ...prev,
+        supplierName: found.name,
+        supplierPhone: found.phone || "",
+        supplierId: found._id,
+        linkedPoNo: "",
+        items: [],
+      }));
+      setSupplierLookupStatus("existing");
+    }
+  };
 
   const handleLoadPO = (poNo: string) => {
     const po = purchaseOrders.find((p: any) => p.poNo === poNo);
@@ -67,27 +161,33 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: { isO
       ...prev,
       supplierName: po.supplierName,
       linkedPoNo: poNo,
-      items: po.items.map((i: any) => ({
-        id: Math.random().toString(),
-        itemId: i.itemId,
-        name: i.name,
-        quantity: i.quantity,
-        rate: i.rate,
-        gstRate: i.gstRate || 18,
-      }))
+      items: (po.items || []).map((i: any) => {
+        const qty = Number(i.quantity) || 1;
+        return {
+          id: Math.random().toString(),
+          itemId: i.itemId,
+          name: i.name,
+          quantity: qty,
+          rate: Number(i.rate) || 0,
+          gstRate: Number(i.gstRate) || 18,
+          serialNumbers: Array.from({ length: qty }).map(() => ""),
+          showSerials: true,
+        };
+      })
     }));
+    toast.success(`Loaded items from Purchase Order ${poNo}`);
   };
 
   useEffect(() => {
-    if (isOpen && !form.billNo) {
+    if (isOpen) {
       setForm(prev => {
         let newNo = "";
-        if (mode === "order") {
+        if (currentMode === "order") {
           const count = purchaseOrders.length;
           newNo = `PO-2026-${String(count + 1).padStart(4, "0")}`;
         } else {
-          const count = purchaseEntries.filter((x: any) => x.type === mode).length;
-          if (mode === "debit-note") {
+          const count = purchaseEntries.filter((x: any) => x.type === currentMode).length;
+          if (currentMode === "debit-note") {
             newNo = `DN-2026-${String(count + 1).padStart(4, "0")}`;
           } else {
             newNo = `BILL-2026-${String(count + 1).padStart(4, "0")}`;
@@ -96,7 +196,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: { isO
         return { ...prev, billNo: newNo };
       });
     }
-  }, [isOpen, mode, purchaseEntries, purchaseOrders, form.billNo]);
+  }, [isOpen, currentMode, purchaseEntries, purchaseOrders]);
 
   const addLineItem = () => {
     setForm(prev => ({
@@ -110,6 +210,8 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: { isO
           quantity: 1,
           rate: 0,
           gstRate: 18,
+          serialNumbers: [""],
+          showSerials: true,
         }
       ]
     }));
@@ -145,7 +247,47 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: { isO
   const updateLineItem = (rowId: string, field: string, value: any) => {
     setForm(prev => ({
       ...prev,
-      items: prev.items.map(item => (item.id === rowId ? { ...item, [field]: value } : item))
+      items: prev.items.map(item => {
+        if (item.id !== rowId) return item;
+
+        if (field === "quantity") {
+          const newQty = Math.max(1, Number(value));
+          const currentSerials = item.serialNumbers || [];
+          let updatedSerials: string[] = [];
+          if (newQty > currentSerials.length) {
+            updatedSerials = [
+              ...currentSerials,
+              ...Array.from({ length: newQty - currentSerials.length }).map(() => "")
+            ];
+          } else {
+            updatedSerials = currentSerials.slice(0, newQty);
+          }
+          return { ...item, quantity: newQty, serialNumbers: updatedSerials };
+        }
+
+        return { ...item, [field]: value };
+      })
+    }));
+  };
+
+  const updateSerialNumber = (rowId: string, unitIndex: number, serialValue: string) => {
+    setForm(prev => ({
+      ...prev,
+      items: prev.items.map(item => {
+        if (item.id !== rowId) return item;
+        const serials = [...(item.serialNumbers || [])];
+        serials[unitIndex] = serialValue;
+        return { ...item, serialNumbers: serials };
+      })
+    }));
+  };
+
+  const toggleSerialsDisplay = (rowId: string) => {
+    setForm(prev => ({
+      ...prev,
+      items: prev.items.map(item =>
+        item.id === rowId ? { ...item, showSerials: !item.showSerials } : item
+      )
     }));
   };
 
@@ -154,8 +296,8 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: { isO
     let gst = 0;
 
     form.items.forEach(item => {
-      const rowTotal = item.quantity * item.rate;
-      const rowGst = rowTotal * (item.gstRate / 100);
+      const rowTotal = (item.quantity || 0) * (item.rate || 0);
+      const rowGst = rowTotal * ((item.gstRate || 0) / 100);
       subtotal += rowTotal;
       gst += rowGst;
     });
@@ -169,8 +311,8 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: { isO
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const payload = {
-        type: mode,
+      const payload: any = {
+        type: currentMode,
         billNo: form.billNo,
         supplierName: form.supplierName,
         billDate: form.billDate,
@@ -181,24 +323,24 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: { isO
           quantity: Number(i.quantity),
           rate: Number(i.rate),
           gstRate: Number(i.gstRate),
+          serialNumbers: i.serialNumbers || [],
         })),
         subtotal: totals.subtotal,
         gst: totals.gst,
         total: totals.total,
-        total: totals.total,
-        paid: mode === "entry" ? totals.total : 0, // Assume fully paid for bills for now, 0 for debit notes
-        balance: mode === "debit-note" ? totals.total : 0,
-        status: mode === "entry" ? "paid" : (mode === "order" ? "sent" : "pending")
+        paid: currentMode === "entry" ? totals.total : 0,
+        balance: currentMode === "debit-note" ? totals.total : 0,
+        status: currentMode === "entry" ? "paid" : (currentMode === "order" ? "sent" : "pending")
       };
 
-      if (mode === "order") {
+      if (currentMode === "order") {
         payload.poNo = payload.billNo;
         payload.date = payload.billDate;
-        payload.expectedDate = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]; // default expected date
+        payload.expectedDate = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
         payload.totalAmount = payload.total;
       }
 
-      const endpoint = mode === "order" ? "/api/purchase-orders" : "/api/purchase-entries";
+      const endpoint = currentMode === "order" ? "/api/purchase-orders" : "/api/purchase-entries";
 
       const res = await fetch(endpoint, {
         method: "POST",
@@ -210,49 +352,116 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: { isO
       return json.data;
     },
     onSuccess: () => {
-      toast.success(mode === "order" ? "Purchase Order Sent" : mode === "entry" ? "Purchase Bill Recorded" : "Debit Note Issued");
+      toast.success(currentMode === "order" ? "Purchase Order Sent Successfully" : currentMode === "entry" ? "Purchase Inward Bill & IMEI Stock Logged" : "Debit Note Issued");
       queryClient.invalidateQueries({ queryKey: ["purchase-entries"] });
       queryClient.invalidateQueries({ queryKey: ["debit-notes"] });
       queryClient.invalidateQueries({ queryKey: ["purchase-orders"] });
-      queryClient.invalidateQueries({ queryKey: ["items"] }); // invalidate inventory
+      queryClient.invalidateQueries({ queryKey: ["items"] });
       onClose();
       // Reset form
       setForm({
         billNo: "",
         billDate: new Date().toISOString().split("T")[0],
         supplierName: "",
+        supplierPhone: "",
+        supplierId: "",
         linkedPoNo: "",
         items: [],
       });
+      setSupplierLookupStatus("idle");
     },
     onError: (error: any) => {
       toast.error(error.message || "An error occurred");
     }
   });
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (!form.supplierPhone || form.supplierPhone.length !== 10) {
+      toast.error("Supplier mobile number (10 digits) is mandatory.");
+      return;
+    }
     if (!form.supplierName) {
-      toast.error("Please select a supplier");
+      toast.error("Please enter or select a supplier name");
       return;
     }
+
+    // MANDATORY PO CHECK FOR PURCHASE ENTRY
+    if (currentMode === "entry") {
+      if (!form.linkedPoNo) {
+        toast.error("Please select and link an approved Purchase Order first.");
+        return;
+      }
+    }
+
     if (form.items.length === 0) {
-      toast.error("Please add at least one item");
+      toast.error("Please add or load at least one product item");
       return;
     }
+
     const hasIncompleteItem = form.items.some(i => !i.itemId || i.quantity <= 0);
     if (hasIncompleteItem) {
       toast.error("Please select products and ensure quantity > 0");
       return;
     }
+
+    // MANDATORY IMEI / SERIAL NUMBER VALIDATION FOR PURCHASE ENTRY
+    if (currentMode === "entry") {
+      for (const item of form.items) {
+        const serials = item.serialNumbers || [];
+        if (serials.length !== item.quantity) {
+          toast.error(`Please enter all ${item.quantity} IMEI / Serial numbers for ${item.name}`);
+          return;
+        }
+        for (let i = 0; i < serials.length; i++) {
+          if (!serials[i] || !serials[i].trim()) {
+            toast.error(`Unit #${i + 1} IMEI / Serial number is missing for "${item.name}"`);
+            return;
+          }
+        }
+      }
+
+      // Check duplicate serial numbers within the entry
+      const allSerials = form.items.flatMap(i => (i.serialNumbers || []).map(s => s.trim().toUpperCase()));
+      const uniqueSerials = new Set(allSerials);
+      if (uniqueSerials.size !== allSerials.length) {
+        toast.error("Duplicate IMEI / Serial numbers detected. Every unit must have a unique identifier.");
+        return;
+      }
+    }
+
+    // Auto-create new supplier if phone is new
+    if (form.supplierId === "new" && form.supplierPhone) {
+      try {
+        const newSupPayload = {
+          name: form.supplierName,
+          phone: form.supplierPhone,
+          status: "active",
+        };
+        const supRes = await fetch("/api/suppliers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(newSupPayload)
+        });
+        const supJson = await supRes.json();
+        if (supJson.success && supJson.data?._id) {
+          setForm(prev => ({ ...prev, supplierId: supJson.data._id }));
+          queryClient.invalidateQueries({ queryKey: ["suppliers"] });
+        }
+      } catch (err) {
+        console.error("Auto-create supplier failed:", err);
+      }
+    }
+
     saveMutation.mutate();
   };
 
-  const isDebit = mode === "debit-note";
-  const isOrder = mode === "order";
+  const isDebit = currentMode === "debit-note";
+  const isOrder = currentMode === "order";
+  const isEntry = currentMode === "entry";
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-5xl p-0 overflow-hidden bg-slate-50 flex flex-col max-h-[90vh]">
+      <DialogContent className="max-w-5xl p-0 overflow-hidden bg-slate-50 flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className={`p-6 text-white flex items-center justify-between shrink-0 ${isDebit ? 'bg-gradient-to-r from-red-950 via-red-900 to-red-950' : (isOrder ? 'bg-gradient-to-r from-amber-900 via-amber-800 to-amber-900' : 'bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537]')}`}>
           <div className="flex items-center gap-3">
@@ -261,33 +470,61 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: { isO
             </div>
             <div>
               <DialogTitle className="text-xl font-bold tracking-tight">
-                {isDebit ? "Issue Debit Note" : (isOrder ? "Create Purchase Order" : "Record Supplier Purchase Bill")}
+                {isDebit ? "Issue Debit Note (Purchase Return)" : (isOrder ? "Create Purchase Order" : "Record Purchase Inward Entry")}
               </DialogTitle>
               <DialogDescription className={`text-xs mt-0.5 ${isDebit ? 'text-red-200' : (isOrder ? 'text-amber-200' : 'text-slate-300')}`}>
-                {isDebit ? "Record purchase returns to reduce supplier payables & inventory" : (isOrder ? "Issue inventory restocking order to electronics manufacturer or distributor" : "Log incoming inventory and track accounts payable")}
+                {isDebit 
+                  ? "Record returns to supplier and adjust payables" 
+                  : (isOrder 
+                    ? "Send formal restocking purchase order to supplier" 
+                    : "Link approved Purchase Order, log incoming inventory & record unit IMEI serial numbers")}
               </DialogDescription>
             </div>
           </div>
+
+          {/* Mode Switcher pill if needed */}
+          {isEntry && (
+            <div className="flex items-center gap-2">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => {
+                  setCurrentMode("order");
+                  setForm(prev => ({ ...prev, linkedPoNo: "", items: [] }));
+                }}
+                className="bg-white/10 border-white/20 text-white hover:bg-white/20 text-xs h-8"
+              >
+                <ShoppingBag className="w-3.5 h-3.5 mr-1.5 text-amber-300" /> Create PO First
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Scrollable Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {/* Supplier Details */}
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-            <h4 className="text-sm font-semibold text-slate-800 flex items-center gap-2 mb-2">
-              1. Supplier Information
+            <h4 className="text-sm font-semibold text-slate-800 flex items-center justify-between">
+              <span className="flex items-center gap-2">1. Supplier & Voucher Details</span>
+              {isEntry && (
+                <span className="text-[11px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                  * PO Linkage & Unit IMEI Required
+                </span>
+              )}
             </h4>
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-1.5">
-                <Label className="text-xs text-slate-600">{isOrder ? "Order No." : "Bill/Note No."}</Label>
+                <Label className="text-xs text-slate-600">{isOrder ? "Purchase Order No." : "Bill / Inward No."}</Label>
                 <Input
                   value={form.billNo}
                   onChange={(e) => setForm({ ...form, billNo: e.target.value })}
-                  className="bg-slate-50 font-mono text-sm"
+                  className="bg-slate-50 font-mono text-sm font-bold text-[#3F63AD]"
                 />
               </div>
+
               <div className="space-y-1.5">
-                <Label className="text-xs text-slate-600">Date</Label>
+                <Label className="text-xs text-slate-600">Voucher Date</Label>
                 <Input
                   type="date"
                   value={form.billDate}
@@ -295,139 +532,331 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: { isO
                   className="bg-slate-50 text-sm"
                 />
               </div>
+
               <div className="space-y-1.5">
+                <Label className="text-xs text-slate-600 flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-[#3F63AD]" /> Supplier Mobile Number *
+                </Label>
+                <div className="relative">
+                  <Input
+                    type="text"
+                    maxLength={10}
+                    placeholder="Enter 10-digit mobile"
+                    value={form.supplierPhone}
+                    onChange={(e) => handleSupplierPhoneLookup(e.target.value)}
+                    className={cn(
+                      "bg-slate-50 font-mono text-base tracking-wider pr-10",
+                      supplierLookupStatus === "existing" && "border-emerald-400 bg-emerald-50/50 ring-2 ring-emerald-100",
+                      supplierLookupStatus === "new" && "border-amber-400 bg-amber-50/50 ring-2 ring-amber-100"
+                    )}
+                    autoFocus
+                  />
+                  {supplierLookupStatus === "existing" && (
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2"><UserCheck className="w-4 h-4 text-emerald-600" /></span>
+                  )}
+                  {supplierLookupStatus === "new" && (
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2"><UserPlus className="w-4 h-4 text-amber-600" /></span>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-1.5 md:col-span-2">
                 <Label className="text-xs text-slate-600">Supplier Name *</Label>
-                <Select value={form.supplierName} onValueChange={(v) => setForm({ ...form, supplierName: v })}>
+                <Input
+                  placeholder="Enter or select supplier name"
+                  value={form.supplierName}
+                  onChange={(e) => setForm({ ...form, supplierName: e.target.value })}
+                  className={cn(
+                    "bg-slate-50 text-sm font-semibold",
+                    supplierLookupStatus === "existing" && "bg-emerald-50/30"
+                  )}
+                />
+              </div>
+
+              {/* Supplier Dropdown Quick Pick */}
+              <div className="space-y-1.5">
+                <Label className="text-xs text-slate-600">Existing Supplier Quick Pick</Label>
+                <Select value={form.supplierName} onValueChange={handleSupplierSelect}>
                   <SelectTrigger className="bg-slate-50 text-sm">
-                    <SelectValue placeholder="Select supplier..." />
+                    <SelectValue placeholder="Choose Supplier..." />
                   </SelectTrigger>
                   <SelectContent>
                     {suppliers.map((s: any) => (
-                      <SelectItem key={s._id} value={s.name}>{s.name}</SelectItem>
+                      <SelectItem key={s._id} value={s.name}>{s.name} ({s.phone || "No Phone"})</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
-            {mode === "entry" && (
-              <div className="mt-4 pt-4 border-t border-slate-100 flex items-center gap-4">
-                <Label className="text-xs text-slate-600 w-32 shrink-0">Link Purchase Order</Label>
-                <Select value={form.linkedPoNo} onValueChange={handleLoadPO}>
-                  <SelectTrigger className="bg-slate-50 text-sm max-w-sm">
-                    <SelectValue placeholder="Select a pending PO to load items..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {purchaseOrders.filter((po: any) => po.status !== "received").map((po: any) => (
-                      <SelectItem key={po.poNo} value={po.poNo}>
-                        {po.poNo} - {po.supplierName} ({formatCurrency(po.totalAmount)})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            {/* ─── MANDATORY LINK PURCHASE ORDER SECTION (FOR ENTRY MODE) ──── */}
+            {isEntry && (
+              <div className="mt-4 pt-4 border-t border-slate-100">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-2">
+                  <Label className="text-xs font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wide">
+                    <Barcode className="w-4 h-4 text-[#3F63AD]" /> 2. Link Approved Purchase Order (Mandatory) *
+                  </Label>
+
+                  {form.supplierName && supplierPendingPOs.length > 0 && (
+                    <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                      {supplierPendingPOs.length} active PO(s) available
+                    </span>
+                  )}
+                </div>
+
+                {!form.supplierName ? (
+                  <div className="bg-slate-100/80 border border-slate-200 p-4 rounded-xl text-xs text-slate-500 flex items-center gap-2.5">
+                    <AlertCircle className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span>Please enter or select a Supplier above to check available Purchase Orders.</span>
+                  </div>
+                ) : supplierPendingPOs.length === 0 ? (
+                  // NO PO EXISTS FOR THIS SUPPLIER - SHOW EXPLICIT ENGLISH WARNING & CREATE PO BUTTON
+                  <div className="bg-amber-50/90 border-2 border-amber-200 p-5 rounded-xl space-y-3">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 bg-amber-100 rounded-lg text-amber-800 shrink-0 mt-0.5">
+                        <ShieldAlert className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h5 className="text-sm font-bold text-amber-950">No Active Purchase Order Found</h5>
+                        <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                          You do not have any pending or active Purchase Orders for <span className="font-bold underline">{form.supplierName}</span>. 
+                          In ValuePlus ERP, a Purchase Inward Entry must be linked to an approved Purchase Order to track ordered stock and agreed pricing.
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-amber-200">
+                      <Button 
+                        size="sm" 
+                        onClick={() => {
+                          setCurrentMode("order");
+                          setForm(prev => ({ ...prev, linkedPoNo: "", items: [] }));
+                          toast.info("Switched to Purchase Order mode. Create and send PO first.");
+                        }}
+                        className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs h-8 shadow-sm"
+                      >
+                        <Plus className="w-3.5 h-3.5 mr-1" /> Create Purchase Order for {form.supplierName}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  // POs ARE AVAILABLE - SHOW SELECTION DROPDOWN
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <Select value={form.linkedPoNo} onValueChange={handleLoadPO}>
+                        <SelectTrigger className="bg-slate-50 text-sm flex-1 border-slate-300 h-10">
+                          <SelectValue placeholder="-- Select Approved Purchase Order to Auto-Fill Items --" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {supplierPendingPOs.map((po: any) => (
+                            <SelectItem key={po.poNo} value={po.poNo}>
+                              <span className="font-bold font-mono text-[#3F63AD]">{po.poNo}</span> — {po.items?.length || 0} Products ({formatCurrency(po.totalAmount)})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      {form.linkedPoNo && (
+                        <Badge variant="success" className="h-10 px-3 flex items-center gap-1.5 text-xs">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> PO Linked: {form.linkedPoNo}
+                        </Badge>
+                      )}
+                    </div>
+
+                    {!form.linkedPoNo && (
+                      <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg text-xs text-blue-800 flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-blue-600 shrink-0" />
+                        <span>First select an approved Purchase Order from the dropdown above to load products, quantities, and rates.</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
 
-          {/* Line Items */}
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <h4 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
-                2. Product Line Items
-              </h4>
-              <Button size="sm" variant="outline" onClick={addLineItem} className="h-8 border-dashed">
-                <Plus className="w-4 h-4 mr-1" /> Add Product
-              </Button>
+          {/* Line Items & IMEI/Serial Numbers */}
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                  {isEntry ? "3. Products & Unit IMEI / Serial Numbers" : "2. Product Line Items"}
+                </h4>
+                {isEntry && form.items.length > 0 && (
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Enter unique IMEI / Serial numbers for every received physical unit.
+                  </p>
+                )}
+              </div>
+
+              {!isEntry && (
+                <Button size="sm" variant="outline" onClick={addLineItem} className="h-8 border-dashed">
+                  <Plus className="w-4 h-4 mr-1" /> Add Product
+                </Button>
+              )}
             </div>
 
-            <div className="border rounded-lg overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 border-b">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-medium text-slate-600 w-1/3">Product Item</th>
-                    <th className="px-3 py-2 text-right font-medium text-slate-600 w-24">Qty</th>
-                    <th className="px-3 py-2 text-right font-medium text-slate-600 w-32">Rate (₹)</th>
-                    <th className="px-3 py-2 text-right font-medium text-slate-600 w-24">GST %</th>
-                    <th className="px-3 py-2 text-right font-medium text-slate-600 w-32">Amount</th>
-                    <th className="px-3 py-2 text-center font-medium text-slate-600 w-12"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {form.items.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground text-sm">
-                        No items added. Click "Add Product" to begin.
-                      </td>
-                    </tr>
-                  ) : (
-                    form.items.map((item, index) => {
-                      const amount = item.quantity * item.rate;
-                      return (
-                        <tr key={item.id} className="group hover:bg-slate-50/50">
-                          <td className="px-3 py-2 align-top">
-                            <Select value={item.itemId} onValueChange={(val) => handleItemSelect(item.id, val)}>
-                              <SelectTrigger className="h-8 text-xs border-transparent bg-transparent hover:bg-slate-100 p-1">
-                                <SelectValue placeholder="Search catalog..." />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {catalogItems.map((c: any) => (
-                                  <SelectItem key={c._id} value={c._id}>{c.name}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </td>
-                          <td className="px-3 py-2 align-top">
+            {isEntry && !form.linkedPoNo ? (
+              <div className="border-2 border-dashed border-slate-200 rounded-xl p-8 text-center space-y-2 bg-slate-50/50">
+                <Barcode className="w-8 h-8 text-slate-400 mx-auto" />
+                <h5 className="text-sm font-bold text-slate-700">No Purchase Order Linked</h5>
+                <p className="text-xs text-slate-500 max-w-md mx-auto">
+                  Please link a Purchase Order in step 2 above. All ordered electronics, quantities, and inward IMEI slots will load automatically.
+                </p>
+              </div>
+            ) : form.items.length === 0 ? (
+              <div className="border border-dashed rounded-lg p-8 text-center text-muted-foreground text-sm">
+                No items added. Click "Add Product" to begin.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {form.items.map((item, index) => {
+                  const amount = item.quantity * item.rate;
+                  const enteredSerialsCount = (item.serialNumbers || []).filter(s => s && s.trim()).length;
+                  const allSerialsDone = enteredSerialsCount === item.quantity && item.quantity > 0;
+
+                  return (
+                    <div key={item.id} className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm transition-all hover:border-slate-300">
+                      {/* Item Header Row */}
+                      <div className="p-4 bg-slate-50/70 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 flex-1 min-w-[280px]">
+                          <span className="w-6 h-6 rounded-full bg-slate-200 text-slate-700 text-xs font-bold flex items-center justify-center">
+                            {index + 1}
+                          </span>
+
+                          <div className="flex-1">
+                            {isEntry ? (
+                              <div>
+                                <p className="text-sm font-bold text-slate-900">{item.name}</p>
+                                <p className="text-xs text-slate-500">Agreed Rate: {formatCurrency(item.rate)} + {item.gstRate}% GST</p>
+                              </div>
+                            ) : (
+                              <Select value={item.itemId} onValueChange={(val) => handleItemSelect(item.id, val)}>
+                                <SelectTrigger className="h-9 text-xs bg-white border-slate-300">
+                                  <SelectValue placeholder="Search product catalog..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {catalogItems.map((c: any) => (
+                                    <SelectItem key={c._id} value={c._id}>{c.name} — {formatCurrency(c.purchasePrice || 0)}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Quantity & Rate */}
+                        <div className="flex items-center gap-4">
+                          <div className="text-center">
+                            <Label className="text-[10px] text-slate-500 font-bold uppercase block">Quantity</Label>
                             <Input
                               type="number"
                               min={1}
                               value={item.quantity}
-                              onKeyDown={(e) => ["-", "+", "e", "E"].includes(e.key) && e.preventDefault()}
+                              disabled={isEntry}
                               onChange={(e) => updateLineItem(item.id, "quantity", Math.max(1, Number(e.target.value)))}
-                              className="h-8 text-xs text-right"
+                              className="h-8 w-20 text-xs text-center font-bold bg-white"
                             />
-                          </td>
-                          <td className="px-3 py-2 align-top">
+                          </div>
+
+                          <div className="text-center">
+                            <Label className="text-[10px] text-slate-500 font-bold uppercase block">Rate (₹)</Label>
                             <Input
                               type="number"
                               min={0}
                               value={item.rate}
-                              onKeyDown={(e) => ["-", "+", "e", "E"].includes(e.key) && e.preventDefault()}
+                              disabled={isEntry}
                               onChange={(e) => updateLineItem(item.id, "rate", Math.max(0, Number(e.target.value)))}
-                              className="h-8 text-xs text-right"
+                              className="h-8 w-24 text-xs text-right font-bold bg-white"
                             />
-                          </td>
-                          <td className="px-3 py-2 align-top">
-                            <Select value={String(item.gstRate)} onValueChange={(val) => updateLineItem(item.id, "gstRate", Number(val))}>
-                              <SelectTrigger className="h-8 text-xs text-right">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {[0, 5, 12, 18, 28].map((rate) => (
-                                  <SelectItem key={rate} value={String(rate)}>{rate}%</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </td>
-                          <td className="px-3 py-2 align-top text-right font-medium pt-3.5">
-                            {formatCurrency(amount)}
-                          </td>
-                          <td className="px-3 py-2 align-top text-center pt-2.5">
+                          </div>
+
+                          <div className="text-center">
+                            <Label className="text-[10px] text-slate-500 font-bold uppercase block">GST %</Label>
+                            <span className="text-xs font-semibold text-slate-700 block mt-1.5">{item.gstRate}%</span>
+                          </div>
+
+                          <div className="text-right min-w-[100px]">
+                            <Label className="text-[10px] text-slate-500 font-bold uppercase block">Item Total</Label>
+                            <span className="text-sm font-black text-slate-900 block mt-1">{formatCurrency(amount)}</span>
+                          </div>
+
+                          {!isEntry && (
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-6 w-6 text-slate-400 hover:text-red-600 hover:bg-red-50"
+                              className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50 ml-1"
                               onClick={() => removeLineItem(item.id)}
                             >
                               <Trash2 className="w-4 h-4" />
                             </Button>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Unit-by-Unit IMEI / Serial Number Input Grid (FOR ENTRY MODE) */}
+                      {isEntry && (
+                        <div className="p-4 bg-slate-50/30">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                              <Barcode className="w-4 h-4 text-[#3F63AD]" />
+                              <span className="text-xs font-bold text-slate-800">
+                                Unit IMEI / Serial Numbers
+                              </span>
+                              <Badge variant={allSerialsDone ? "success" : "warning"} className="text-[10px] ml-1">
+                                {enteredSerialsCount} / {item.quantity} Recorded
+                              </Badge>
+                            </div>
+
+                            <button 
+                              type="button" 
+                              onClick={() => toggleSerialsDisplay(item.id)}
+                              className="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1 font-medium"
+                            >
+                              {item.showSerials ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                              {item.showSerials ? "Collapse" : "Expand"}
+                            </button>
+                          </div>
+
+                          {item.showSerials && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                              {Array.from({ length: item.quantity }).map((_, unitIdx) => {
+                                const currentSerial = item.serialNumbers?.[unitIdx] || "";
+                                const isValid = currentSerial.trim().length > 0;
+
+                                return (
+                                  <div key={unitIdx} className="space-y-1 bg-white p-2.5 rounded-lg border border-slate-200">
+                                    <div className="flex items-center justify-between text-[11px]">
+                                      <span className="font-semibold text-slate-600">Unit #{unitIdx + 1} Serial / IMEI</span>
+                                      {isValid ? (
+                                        <span className="text-emerald-600 font-bold flex items-center gap-0.5 text-[10px]">
+                                          <CheckCircle2 className="w-3 h-3" /> Valid
+                                        </span>
+                                      ) : (
+                                        <span className="text-amber-600 font-bold text-[10px]">Required *</span>
+                                      )}
+                                    </div>
+                                    <Input
+                                      placeholder={`Scan or type Unit #${unitIdx + 1} IMEI / Serial`}
+                                      value={currentSerial}
+                                      onChange={(e) => updateSerialNumber(item.id, unitIdx, e.target.value.toUpperCase())}
+                                      className={cn(
+                                        "h-8 text-xs font-mono tracking-wider bg-slate-50",
+                                        isValid ? "border-emerald-300 bg-emerald-50/20" : "border-amber-300 bg-amber-50/20"
+                                      )}
+                                    />
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
@@ -436,13 +865,14 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: { isO
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
             <div className="space-y-1">
               <div className="flex items-center gap-4 text-sm text-slate-600">
-                <span>Subtotal: {formatCurrency(totals.subtotal)}</span>
-                <span>GST: {formatCurrency(totals.gst)}</span>
+                <span>Taxable Subtotal: <strong className="text-slate-800">{formatCurrency(totals.subtotal)}</strong></span>
+                <span>GST Tax: <strong className="text-slate-800">{formatCurrency(totals.gst)}</strong></span>
               </div>
-              <div className="text-xl font-bold text-slate-900">
-                Total {isDebit ? "Credit" : "Amount"}: {formatCurrency(totals.total)}
+              <div className="text-xl font-black text-slate-900">
+                Net Voucher Total: <span className="text-[#3F63AD] font-mono">{formatCurrency(totals.total)}</span>
               </div>
             </div>
+
             <div className="flex items-center gap-3 w-full md:w-auto">
               <Button variant="outline" onClick={onClose} className="w-full md:w-auto px-6">
                 Cancel
@@ -452,7 +882,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: { isO
                 disabled={saveMutation.isPending}
                 className={`w-full md:w-auto px-8 font-bold shadow-lg ${isDebit ? 'bg-red-600 hover:bg-red-700 shadow-red-600/20' : (isOrder ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/20' : 'bg-[#3F63AD] hover:bg-[#2E4F95] shadow-[#3F63AD]/20')}`}
               >
-                {saveMutation.isPending ? "Saving..." : (isDebit ? "Save Debit Note" : (isOrder ? "Send Purchase Order" : "Save Purchase Entry"))}
+                {saveMutation.isPending ? "Recording..." : (isDebit ? "Save Debit Note" : (isOrder ? "Send Purchase Order" : "Record Purchase Inward & Stock"))}
               </Button>
             </div>
           </div>

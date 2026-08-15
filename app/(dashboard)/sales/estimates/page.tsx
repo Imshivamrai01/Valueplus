@@ -14,6 +14,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { InvoiceCreationModal } from "@/components/InvoiceCreationModal";
 import ValueplusInvoice from "@/app/invoice/page";
 
+import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/shared/date-range-filter";
+
 interface EstimateItem {
   id: string;
   estimateNo: string;
@@ -27,6 +29,8 @@ interface EstimateItem {
 export default function EstimatesPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
+  const [dateFilter, setDateFilter] = useState("This Month");
+  const [dateRange, setDateRange] = useState(() => resolveDateRange("This Month"));
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [estimateToDelete, setEstimateToDelete] = useState<string | null>(null);
   const [activePrintEstimate, setActivePrintEstimate] = useState<any>(null);
@@ -58,13 +62,14 @@ export default function EstimatesPage() {
   });
 
   const filtered = useMemo(() => {
-    return estimates.filter(
-      (e: any) =>
-        !search ||
+    return estimates.filter((e: any) => {
+      const matchesSearch = !search ||
         (e.estimateNumber || e.estimateNo)?.toLowerCase().includes(search.toLowerCase()) ||
-        e.customerName?.toLowerCase().includes(search.toLowerCase())
-    );
-  }, [estimates, search]);
+        e.customerName?.toLowerCase().includes(search.toLowerCase());
+      const matchesDate = isDateInRange(e.date || e.createdAt, dateRange.start, dateRange.end);
+      return matchesSearch && matchesDate;
+    });
+  }, [estimates, search, dateRange]);
 
   const createEstimateMutation = useMutation({
     mutationFn: async (payload: any) => {
@@ -143,11 +148,20 @@ export default function EstimatesPage() {
       </div>
 
       <div className="data-table-container">
-        <div className="flex items-center justify-between p-4 border-b">
+        <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input placeholder="Search estimates..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
           </div>
+          <DateRangeFilter 
+            value={dateFilter} 
+            onChange={(val, s, e) => {
+              setDateFilter(val);
+              if (s && e) setDateRange({ start: s, end: e });
+            }}
+            className="w-40"
+            showIcon={true}
+          />
         </div>
 
         <div className="overflow-x-auto">

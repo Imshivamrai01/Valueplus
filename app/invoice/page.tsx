@@ -770,7 +770,7 @@ export default function ValueplusInvoice({ invoiceData, onBack }: ValueplusInvoi
               </h4>
               <div className="form-grid">
                 <div className="form-field">
-                  <label>Customer / Business Name</label>
+                  <label>Customer Name</label>
                   <input value={formData.customerName} onChange={(e) => setFormData({ ...formData, customerName: e.target.value })} />
                 </div>
                 <div className="form-field">
@@ -778,7 +778,7 @@ export default function ValueplusInvoice({ invoiceData, onBack }: ValueplusInvoi
                   <input value={formData.customerGstin} onChange={(e) => setFormData({ ...formData, customerGstin: e.target.value })} />
                 </div>
                 <div className="form-field">
-                  <label>Phone Number</label>
+                  <label>Customer Mobile Number</label>
                   <input value={formData.customerPhone} onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })} />
                 </div>
                 <div className="form-field col-span-2">

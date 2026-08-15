@@ -12,9 +12,12 @@ import { PaymentModal } from "@/components/PaymentModal";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/shared/date-range-filter";
 
 export default function ReceivePaymentPage() {
   const [search, setSearch] = useState("");
+  const [dateFilter, setDateFilter] = useState("This Month");
+  const [dateRange, setDateRange] = useState(() => resolveDateRange("This Month"));
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("customers");
   const [deletePaymentId, setDeletePaymentId] = useState<string | null>(null);
@@ -56,14 +59,15 @@ export default function ReceivePaymentPage() {
   }, [payments, activeTab]);
 
   const filtered = useMemo(() => {
-    return currentTabPayments.filter(
-      (p: any) =>
-        !search ||
+    return currentTabPayments.filter((p: any) => {
+      const matchesSearch = !search ||
         (p.transactionId || "").toLowerCase().includes(search.toLowerCase()) ||
         (p.partyName || "").toLowerCase().includes(search.toLowerCase()) ||
-        (p.referenceId || "").toLowerCase().includes(search.toLowerCase())
-    );
-  }, [currentTabPayments, search]);
+        (p.referenceId || "").toLowerCase().includes(search.toLowerCase());
+      const matchesDate = isDateInRange(p.date || p.createdAt, dateRange.start, dateRange.end);
+      return matchesSearch && matchesDate;
+    });
+  }, [currentTabPayments, search, dateRange]);
 
   const totalReceived = currentTabPayments.reduce((sum: number, p: any) => sum + (p.type === "received" ? (p.amount || 0) : -(p.amount || 0)), 0);
   const todayReceived = currentTabPayments
@@ -97,11 +101,20 @@ export default function ReceivePaymentPage() {
       </div>
 
       <div className="data-table-container mt-6">
-        <div className="flex items-center justify-between p-4 border-b bg-white rounded-t-xl">
+        <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b bg-white rounded-t-xl">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Search by TXN ID, Customer or Ref..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 bg-slate-50 border-slate-200" />
+            <Input placeholder="Search payments, reference..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
           </div>
+          <DateRangeFilter 
+            value={dateFilter} 
+            onChange={(val, s, e) => {
+              setDateFilter(val);
+              if (s && e) setDateRange({ start: s, end: e });
+            }}
+            className="w-40"
+            showIcon={true}
+          />
         </div>
 
         <div className="overflow-x-auto bg-white rounded-b-xl border border-t-0 border-slate-200 shadow-sm">
