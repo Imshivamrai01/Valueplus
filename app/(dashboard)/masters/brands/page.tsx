@@ -411,7 +411,7 @@ export default function BrandsPage() {
             </span>
           </div>
 
-          {loadingCategoryItems ? (
+          {loadingBrandItems ? (
             <TableShimmer rows={6} cols={8} />
           ) : filteredItems.length === 0 ? (
             <div className="p-12 text-center text-muted-foreground">No products found</div>
