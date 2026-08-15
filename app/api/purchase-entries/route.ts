@@ -42,16 +42,50 @@ export async function POST(req: Request) {
 
     const entry = await PurchaseEntry.create(payload);
 
-    // Update Supplier Balance
-    // If it's a regular bill (entry), it INCREASES the amount we owe the supplier (outstanding balance)
-    // If it's a debit-note, it DECREASES the amount we owe the supplier.
+    // Update Supplier Balance and Auto-create if missing
     if (body.supplierName) {
-      const balanceImpact = body.type === "debit-note" ? -body.balance : body.balance;
-      if (balanceImpact !== 0) {
-        await Supplier.findOneAndUpdate(
-          { name: body.supplierName },
-          { $inc: { outstandingBalance: balanceImpact } }
-        );
+      try {
+        const supName = body.supplierName.trim();
+        const supPhone = body.supplierPhone?.trim() || "";
+        let existingSupplier = null;
+        if (supPhone) {
+          existingSupplier = await Supplier.findOne({ phone: supPhone });
+        }
+        if (!existingSupplier) {
+          existingSupplier = await Supplier.findOne({ name: { $regex: new RegExp(`^${supName}$`, "i") } });
+        }
+
+        const balanceImpact = body.type === "debit-note" ? -(Number(body.balance) || 0) : (Number(body.balance) || 0);
+
+        if (!existingSupplier) {
+          const count = await Supplier.countDocuments();
+          const suppCode = `SUPP-${String(count + 1).padStart(3, "0")}`;
+          await Supplier.create({
+            code: suppCode,
+            name: supName,
+            phone: supPhone || "0000000000",
+            email: body.supplierEmail || "",
+            gstNumber: body.supplierGstin || "",
+            address: {
+              line1: "Commercial Trade Hub / Store Outlet",
+              city: "Mumbai",
+              state: "Maharashtra",
+              pincode: "400001",
+              country: "India",
+            },
+            creditLimit: 100000,
+            creditDays: 45,
+            outstandingBalance: balanceImpact,
+            status: "active",
+          });
+        } else if (balanceImpact !== 0) {
+          await Supplier.findByIdAndUpdate(
+            existingSupplier._id,
+            { $inc: { outstandingBalance: balanceImpact } }
+          );
+        }
+      } catch (supErr) {
+        console.warn("Supplier reconciliation note:", supErr);
       }
     }
 

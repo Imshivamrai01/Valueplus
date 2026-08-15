@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { INDIA_STATES, INDIA_STATES_AND_DISTRICTS, normalizeStateName, normalizeCityName } from "@/lib/data/locations";
-import { saveOfflineInvoice, getCachedCatalogItems, getCachedCustomers } from "@/lib/offline-storage";
+import { saveOfflineInvoice, getCachedCatalogItems, getCachedCustomers, cacheCustomers } from "@/lib/offline-storage";
 
 function formatCurrency(val: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(val);
@@ -343,31 +343,41 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
 
   const createInvoiceMutation = useMutation({
     mutationFn: async (payload: any) => {
-      // If offline, save directly to offline queue without throwing
-      if (!navigator.onLine) {
+      // 1. If explicit offline, save directly without network delay
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
         const offlineRecord = saveOfflineInvoice(payload);
         return { isOffline: true, data: offlineRecord };
       }
+
+      // 2. Set an AbortController with 3.5s timeout for network requests
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
 
       try {
         const res = await fetch("/api/invoices", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
+          signal: controller.signal
         });
+        clearTimeout(timeoutId);
         const json = await res.json();
         if (!json.success) throw new Error(json.error || "Failed to generate invoice");
         return { isOffline: false, data: json.data };
       } catch (err: any) {
-        // Network drop during request -> fallback to local offline queue
-        console.warn("Network request failed, saving to offline storage:", err);
+        clearTimeout(timeoutId);
+        console.warn("Network request failed or timed out, saving to offline storage:", err);
         const offlineRecord = saveOfflineInvoice(payload);
         return { isOffline: true, data: offlineRecord };
       }
     },
     onSuccess: (result: any) => {
       if (result.isOffline) {
-        toast.warning("⚡ Offline Mode: Tax Invoice generated & queued locally. It will auto-sync when internet reconnects!", { duration: 6000 });
+        toast.warning("⚡ Offline Mode: Tax Invoice generated & saved locally. It will auto-sync when internet reconnects!", { duration: 6000 });
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("erp-invoice-created"));
+          window.dispatchEvent(new CustomEvent("valueplus-offline-queue-changed"));
+        }
         setOfflineInvoiceToPrint(result.data);
       } else {
         toast.success("Invoice generated successfully");
@@ -399,10 +409,12 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
       return;
     }
 
-    // Auto-create new customer in MongoDB if phone is new
+    // Auto-create new customer in MongoDB or local cache if phone is new
     if (billingForm.customerId === "new" && billingForm.customerPhone) {
-      try {
-        const newCustPayload = {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        // Save customer into local storage cache instantly
+        const offlineCust = {
+          _id: `OFFLINE-CUST-${Date.now()}`,
           name: billingForm.customerName,
           phone: billingForm.customerPhone,
           email: billingForm.customerEmail,
@@ -411,22 +423,44 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
           city: billingForm.customerCity,
           address: billingForm.customerAddress,
           pincode: billingForm.customerPin,
-          customerGroup: "Retail",
-          creditLimit: 100000,
-          status: "active",
         };
-        const custRes = await fetch("/api/customers", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(newCustPayload)
-        });
-        const custJson = await custRes.json();
-        if (custJson.success && custJson.data?._id) {
-          billingForm.customerId = custJson.data._id;
-          queryClient.invalidateQueries({ queryKey: ["customers"] });
+        const currentCached = getCachedCustomers();
+        cacheCustomers([offlineCust, ...currentCached]);
+        billingForm.customerId = offlineCust._id;
+      } else {
+        const custController = new AbortController();
+        const custTimeout = setTimeout(() => custController.abort(), 2500);
+        try {
+          const newCustPayload = {
+            name: billingForm.customerName,
+            phone: billingForm.customerPhone,
+            email: billingForm.customerEmail,
+            gstNumber: billingForm.customerGstin,
+            state: billingForm.placeOfSupply,
+            city: billingForm.customerCity,
+            address: billingForm.customerAddress,
+            pincode: billingForm.customerPin,
+            customerGroup: "Retail",
+            creditLimit: 100000,
+            status: "active",
+          };
+          const custRes = await fetch("/api/customers", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(newCustPayload),
+            signal: custController.signal
+          });
+          clearTimeout(custTimeout);
+          const custJson = await custRes.json();
+          if (custJson.success && custJson.data?._id) {
+            billingForm.customerId = custJson.data._id;
+            queryClient.invalidateQueries({ queryKey: ["customers"] });
+          }
+        } catch (err) {
+          clearTimeout(custTimeout);
+          console.warn("Auto-create customer skipped/timed out:", err);
+          billingForm.customerId = `OFFLINE-CUST-${Date.now()}`;
         }
-      } catch (err) {
-        console.error("Auto-create customer failed:", err);
       }
     }
     const formattedItems = billingForm.lineItems.map(item => {
@@ -525,7 +559,7 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
 
   return (
     <>
-      <Dialog open={isOpen} onOpenChange={onClose}>
+      <Dialog open={isOpen && !offlineInvoiceToPrint} onOpenChange={onClose}>
       <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto p-0 rounded-2xl border-none shadow-2xl">
         {/* Header */}
         <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-6 rounded-t-2xl flex items-center justify-between">

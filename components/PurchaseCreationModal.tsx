@@ -183,14 +183,23 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: Purch
       setForm(prev => {
         let newNo = "";
         if (currentMode === "order") {
-          const count = purchaseOrders.length;
-          newNo = `PO-2026-${String(count + 1).padStart(4, "0")}`;
+          const numbers = purchaseOrders.map((p: any) => {
+            const matches = (p.poNo || "").match(/\d+/g);
+            return matches ? parseInt(matches[matches.length - 1], 10) : 0;
+          });
+          const maxNum = numbers.length ? Math.max(...numbers, 0) : 0;
+          newNo = `PO-2026-${String(maxNum + 1).padStart(4, "0")}`;
         } else {
-          const count = purchaseEntries.filter((x: any) => x.type === currentMode).length;
+          const entriesOfMode = purchaseEntries.filter((x: any) => x.type === currentMode);
+          const numbers = entriesOfMode.map((e: any) => {
+            const matches = (e.billNo || "").match(/\d+/g);
+            return matches ? parseInt(matches[matches.length - 1], 10) : 0;
+          });
+          const maxNum = numbers.length ? Math.max(...numbers, 0) : 0;
           if (currentMode === "debit-note") {
-            newNo = `DN-2026-${String(count + 1).padStart(4, "0")}`;
+            newNo = `DN-2026-${String(maxNum + 1).padStart(4, "0")}`;
           } else {
-            newNo = `BILL-2026-${String(count + 1).padStart(4, "0")}`;
+            newNo = `BILL-2026-${String(maxNum + 1).padStart(4, "0")}`;
           }
         }
         return { ...prev, billNo: newNo };
@@ -315,6 +324,8 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: Purch
         type: currentMode,
         billNo: form.billNo,
         supplierName: form.supplierName,
+        supplierPhone: form.supplierPhone,
+        supplierId: form.supplierId,
         billDate: form.billDate,
         linkedPoNo: form.linkedPoNo,
         items: form.items.map(i => ({
@@ -353,6 +364,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: Purch
     },
     onSuccess: () => {
       toast.success(currentMode === "order" ? "Purchase Order Sent Successfully" : currentMode === "entry" ? "Purchase Inward Bill & IMEI Stock Logged" : "Debit Note Issued");
+      queryClient.invalidateQueries({ queryKey: ["suppliers"] });
       queryClient.invalidateQueries({ queryKey: ["purchase-entries"] });
       queryClient.invalidateQueries({ queryKey: ["debit-notes"] });
       queryClient.invalidateQueries({ queryKey: ["purchase-orders"] });
@@ -429,13 +441,20 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: Purch
       }
     }
 
-    // Auto-create new supplier if phone is new
-    if (form.supplierId === "new" && form.supplierPhone) {
+    // Auto-create new supplier in Master Suppliers
+    if (form.supplierPhone && form.supplierName) {
       try {
         const newSupPayload = {
           name: form.supplierName,
           phone: form.supplierPhone,
           status: "active",
+          address: {
+            line1: "Commercial Trade Hub / Store Outlet",
+            city: "Mumbai",
+            state: "Maharashtra",
+            pincode: "400001",
+            country: "India",
+          }
         };
         const supRes = await fetch("/api/suppliers", {
           method: "POST",
@@ -444,7 +463,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: Purch
         });
         const supJson = await supRes.json();
         if (supJson.success && supJson.data?._id) {
-          setForm(prev => ({ ...prev, supplierId: supJson.data._id }));
+          form.supplierId = supJson.data._id;
           queryClient.invalidateQueries({ queryKey: ["suppliers"] });
         }
       } catch (err) {

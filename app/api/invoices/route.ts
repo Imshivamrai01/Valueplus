@@ -26,27 +26,30 @@ export async function POST(req: Request) {
     const body = await req.json();
     await connectToDatabase();
     
-    // 1. Customer Auto-Add Logic
-    if (body.customerId === "new" || !body.customerId) {
-      const count = await Customer.countDocuments();
-      const nextNum = count + 1;
-      const custCode = `CUST-${String(nextNum).padStart(3, "0")}`;
-      
-      const newCustomer = await Customer.create({
-        code: custCode,
-        name: body.customerName,
-        phone: body.customerPhone || "0000000000",
-        email: body.customerEmail || "",
-        gstNumber: body.customerGST || "",
-        billingAddress: {
-          line1: body.customerAddress || "Address not provided",
-          city: body.customerCity || "City Not Specified",
-          state: body.placeOfSupply ? body.placeOfSupply.replace(/ —.*$/, '').replace(/ \(\d+\)/, '').trim() : "Unknown",
-          pincode: body.customerPin || "",
-          country: "India"
-        }
-      });
-      body.customerId = newCustomer._id.toString();
+    // 1. Customer Auto-Add Logic & Offline Sync Reconciliation
+    if (body.customerId === "new" || !body.customerId || body.customerId.startsWith("OFFLINE-CUST-")) {
+      let matchedCust = body.customerPhone ? await Customer.findOne({ phone: body.customerPhone }) : null;
+      if (!matchedCust) {
+        const count = await Customer.countDocuments();
+        const nextNum = count + 1;
+        const custCode = `CUST-${String(nextNum).padStart(3, "0")}`;
+        
+        matchedCust = await Customer.create({
+          code: custCode,
+          name: body.customerName,
+          phone: body.customerPhone || "0000000000",
+          email: body.customerEmail || "",
+          gstNumber: body.customerGST || "",
+          billingAddress: {
+            line1: body.customerAddress || "Address not provided",
+            city: body.customerCity || "City Not Specified",
+            state: body.placeOfSupply ? body.placeOfSupply.replace(/ —.*$/, '').replace(/ \(\d+\)/, '').trim() : "Unknown",
+            pincode: body.customerPin || "",
+            country: "India"
+          }
+        });
+      }
+      body.customerId = matchedCust._id.toString();
     }
     
     // 2. Create Invoice with offline deduplication check
