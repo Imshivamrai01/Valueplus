@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { INDIA_STATES, INDIA_STATES_AND_DISTRICTS } from "@/lib/data/locations";
+import { MetricCardsShimmer, Skeleton } from "@/components/shared/shimmer-skeleton";
 
 export default function WarehousesPage() {
   const [warehouses, setWarehouses] = useState<any[]>([]);
@@ -101,7 +102,21 @@ export default function WarehousesPage() {
     <PageShell title="Warehouses & Outlets" subtitle={`${warehouses.length} active locations`} breadcrumbs={[{ label: "Masters" }, { label: "Warehouses" }]}
       actions={<Button size="sm" onClick={() => setIsFormOpen(true)}><Plus className="w-4 h-4 mr-1.5" /> Add Warehouse</Button>}>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {loading ? <p className="p-4 text-muted-foreground">Loading...</p> : warehouses.map(wh => (
+        {loading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="p-6 rounded-2xl bg-white border border-slate-200/80 shadow-sm space-y-4">
+              <div className="flex items-center gap-3">
+                <Skeleton className="w-11 h-11 rounded-2xl" />
+                <div className="space-y-2 flex-1">
+                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="h-3 w-20" />
+                </div>
+              </div>
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-3/4" />
+            </div>
+          ))
+        ) : warehouses.map(wh => (
           <div key={wh._id || wh.id} className="metric-card">
             <div className="flex items-start justify-between mb-3">
               <div className="flex items-center gap-3">

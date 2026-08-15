@@ -18,6 +18,7 @@ import { formatCurrency, formatDate, formatDateShort, indianNumberFormat } from 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/shared/date-range-filter";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { TableShimmer, MetricCardsShimmer } from "@/components/shared/shimmer-skeleton";
 
 interface ExpenseItem {
   _id?: string;
@@ -498,18 +499,9 @@ function ExpensesContent() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <tr key={i} className="animate-pulse">
-                    <td className="px-4 py-3"><div className="h-4 w-20 bg-slate-200 rounded"></div></td>
-                    <td className="px-4 py-3"><div className="h-4 w-16 bg-slate-200 rounded"></div></td>
-                    <td className="px-4 py-3"><div className="h-4 w-24 bg-slate-200 rounded"></div></td>
-                    <td className="px-4 py-3"><div className="h-4 w-40 bg-slate-200 rounded"></div></td>
-                    <td className="px-4 py-3"><div className="h-4 w-16 bg-slate-200 rounded"></div></td>
-                    <td className="px-4 py-3"><div className="h-4 w-16 bg-slate-200 rounded ml-auto"></div></td>
-                    <td className="px-4 py-3"><div className="h-4 w-12 bg-slate-200 rounded mx-auto"></div></td>
-                    <td className="px-4 py-3"><div className="h-4 w-12 bg-slate-200 rounded mx-auto"></div></td>
-                  </tr>
-                ))
+                <tr>
+                  <td colSpan={8} className="p-0"><TableShimmer rows={6} cols={8} /></td>
+                </tr>
               ) : filtered.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-4 py-12 text-center text-slate-400 font-medium">

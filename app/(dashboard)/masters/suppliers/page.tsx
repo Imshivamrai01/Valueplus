@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AutocompleteSearch } from "@/components/shared/autocomplete-search";
+import { TableShimmer, MetricCardsShimmer } from "@/components/shared/shimmer-skeleton";
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils";
 import { INDIA_STATES, INDIA_STATES_AND_DISTRICTS, normalizeStateName, normalizeCityName } from "@/lib/data/locations";
@@ -214,7 +215,11 @@ export default function SuppliersPage() {
               <tr>{["Code", "Supplier Name","Phone & Email","Location","GSTIN","Payable Outstanding","Status","Action"].map(h=><th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">{h}</th>)}</tr>
             </thead>
             <tbody className="divide-y">
-              {loading ? <tr><td colSpan={8} className="text-center p-4">Loading...</td></tr> : paginated.map(s=>(
+              {loading ? (
+                <tr><td colSpan={8} className="p-0"><TableShimmer rows={6} cols={8} /></td></tr>
+              ) : paginated.length === 0 ? (
+                <tr><td colSpan={8} className="text-center p-8 text-muted-foreground">No suppliers found</td></tr>
+              ) : paginated.map(s=>(
                 <tr key={s._id || s.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-3 font-mono font-bold text-[#3F63AD]">{s.code}</td>
                   <td className="px-4 py-3 font-semibold text-foreground">{s.name}</td>

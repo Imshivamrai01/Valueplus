@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { cn, formatCurrency, formatDateShort } from "@/lib/utils";
 import { DateRangeFilter, resolveDateRange } from "@/components/shared/date-range-filter";
+import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 
 function StatusBadge({ status }: { status: string }) {
   if (!status) return <span className="inline-flex items-center px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">Completed</span>;
@@ -265,17 +266,9 @@ function ReportsContent() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
-                  Array.from({ length: 5 }).map((_, i) => (
-                    <tr key={i} className="animate-pulse">
-                      <td className="p-4"><div className="h-4 w-20 bg-slate-200 rounded"></div></td>
-                      <td className="p-4"><div className="h-4 w-32 bg-slate-200 rounded"></div></td>
-                      <td className="p-4"><div className="h-4 w-24 bg-slate-200 rounded"></div></td>
-                      <td className="p-4"><div className="h-5 w-24 bg-slate-200 rounded"></div></td>
-                      <td className="p-4"><div className="h-4 w-20 bg-slate-200 rounded ml-auto"></div></td>
-                      <td className="p-4"><div className="h-6 w-16 bg-slate-200 rounded mx-auto"></div></td>
-                      <td className="p-4"><div className="h-8 w-20 bg-slate-200 rounded mx-auto"></div></td>
-                    </tr>
-                  ))
+                  <tr>
+                    <td colSpan={7} className="p-0"><TableShimmer rows={6} cols={7} /></td>
+                  </tr>
                 ) : getFilteredTransactions().length === 0 ? (
                   <tr>
                     <td colSpan={7} className="text-center p-8 text-slate-500 font-medium">

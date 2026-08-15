@@ -15,6 +15,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 
 export default function CategoriesPage() {
   const queryClient = useQueryClient();
@@ -167,7 +168,7 @@ export default function CategoriesPage() {
 
         <div className="divide-y">
           {loading ? (
-            <div className="p-8 text-center text-muted-foreground">Loading...</div>
+            <TableShimmer rows={5} cols={4} />
           ) : isError ? (
             <div className="p-8 text-center text-red-500">
               Failed to load categories. Please refresh.

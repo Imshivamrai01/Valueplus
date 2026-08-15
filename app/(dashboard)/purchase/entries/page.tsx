@@ -16,6 +16,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PurchaseCreationModal } from "@/components/PurchaseCreationModal";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/shared/date-range-filter";
+import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 
 interface PurchaseEntryItem {
   id: string;
@@ -145,7 +146,7 @@ export default function PurchaseEntriesPage() {
             <tbody className="divide-y">
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">Loading...</td>
+                  <td colSpan={9} className="p-0"><TableShimmer rows={6} cols={9} /></td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>

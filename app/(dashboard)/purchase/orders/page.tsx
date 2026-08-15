@@ -13,6 +13,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PurchaseCreationModal } from "@/components/PurchaseCreationModal";
 import { ViewPurchaseOrderModal } from "@/components/ViewPurchaseOrderModal";
+import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 import { Eye } from "lucide-react";
 
 interface POItem {
@@ -123,7 +124,7 @@ export default function PurchaseOrdersPage() {
             <tbody className="divide-y">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">Loading...</td>
+                  <td colSpan={7} className="p-0"><TableShimmer rows={5} cols={7} /></td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 
 export default function UnitsPage() {
   const [units, setUnits] = useState<any[]>([]);
@@ -89,7 +90,7 @@ export default function UnitsPage() {
           </thead>
           <tbody className="divide-y">
             {loading ? (
-              <tr><td colSpan={5} className="text-center p-8 text-muted-foreground">Loading...</td></tr>
+              <tr><td colSpan={5} className="p-0"><TableShimmer rows={5} cols={5} /></td></tr>
             ) : units.length === 0 ? (
               <tr><td colSpan={5} className="text-center p-8 text-muted-foreground">No units found</td></tr>
             ) : units.map(u => (

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Download, FileText, ArrowUpRight, ArrowDownRight, Calculator } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { downloadCSV, formatDate } from "@/lib/utils";
+import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 
 export default function GSTReportsPage() {
   const [period, setPeriod] = useState("August 2026");
@@ -15,7 +16,7 @@ export default function GSTReportsPage() {
     return formatDate(dateStr, "dd MMM, yyyy");
   };
 
-  const { data: gstr1 = [] } = useQuery({
+  const { data: gstr1 = [], isLoading: loadingGstr1 } = useQuery({
     queryKey: ["gstr-reports", "GSTR1"],
     queryFn: async () => {
       const res = await fetch("/api/gstr-reports?type=GSTR1");
@@ -24,7 +25,7 @@ export default function GSTReportsPage() {
     }
   });
 
-  const { data: gstr2 = [] } = useQuery({
+  const { data: gstr2 = [], isLoading: loadingGstr2 } = useQuery({
     queryKey: ["gstr-reports", "GSTR2"],
     queryFn: async () => {
       const res = await fetch("/api/gstr-reports?type=GSTR2");
@@ -197,7 +198,12 @@ export default function GSTReportsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {filteredGstr1.map((row: any) => (
+                  {loadingGstr1 ? (
+                    <tr><td colSpan={9} className="p-0"><TableShimmer rows={6} cols={9} /></td></tr>
+                  ) : filteredGstr1.length === 0 ? (
+                    <tr><td colSpan={9} className="text-center p-8 text-muted-foreground">No GSTR-1 records found</td></tr>
+                  ) : (
+                    filteredGstr1.map((row: any) => (
                     <tr key={row._id || row.id || row.reportId} className="hover:bg-slate-50/50">
                       <td className="px-4 py-3 font-medium text-blue-600">{row.reportId}</td>
                       <td className="px-4 py-3">{safeFormatDate(row.date || row.createdAt)}</td>
@@ -209,7 +215,7 @@ export default function GSTReportsPage() {
                       <td className="px-4 py-3 text-right">₹{row.igst?.toLocaleString()}</td>
                       <td className="px-4 py-3 text-right font-semibold">₹{row.totalTax?.toLocaleString()}</td>
                     </tr>
-                  ))}
+                  )))}
                 </tbody>
               </table>
             </div>
@@ -238,7 +244,12 @@ export default function GSTReportsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {filteredGstr2.map((row: any) => (
+                  {loadingGstr2 ? (
+                    <tr><td colSpan={9} className="p-0"><TableShimmer rows={6} cols={9} /></td></tr>
+                  ) : filteredGstr2.length === 0 ? (
+                    <tr><td colSpan={9} className="text-center p-8 text-muted-foreground">No GSTR-2 records found</td></tr>
+                  ) : (
+                    filteredGstr2.map((row: any) => (
                     <tr key={row._id || row.id || row.reportId} className="hover:bg-slate-50/50">
                       <td className="px-4 py-3 font-medium">{row.reportId}</td>
                       <td className="px-4 py-3">{safeFormatDate(row.date || row.createdAt)}</td>
@@ -250,7 +261,7 @@ export default function GSTReportsPage() {
                       <td className="px-4 py-3 text-right">₹{row.igst?.toLocaleString()}</td>
                       <td className="px-4 py-3 text-right font-semibold text-emerald-600">₹{row.totalTax?.toLocaleString()}</td>
                     </tr>
-                  ))}
+                  )))}
                 </tbody>
               </table>
             </div>

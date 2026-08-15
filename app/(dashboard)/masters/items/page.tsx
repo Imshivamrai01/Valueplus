@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { AutocompleteSearch } from "@/components/shared/autocomplete-search";
+import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 import { formatCurrency, downloadCSV, formatDate } from "@/lib/utils";
 
 const WAREHOUSES = ["Main Store - Mumbai", "Pune Branch", "Delhi Hub", "Bengaluru Store"];
@@ -351,8 +352,8 @@ export default function ItemsPage() {
             <tbody className="divide-y divide-border">
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-16 text-center">
-                    <p className="text-muted-foreground font-medium">Loading items...</p>
+                  <td colSpan={9} className="p-0">
+                    <TableShimmer rows={6} cols={9} />
                   </td>
                 </tr>
               ) : paginated.length === 0 ? (

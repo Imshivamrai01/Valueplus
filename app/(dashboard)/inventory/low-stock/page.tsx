@@ -8,6 +8,7 @@ import { PageShell } from "@/components/shared/page-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatCurrency, downloadCSV } from "@/lib/utils";
+import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 
 export default function LowStockPage() {
   const router = useRouter();
@@ -94,8 +95,8 @@ export default function LowStockPage() {
             <tbody className="divide-y divide-slate-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
-                    <div className="w-full h-8 bg-slate-100 animate-pulse rounded-md" />
+                  <td colSpan={6} className="p-0">
+                    <TableShimmer rows={6} cols={6} />
                   </td>
                 </tr>
               ) : filteredItems.length === 0 ? (

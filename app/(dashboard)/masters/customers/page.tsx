@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AutocompleteSearch } from "@/components/shared/autocomplete-search";
+import { TableShimmer, MetricCardsShimmer } from "@/components/shared/shimmer-skeleton";
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils";
 import { INDIA_STATES, INDIA_STATES_AND_DISTRICTS, normalizeStateName, normalizeCityName } from "@/lib/data/locations";
@@ -217,7 +218,12 @@ export default function CustomersPage() {
               </tr>
             </thead>
             <tbody className="divide-y">
-              {paginated.map(c => (
+              {loading ? (
+                <tr><td colSpan={9} className="p-0"><TableShimmer rows={6} cols={9} /></td></tr>
+              ) : paginated.length === 0 ? (
+                <tr><td colSpan={9} className="text-center p-8 text-muted-foreground">No customers found</td></tr>
+              ) : (
+                paginated.map(c => (
                 <tr key={c._id || c.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-3 font-mono font-bold text-[#3F63AD]">{c.code}</td>
                   <td className="px-4 py-3 font-semibold text-foreground">{c.name}</td>
@@ -244,7 +250,7 @@ export default function CustomersPage() {
                     </div>
                   </td>
                 </tr>
-              ))}
+              )))}
             </tbody>
           </table>
         </div>

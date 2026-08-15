@@ -37,6 +37,7 @@ import { cn, formatCurrency, indianNumberFormat, formatDateShort } from "@/lib/u
 import ValueplusInvoice from "@/app/invoice/page";
 import { InvoiceCreationModal } from "@/components/InvoiceCreationModal";
 import { DateRangeFilter, resolveDateRange } from "@/components/shared/date-range-filter";
+import { Skeleton, MetricCardsShimmer, TableShimmer, ChartShimmer, DistributionShimmer } from "@/components/shared/shimmer-skeleton";
 
 
 
@@ -176,6 +177,33 @@ export default function DashboardPage() {
   const [itemForm, setItemForm] = useState({ name: "", hsnCode: "8471", gstRate: "18", purchasePrice: "", sellingPrice: "", openingStock: "10" });
   const [paymentForm, setPaymentForm] = useState({ partyName: "", amount: "", paymentMode: "Cash Counter", notes: "" });
 
+  const fetchStats = async (startOverride?: string, endOverride?: string) => {
+    const s = startOverride || startDate;
+    const e = endOverride || endDate;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/dashboard/stats?startDate=${s}&endDate=${e}`);
+      const json = await res.json();
+      if (json.success) {
+        setData(json);
+        // Hydrate all widgets simultaneously in 1 shot!
+        setWidgetData({
+          trends: json,
+          pie: json,
+          expenses: json,
+          products: json,
+          customers: json,
+          logs: json,
+          recent: json,
+        });
+      }
+    } catch (err) {
+      console.error("Dashboard fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const fetchWidgetData = async (widgetName: string, filterValue: string, customStart?: string, customEnd?: string) => {
     setWidgetLoading(prev => ({ ...prev, [widgetName]: true }));
     try {
@@ -194,15 +222,10 @@ export default function DashboardPage() {
 
   const refreshAllDashboard = () => {
     fetchStats();
-    Object.keys(widgetFilters).forEach(key => {
-      fetchWidgetData(key, widgetFilters[key as keyof typeof widgetFilters]);
-    });
   };
 
   useEffect(() => {
-    Object.keys(widgetFilters).forEach(key => {
-      fetchWidgetData(key, widgetFilters[key as keyof typeof widgetFilters]);
-    });
+    fetchStats();
 
     const handleSync = () => {
       refreshAllDashboard();
@@ -226,56 +249,31 @@ export default function DashboardPage() {
 
   const handleUniversalFilterChange = (val: string, customStart?: string, customEnd?: string) => {
     setDateFilter(val);
+    let s = startDate;
+    let e = endDate;
     if (val === "Custom Date" && customStart && customEnd) {
+      s = customStart;
+      e = customEnd;
       setStartDate(customStart);
       setEndDate(customEnd);
-      const newFilters = {
-        trends: val,
-        pie: val,
-        expenses: val,
-        products: val,
-        customers: val,
-        logs: val,
-        recent: val
-      };
-      setWidgetFilters(newFilters);
-      Object.keys(newFilters).forEach(key => {
-        fetchWidgetData(key, val, customStart, customEnd);
-      });
     } else if (val !== "Custom Date") {
-      const { start, end } = resolveDateRange(val);
-      setStartDate(start);
-      setEndDate(end);
-      const newFilters = {
-        trends: val,
-        pie: val,
-        expenses: val,
-        products: val,
-        customers: val,
-        logs: val,
-        recent: val
-      };
-      setWidgetFilters(newFilters);
-      Object.keys(newFilters).forEach(key => {
-        fetchWidgetData(key, val);
-      });
+      const resolved = resolveDateRange(val);
+      s = resolved.start;
+      e = resolved.end;
+      setStartDate(s);
+      setEndDate(e);
     }
-  };
-
-  // Fetch Dashboard Stats
-  const fetchStats = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/dashboard/stats?startDate=${startDate}&endDate=${endDate}`);
-      const json = await res.json();
-      if (json.success) {
-        setData(json);
-      }
-    } catch (err) {
-      console.error("Dashboard fetch error:", err);
-    } finally {
-      setLoading(false);
-    }
+    const newFilters = {
+      trends: val,
+      pie: val,
+      expenses: val,
+      products: val,
+      customers: val,
+      logs: val,
+      recent: val
+    };
+    setWidgetFilters(newFilters);
+    fetchStats(s, e);
   };
 
   useEffect(() => {
@@ -503,23 +501,11 @@ export default function DashboardPage() {
             <span className="text-xs text-muted-foreground font-medium">Click any card to open detailed transaction ledger</span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="w-full">
             {loading ? (
-              Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="bg-white rounded-[8px] border border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.05)] p-4 flex flex-col justify-between animate-pulse">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="h-3 bg-slate-200 rounded w-24"></div>
-                    <div className="w-5 h-5 bg-slate-200 rounded-full"></div>
-                  </div>
-                  <div className="mb-2">
-                    <div className="h-7 bg-slate-200 rounded w-32"></div>
-                  </div>
-                  <div className="flex items-center justify-between mt-auto pt-3 border-t border-slate-100">
-                    <div className="h-2 bg-slate-200 rounded w-28"></div>
-                  </div>
-                </div>
-              ))
+              <MetricCardsShimmer count={4} />
             ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <>
                 {/* GROSS SALES CARD */}
                 <div
@@ -609,6 +595,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
               </>
+              </div>
             )}
           </div>
         </div>

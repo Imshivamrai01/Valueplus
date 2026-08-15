@@ -10,13 +10,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 
-function ValuePlusLogo({ size = 48 }: { size?: number }) {
+function ValuePlusBrand({ dark = false, size = "large" }: { dark?: boolean; size?: "small" | "large" }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect width="40" height="40" rx="10" fill="#3F63AD" />
-      <path d="M8 12L16 28L20 20L24 28L32 12" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="20" cy="20" r="3" fill="#76C043" />
-    </svg>
+    <div className="flex flex-col items-start justify-center">
+      <div className={`flex items-center ${size === "large" ? "text-3xl" : "text-xl"} font-black tracking-tight leading-none`}>
+        <span className={dark ? "text-slate-900" : "text-white"}>VALUE</span>
+        <span className="text-[#76C043]">PLUS</span>
+      </div>
+      <div className="flex items-center gap-1.5 mt-1 opacity-90">
+        <div className={`h-[1px] w-3 ${dark ? "bg-slate-400" : "bg-white/70"}`} />
+        <span className={`${dark ? "text-slate-500" : "text-slate-200"} text-[10px] font-medium tracking-wide`}>रिश्ता विश्वास का</span>
+        <div className={`h-[1px] w-3 ${dark ? "bg-slate-400" : "bg-white/70"}`} />
+      </div>
+    </div>
   );
 }
 
@@ -81,14 +87,24 @@ export default function LoginPage() {
           }}
         />
 
-        <div className="relative z-10 flex flex-col h-full p-12">
-          {/* Logo */}
-          <div className="flex items-center gap-3">
-            <ValuePlusLogo size={44} />
-            <div>
-              <p className="text-white text-xl font-bold tracking-wide">VALUEPLUS</p>
-              <p className="text-[#76C043] text-xs font-semibold tracking-widest uppercase">Enterprise ERP</p>
-            </div>
+        <div className="relative z-10 flex flex-col h-full p-12 justify-between">
+          {/* Top Branding */}
+          <div className="flex items-center justify-between">
+            <ValuePlusBrand size="large" />
+            <a
+              href="https://www.shineinfosolutions.in/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/15 border border-white/20 backdrop-blur-md transition-all group"
+            >
+              <div className="w-6 h-6 rounded-full bg-white flex items-center justify-center p-0.5 shadow-sm">
+                <img src="/bglogo.png" alt="Shine Infosolutions" className="w-full h-full object-contain" />
+              </div>
+              <div className="flex flex-col text-left">
+                <span className="text-[8px] uppercase tracking-widest text-slate-300 font-semibold leading-none">Powered By</span>
+                <span className="text-[11px] font-bold text-white group-hover:text-[#76C043] transition-colors leading-tight">Shine Infosolutions</span>
+              </div>
+            </a>
           </div>
 
           {/* Main content */}
@@ -154,11 +170,8 @@ export default function LoginPage() {
           className="w-full max-w-md"
         >
           {/* Mobile logo */}
-          <div className="flex lg:hidden items-center gap-3 mb-8 justify-center">
-            <ValuePlusLogo size={40} />
-            <div>
-              <p className="text-foreground text-lg font-bold">VALUEPLUS ERP</p>
-            </div>
+          <div className="flex lg:hidden items-center justify-center mb-8">
+            <ValuePlusBrand dark size="large" />
           </div>
 
           {/* Card */}
@@ -283,10 +296,24 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <p className="text-center text-xs text-muted-foreground mt-6">
-            © 2025 ValuePlus ERP · All rights reserved ·{" "}
-            <span className="text-[#3F63AD]">Made in India 🇮🇳</span>
-          </p>
+          <div className="mt-6 flex flex-col items-center gap-3 text-center">
+            <a
+              href="https://www.shineinfosolutions.in/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-white hover:bg-slate-50 border border-slate-200/80 shadow-sm transition-all text-slate-700 hover:border-[#3F63AD]/40 group"
+            >
+              <div className="w-5 h-5 rounded-full bg-white flex items-center justify-center overflow-hidden border border-slate-100 p-0.5">
+                <img src="/bglogo.png" alt="Shine Infosolutions" className="w-full h-full object-contain" />
+              </div>
+              <span className="text-xs font-medium text-slate-600">
+                Powered by <span className="font-bold text-slate-900 group-hover:text-[#3F63AD] transition-colors">Shine Infosolutions</span>
+              </span>
+            </a>
+            <p className="text-[11px] text-muted-foreground">
+              © 2026 ValuePlus ERP · All rights reserved · <span className="text-[#3F63AD] font-medium">Made in India 🇮🇳</span>
+            </p>
+          </div>
         </motion.div>
       </div>
     </div>

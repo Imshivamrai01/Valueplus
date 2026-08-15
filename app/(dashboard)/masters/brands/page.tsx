@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import { MetricCardsShimmer, TableShimmer, Skeleton } from "@/components/shared/shimmer-skeleton";
 
 // Brand color palette
 const BRAND_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -410,7 +411,9 @@ export default function BrandsPage() {
             </span>
           </div>
 
-          {filteredItems.length === 0 ? (
+          {loadingCategoryItems ? (
+            <TableShimmer rows={6} cols={8} />
+          ) : filteredItems.length === 0 ? (
             <div className="p-12 text-center text-muted-foreground">No products found</div>
           ) : (
             <div className="overflow-x-auto">

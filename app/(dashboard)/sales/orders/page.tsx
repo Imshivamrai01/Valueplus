@@ -14,6 +14,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { InvoiceCreationModal } from "@/components/InvoiceCreationModal";
 import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/shared/date-range-filter";
+import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 
 export default function SalesOrdersPage() {
   const [orders, setOrders] = useState<any[]>([]);
@@ -115,7 +116,11 @@ export default function SalesOrdersPage() {
               </tr>
             </thead>
             <tbody className="divide-y">
-              {filtered.map((o) => (
+              {loading ? (
+                <tr><td colSpan={8} className="p-0"><TableShimmer rows={6} cols={8} /></td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={8} className="text-center p-8 text-muted-foreground">No sales orders found</td></tr>
+              ) : filtered.map((o) => (
                 <tr key={o._id || o.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-3 font-mono font-bold text-[#3F63AD]">
                     {o.invoiceNumber || o.orderNo}

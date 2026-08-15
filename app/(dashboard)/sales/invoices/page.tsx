@@ -26,6 +26,7 @@ import ValueplusInvoice from "@/app/invoice/page";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getOfflineInvoices, OfflineInvoice } from "@/lib/offline-storage";
 import { useOfflineSync } from "@/components/shared/offline-sync-provider";
+import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 import { WifiOff, RefreshCw, CloudUpload } from "lucide-react";
 
 const STATUSES = ["paid", "pending", "overdue", "partial", "cancelled", "draft", "offline"] as const;
@@ -241,7 +242,7 @@ function SalesInvoicesContent() {
             </thead>
             <tbody className="divide-y">
               {loading ? (
-                <tr><td colSpan={11} className="py-16 text-center text-muted-foreground">Loading invoices...</td></tr>
+                <tr><td colSpan={11} className="p-0"><TableShimmer rows={7} cols={11} /></td></tr>
               ) : allInvoices.length === 0 ? (
                 <tr><td colSpan={11} className="py-16 text-center text-muted-foreground">No invoices found</td></tr>
               ) : (
