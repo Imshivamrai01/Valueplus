@@ -342,6 +342,7 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
   };
 
   const createInvoiceMutation = useMutation({
+    networkMode: "always",
     mutationFn: async (payload: any) => {
       // 1. If explicit offline, save directly without network delay
       if (typeof navigator !== "undefined" && !navigator.onLine) {

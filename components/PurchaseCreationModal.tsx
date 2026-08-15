@@ -319,6 +319,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: Purch
   }, [form.items]);
 
   const saveMutation = useMutation({
+    networkMode: "always",
     mutationFn: async () => {
       const payload: any = {
         type: currentMode,
