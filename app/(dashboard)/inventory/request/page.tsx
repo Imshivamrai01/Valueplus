@@ -154,7 +154,7 @@ export default function StockRequestPage() {
             <table className="w-full text-sm">
               <thead className="bg-red-50 border-b border-red-100 text-red-700 sticky top-0">
                 <tr>
-                  <th className="px-4 py-3 text-left font-semibold">Item Code</th>
+                  <th className="px-4 py-3 text-left font-semibold">VP Code</th>
                   <th className="px-4 py-3 text-left font-semibold">Item Name</th>
                   <th className="px-4 py-3 text-left font-semibold">HSN Code</th>
                   <th className="px-4 py-3 text-right font-semibold">Current Stock</th>
@@ -165,7 +165,7 @@ export default function StockRequestPage() {
               <tbody className="divide-y divide-red-100">
                 {lowStockItems.map((it: any) => (
                   <tr key={it._id} className="hover:bg-red-50/40">
-                    <td className="px-4 py-3 font-medium text-red-900">{it.code}</td>
+                    <td className="px-4 py-3 font-mono font-bold text-red-900">{it.vpCode || it.code}</td>
                     <td className="px-4 py-3 text-red-800 font-semibold">{it.itemName || it.name}</td>
                     <td className="px-4 py-3 text-red-800">{it.hsnCode || "-"}</td>
                     <td className="px-4 py-3 text-right font-black text-red-600">{it.currentStock}</td>

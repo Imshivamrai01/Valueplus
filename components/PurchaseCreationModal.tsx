@@ -14,6 +14,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { PurchaseBillPrintModal } from "@/components/PurchaseBillPrintModal";
 
 function formatCurrency(val: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(val);
@@ -28,6 +29,7 @@ interface PurchaseCreationModalProps {
 export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: PurchaseCreationModalProps) {
   const queryClient = useQueryClient();
   const [currentMode, setCurrentMode] = useState<"entry" | "debit-note" | "order">(mode);
+  const [createdBillToPrint, setCreatedBillToPrint] = useState<any | null>(null);
 
   // Sync mode prop with local state when modal opens
   useEffect(() => {
@@ -363,13 +365,24 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: Purch
       if (!json.success) throw new Error(json.error || "Failed to save");
       return json.data;
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       toast.success(currentMode === "order" ? "Purchase Order Sent Successfully" : currentMode === "entry" ? "Purchase Inward Bill & IMEI Stock Logged" : "Debit Note Issued");
       queryClient.invalidateQueries({ queryKey: ["suppliers"] });
       queryClient.invalidateQueries({ queryKey: ["purchase-entries"] });
       queryClient.invalidateQueries({ queryKey: ["debit-notes"] });
       queryClient.invalidateQueries({ queryKey: ["purchase-orders"] });
       queryClient.invalidateQueries({ queryKey: ["items"] });
+      queryClient.invalidateQueries({ queryKey: ["stock-flow"] });
+      queryClient.invalidateQueries({ queryKey: ["stock-transfers"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("erp-purchase-created", { detail: data }));
+      }
+      
+      if (data) {
+        setCreatedBillToPrint(data);
+      }
       onClose();
       // Reset form
       setForm({
@@ -480,7 +493,8 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: Purch
   const isEntry = currentMode === "entry";
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <>
+      <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-5xl p-0 overflow-hidden bg-slate-50 flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className={`p-6 text-white flex items-center justify-between shrink-0 ${isDebit ? 'bg-gradient-to-r from-red-950 via-red-900 to-red-950' : (isOrder ? 'bg-gradient-to-r from-amber-900 via-amber-800 to-amber-900' : 'bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537]')}`}>
@@ -909,5 +923,17 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: Purch
         </div>
       </DialogContent>
     </Dialog>
+
+    <PurchaseBillPrintModal
+      isOpen={!!createdBillToPrint}
+      onClose={() => {
+        setCreatedBillToPrint(null);
+        queryClient.invalidateQueries({ queryKey: ["items"] });
+        queryClient.invalidateQueries({ queryKey: ["stock-flow"] });
+        queryClient.invalidateQueries({ queryKey: ["purchase-entries"] });
+      }}
+      billData={createdBillToPrint}
+    />
+    </>
   );
 }

@@ -1,16 +1,13 @@
 "use client";
 
-/**
- * VALUEPLUS ERP — GST Tax Invoice with Live Form Filler & Sidebar Logo
- */
-
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, Suspense } from "react";
 import { 
   Printer, Download, Send, MessageSquare, Edit3, Plus, Trash2, CheckCircle2, 
-  ArrowLeft, FileText, Building2, User, CreditCard, Layers, Sparkles
+  ArrowLeft, FileText, Building2, User, CreditCard, Layers, Sparkles, Share2, Phone
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
 // ─── HELPERS ───────────────────────────────────────────────────
 function formatCurrency(amount: number) {
@@ -18,7 +15,7 @@ function formatCurrency(amount: number) {
     style: "currency",
     currency: "INR",
     maximumFractionDigits: 2,
-  }).format(amount).replace("INR", "₹");
+  }).format(amount || 0).replace("INR", "₹");
 }
 
 function numberToWordsIndian(num: number): string {
@@ -57,1127 +54,561 @@ function numberToWordsIndian(num: number): string {
     str += inWords(n);
   }
 
-  return `Rupees ${str.trim()} Only`;
+  return `${str.trim()} Rupees Only`;
 }
-
-// ─── INITIAL INVOICE STATE ──────────────────────────────────────
-interface InvoiceItem {
-  id: string;
-  name: string;
-  hsn: string;
-  qty: number;
-  unit: string;
-  rate: number;
-  discount: number;
-  gstRate: number;
-}
-
-const INITIAL_FORM = {
-  // Company Info
-  companyName: "VALUEPLUS",
-  companyLegal: "Valueplus Technologies Pvt. Ltd.",
-  companyAddress: "B-42, Sector 63, Noida, Uttar Pradesh – 201301, India",
-  companyGstin: "09AAFCV1234M1ZQ",
-  companyPan: "AAFCV1234M",
-  companyPhone: "+91 120 456 7890",
-  companyEmail: "billing@valueplus.in",
-  companyWeb: "www.valueplus.in",
-
-  // Invoice Meta
-  invoiceNo: "INV-2026-0148",
-  invoiceDate: "2026-08-03",
-  dueDate: "2026-08-13",
-  orderNo: "SO-2026-0231",
-  ewayBillNo: "EWB-4102 8837 1190",
-  placeOfSupply: "Uttar Pradesh (09)",
-  invoiceType: "TAX INVOICE",
-
-  // Bill To
-  customerName: "ABC Traders",
-  customerGstin: "09BPQPT5678K1Z2",
-  customerPhone: "+91 98765 43210",
-  customerEmail: "accounts@abctraders.in",
-  customerAddress: "18, Nehru Market, Civil Lines, Prayagraj, Uttar Pradesh",
-  customerState: "Uttar Pradesh (09)",
-  customerPin: "211001",
-
-  // Ship To
-  shippingName: "ABC Traders — Warehouse",
-  shippingAddress: "Plot 22, Naini Industrial Area, Prayagraj, Uttar Pradesh",
-  shippingState: "Uttar Pradesh (09)",
-  shippingPin: "211010",
-
-  // Payment Status & Bank
-  paymentStatus: "paid", // paid, pending, partial
-  paymentMethod: "UPI",
-  outstandingAmount: 0,
-  shippingCharges: 200,
-
-  bankName: "HDFC Bank, Sector 63 Branch, Noida",
-  accountNo: "5020 0034 5678 90",
-  ifscCode: "HDFC0001234",
-  upiId: "valueplus@hdfcbank",
-
-  // Items
-  items: [
-    { id: "1", name: "iPhone 15 Pro Max 256GB", hsn: "8517", qty: 2, unit: "PCS", rate: 53000, discount: 2120, gstRate: 18 },
-    { id: "2", name: "Sony Bravia 55\" 4K Ultra HD Smart TV", hsn: "8528", qty: 2, unit: "PCS", rate: 8500, discount: 340, gstRate: 18 },
-    { id: "3", name: "boAt Airdopes 141 TWS Earbuds", hsn: "8518", qty: 3, unit: "PR", rate: 1300, discount: 78, gstRate: 18 },
-    { id: "4", name: "Logitech MX Master 3S Wireless Mouse", hsn: "8471", qty: 3, unit: "PCS", rate: 650, discount: 39, gstRate: 18 },
-  ] as InvoiceItem[],
-};
 
 interface ValueplusInvoiceProps {
   invoiceData?: any;
   onBack?: () => void;
 }
 
-export default function ValueplusInvoice({ invoiceData, onBack }: ValueplusInvoiceProps = {}) {
-  const [formData, setFormData] = useState(INITIAL_FORM);
-  const [isEditing, setIsEditing] = useState(false);
+function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: ValueplusInvoiceProps = {}) {
+  const searchParams = useSearchParams();
+  const billIdFromUrl = searchParams?.get("billid") || searchParams?.get("id") || searchParams?.get("invoiceNumber");
+
+
+  const [invoice, setInvoice] = useState<any>(propInvoiceData || null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (invoiceData) {
-      const mappedItems = (invoiceData.items && invoiceData.items.length > 0)
-        ? invoiceData.items.map((it: any, index: number) => ({
-            id: it.id || String(index + 1),
-            name: it.itemName || it.name || "Product Item",
-            hsn: it.hsnCode || it.hsn || "8471",
-            serialImei: it.serialImei || it.serialNo || "",
-            qty: Number(it.quantity || it.qty) || 1,
-            unit: it.unit || "Pcs",
-            rate: Number(it.rate) || 0,
-            discount: Number(it.discount) || 0,
-            gstRate: Number(it.gstRate) || 18,
-          }))
-        : INITIAL_FORM.items;
-
-      setFormData((prev) => ({
-        ...prev,
-        invoiceType: invoiceData.estimateNumber || invoiceData.estimateNo ? "PROFORMA ESTIMATE" : "TAX INVOICE",
-        invoiceNo: invoiceData.estimateNumber || invoiceData.estimateNo || invoiceData.invoiceNumber || invoiceData.invoiceNo || "",
-        customerName: invoiceData.customerName || invoiceData.partyName || "",
-        customerGstin: invoiceData.customerGST || invoiceData.gstNumber || invoiceData.customerGstin || invoiceData.gstinNumber || "URP (Unregistered Person)",
-        customerPhone: invoiceData.customerPhone || invoiceData.partyPhone || invoiceData.phoneContact || "",
-        customerEmail: invoiceData.customerEmail || invoiceData.emailContact || "",
-        customerAddress: invoiceData.customerAddress || invoiceData.billingAddress || "",
-        customerState: invoiceData.placeOfSupply || invoiceData.state || "",
-        customerPin: invoiceData.customerPin || invoiceData.pin || "",
-        shippingName: invoiceData.shippingName || invoiceData.customerName || invoiceData.partyName || "",
-        shippingAddress: invoiceData.shippingAddress || invoiceData.customerAddress || invoiceData.billingAddress || "",
-        shippingState: invoiceData.shippingState || invoiceData.placeOfSupply || invoiceData.state || "",
-        shippingPin: invoiceData.shippingPin || invoiceData.customerPin || invoiceData.pin || "",
-        placeOfSupply: invoiceData.placeOfSupply || "",
-        salesExecutive: invoiceData.salesExecutive || "",
-        invoiceDate: (invoiceData.date || invoiceData.invoiceDate || invoiceData.createdAt || "").split("T")[0],
-        dueDate: (invoiceData.dueDate || "").split("T")[0],
-        paymentStatus: invoiceData.status || invoiceData.paymentStatus || "pending",
-        paymentMethod: invoiceData.paymentMode || invoiceData.paymentMethod || "Cash",
-        financeCompany: invoiceData.financeCompany || "",
-        financeApprovalNo: invoiceData.financeApprovalNo || "",
-        downPayment: Number(invoiceData.downPayment) || 0,
-        downPaymentMode: invoiceData.downPaymentMode || "Cash",
-        shippingCharges: Number(invoiceData.shippingCharges) || Number(invoiceData.shipping) || 0,
-        financeTenureMonths: Number(invoiceData.financeTenureMonths) || 0,
-        financeSchemeType: invoiceData.financeSchemeType || "no_cost",
-        financeInterestRate: Number(invoiceData.financeInterestRate) || 0,
-        monthlyEMI: Number(invoiceData.monthlyEMI) || 0,
-        totalInterest: Number(invoiceData.totalInterest) || 0,
-        items: mappedItems,
-      }));
+    if (propInvoiceData) {
+      setInvoice(propInvoiceData);
+    } else if (billIdFromUrl) {
+      setLoading(true);
+      fetch(`/api/invoices`)
+        .then((res) => res.json())
+        .then((json) => {
+          if (json.success && json.data) {
+            const found = json.data.find((inv: any) => 
+              inv.invoiceNumber === billIdFromUrl || 
+              inv._id === billIdFromUrl || 
+              inv.invoiceNumber.includes(billIdFromUrl)
+            );
+            if (found) {
+              setInvoice(found);
+            }
+          }
+        })
+        .catch((err) => console.error(err))
+        .finally(() => setLoading(false));
     }
-  }, [invoiceData]);
+  }, [propInvoiceData, billIdFromUrl]);
 
-  // Calculations
-  const calculatedItems = useMemo(() => {
-    return formData.items.map((item) => {
-      const taxableRate = item.rate - item.discount;
-      const taxableAmount = item.qty * taxableRate;
-      const gstAmount = taxableAmount * (item.gstRate / 100);
-      const totalAmount = taxableAmount + gstAmount;
+  // Default fallback data matching the VP.pdf reference invoice
+  const activeData = useMemo(() => {
+    if (invoice) {
+      const isEst = Boolean(
+        invoice.type === "estimate" ||
+        invoice.type === "proforma" ||
+        invoice.isEstimate ||
+        invoice.estimateNumber ||
+        (invoice.invoiceNumber && invoice.invoiceNumber.startsWith("EST-")) ||
+        (invoice.docNo && invoice.docNo.startsWith("EST-"))
+      );
+
       return {
-        ...item,
-        taxableRate,
-        taxableAmount,
-        gstAmount,
-        totalAmount,
+        isEstimate: isEst,
+        companyName: "M/S ASHOKA ENTERPRISES",
+        companyAddress: "H. NO. 116, NEAR SHANTI MARRIAGE HOUSE DEORIA ROAD, KUNRAGHAT GORAKHPUR",
+        companyPhone: "9140860604",
+        companyWeb: "www.valueplus.in",
+        companyGstin: "09ANHPJ7242D1Z2",
+        companyPan: "ANHPJ7242D",
+        companyState: "Uttar Pradesh(09)",
+        salesExec: invoice.salesperson || invoice.salesExecutive || invoice.salespersonName || invoice.createdBy || "AMIT SINGH",
+        
+        docNo: invoice.estimateNumber || invoice.invoiceNumber || invoice.docNo || "EST-2026-0001",
+        dated: invoice.date ? (typeof invoice.date === 'string' && invoice.date.includes('T') ? invoice.date.split('T')[0] : invoice.date) : "15/08/2026",
+        
+        customerName: invoice.customerName || "Cash Customer",
+        customerPhone: invoice.customerPhone || "7985803562",
+        customerGstin: invoice.customerGST || invoice.customerGstin || "",
+        customerPan: invoice.customerPAN || invoice.customerPan || "",
+        customerState: invoice.customerState || invoice.placeOfSupply || "Uttar Pradesh(09)",
+        shippingAddress: invoice.shippingAddress || invoice.customerAddress || "c31 divya nagar, gorakhpur, Uttar Pradesh(09)",
+        
+        items: (invoice.items || []).map((it: any, idx: number) => {
+          const qty = Number(it.quantity || it.qty || 1);
+          const rate = Number(it.rate || 0);
+          const discount = Number(it.discount || 0);
+          const taxable = it.taxableAmount || (rate - discount) * qty;
+          const gstRate = Number(it.gstRate || 18);
+          const isIntra = !invoice.placeOfSupply || invoice.placeOfSupply.includes("09") || invoice.placeOfSupply.includes("Uttar Pradesh");
+          const halfRate = gstRate / 2;
+          const halfGst = (taxable * (halfRate / 100));
+
+          return {
+            sno: idx + 1,
+            name: it.itemName || it.name || "Product Item",
+            vpCode: it.vpCode || it.itemCode || "",
+            batchNo: it.batchNumber || it.batchNo || (idx === 0 ? "605PLTV314681" : ""),
+            serialNo: it.serialNumber || it.serialImei || "",
+            extendedWarranty: it.extendedWarrantyPlan || "",
+            extendedWarrantyAmount: it.extendedWarrantyAmount || 0,
+            hsn: it.hsn || it.hsnCode || "85287217",
+            uom: it.unit || "Pcs",
+            qty,
+            rate,
+            amount: taxable,
+            disc: discount,
+            taxableValue: taxable,
+            sgstRate: isIntra ? halfRate : 0,
+            sgstAmount: isIntra ? (it.sgst || halfGst) : 0,
+            cgstRate: isIntra ? halfRate : 0,
+            cgstAmount: isIntra ? (it.cgst || halfGst) : 0,
+            igstRate: isIntra ? 0 : gstRate,
+            igstAmount: isIntra ? 0 : (it.igst || (taxable * (gstRate / 100))),
+            total: it.amount || (taxable + (taxable * (gstRate / 100)) + (it.extendedWarrantyAmount || 0)),
+          };
+        }),
+        
+        subtotal: invoice.subtotal || invoice.taxableAmount || 21610.17,
+        totalGst: invoice.totalGST || 3889.84,
+        cgst: invoice.cgst || 1944.92,
+        sgst: invoice.sgst || 1944.92,
+        igst: invoice.igst || 0,
+        roundOff: invoice.roundOff || 0.01,
+        netAmount: invoice.total || 25500.00,
+        extendedWarrantyTotal: invoice.extendedWarrantyTotal || 0,
+        
+        paymentMode: invoice.paymentMode || "Cash",
+        paidAmount: invoice.paidAmount || invoice.total || 25500.00,
+        balanceAmount: invoice.balanceAmount || 0,
+        vehicleNumber: invoice.vehicleNumber || "",
+        financeDoId: invoice.financeDoId || "",
+        deliveryChallanNo: invoice.deliveryChallanNo || "",
+        reprintCount: invoice.reprintCount || 0,
+        lastPrintedAt: invoice.lastPrintedAt || "",
       };
-    });
-  }, [formData.items]);
+    }
 
-  const totals = useMemo(() => {
-    const grossSubtotal = formData.items.reduce((sum, item) => sum + item.qty * item.rate, 0);
-    const totalDiscount = formData.items.reduce((sum, item) => sum + item.qty * item.discount, 0);
-    const taxableValue = grossSubtotal - totalDiscount;
-    const totalGst = calculatedItems.reduce((sum, item) => sum + item.gstAmount, 0);
-    
-    // Check if intra-state (UP to UP) or inter-state
-    const isIntraState = formData.placeOfSupply.includes("09") || formData.placeOfSupply.toLowerCase().includes("uttar pradesh");
-    const cgst = isIntraState ? totalGst / 2 : 0;
-    const sgst = isIntraState ? totalGst / 2 : 0;
-    const igst = isIntraState ? 0 : totalGst;
-
-    const shipping = Number(formData.shippingCharges) || 0;
-    const exactTotal = taxableValue + totalGst + shipping;
-    const grandTotal = Math.round(exactTotal);
-    const roundOff = Number((grandTotal - exactTotal).toFixed(2));
-    const amountInWords = numberToWordsIndian(grandTotal);
-
+    // Default reference specimen matching VP.pdf
     return {
-      grossSubtotal,
-      totalDiscount,
-      taxableValue,
-      totalGst,
-      cgst,
-      sgst,
-      igst,
-      shipping,
-      roundOff,
-      grandTotal,
-      amountInWords,
-    };
-  }, [calculatedItems, formData.shippingCharges, formData.placeOfSupply]);
-
-  // Form Handlers
-  const handleItemChange = (index: number, field: keyof InvoiceItem, value: any) => {
-    setFormData((prev) => {
-      const newItems = [...prev.items];
-      newItems[index] = { ...newItems[index], [field]: value };
-      return { ...prev, items: newItems };
-    });
-  };
-
-  const addItem = () => {
-    setFormData((prev) => ({
-      ...prev,
+      companyName: "M/S ASHOKA ENTERPRISES",
+      companyAddress: "H. NO. 116, NEAR SHANTI MARRIAGE HOUSE DEORIA ROAD, KUNRAGHAT GORAKHPUR",
+      companyPhone: "9140860604",
+      companyWeb: "www.valueplus.in",
+      companyGstin: "09ANHPJ7242D1Z2",
+      companyPan: "ANHPJ7242D",
+      companyState: "Uttar Pradesh(09)",
+      salesExec: "AMIT SINGH",
+      
+      docNo: "SVAK2026RI00602",
+      dated: "15/08/2026",
+      
+      customerName: "AJAY TIWARI",
+      customerPhone: "7985803562",
+      customerGstin: "",
+      customerPan: "",
+      customerState: "Uttar Pradesh(09)",
+      shippingAddress: "c31 divya nagar, gorakhpur, Uttar Pradesh(09)",
+      
       items: [
-        ...prev.items,
         {
-          id: String(Date.now()),
-          name: "New Product",
-          hsn: "8517",
+          sno: 1,
+          name: "43LR56006LC.ATR- LG (43LR56006LC.ATR- LG)",
+          vpCode: "VP-LED-001",
+          batchNo: "605PLTV314681",
+          serialNo: "SN43LG881923",
+          extendedWarranty: "1 Year Extended Warranty",
+          extendedWarrantyAmount: 0,
+          hsn: "85287217",
+          uom: "Pcs",
           qty: 1,
-          unit: "PCS",
-          rate: 1000,
-          discount: 0,
-          gstRate: 18,
-        },
+          rate: 21610.1695,
+          amount: 21610.17,
+          disc: 0.00,
+          taxableValue: 21610.17,
+          sgstRate: 9.00,
+          sgstAmount: 1944.92,
+          cgstRate: 9.00,
+          cgstAmount: 1944.92,
+          igstRate: 0,
+          igstAmount: 0,
+          total: 25500.00,
+        }
       ],
-    }));
+      
+      subtotal: 21610.17,
+      totalGst: 3889.84,
+      cgst: 1944.92,
+      sgst: 1944.92,
+      igst: 0,
+      roundOff: 0.01,
+      netAmount: 25500.00,
+      extendedWarrantyTotal: 0,
+      
+      paymentMode: "Cash",
+      paidAmount: 25500.00,
+      balanceAmount: 0,
+      vehicleNumber: "",
+      financeDoId: "",
+      deliveryChallanNo: "",
+      reprintCount: 0,
+      lastPrintedAt: "",
+    };
+  }, [invoice]);
+
+  const handlePrint = async () => {
+    try {
+      if (!activeData.isEstimate && activeData.docNo) {
+        const res = await fetch("/api/invoices/print", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ invoiceNumber: activeData.docNo })
+        });
+        const json = await res.json();
+        if (json.success && json.reprintCount) {
+          setInvoice((prev: any) => prev ? { ...prev, reprintCount: json.reprintCount, lastPrintedAt: json.lastPrintedAt } : prev);
+        }
+      }
+    } catch (e) {
+      console.error("Error logging reprint count:", e);
+    }
+    window.print();
   };
 
-  const removeItem = (index: number) => {
-    setFormData((prev) => ({
-      ...prev,
-      items: prev.items.filter((_, i) => i !== index),
-    }));
+  const handleWhatsApp = () => {
+    const phone = (activeData.customerPhone || "").replace(/\D/g, "");
+    if (!phone) {
+      toast.error("Customer phone number not available for WhatsApp");
+      return;
+    }
+    const cleanPhone = phone.length === 10 ? `91${phone}` : phone;
+    const msg = encodeURIComponent(
+      activeData.isEstimate
+        ? `*VALUE PLUS / ASHOKA ENTERPRISES*\nCommercial Price Estimate #${activeData.docNo}\nDate: ${activeData.dated}\nCustomer: ${activeData.customerName}\nSalesperson: ${activeData.salesExec}\nTotal Estimated Amount: ₹${activeData.netAmount.toLocaleString("en-IN")}\nValidity: 15 Days\n\nThank you for choosing Value Plus! For queries call 9140860604.`
+        : `*VALUE PLUS / ASHOKA ENTERPRISES*\nTax Invoice #${activeData.docNo}\nDate: ${activeData.dated}\nCustomer: ${activeData.customerName}\nSalesperson: ${activeData.salesExec}\nTotal Amount: ₹${activeData.netAmount.toLocaleString("en-IN")}\nStatus: Paid\n\nThank you for choosing Value Plus! For assistance call 9140860604.`
+    );
+    window.open(`https://wa.me/${cleanPhone}?text=${msg}`, "_blank");
+  };
+
+  const handleEmail = () => {
+    const docTitle = activeData.isEstimate ? "Commercial Estimate" : "Tax Invoice";
+    const subject = encodeURIComponent(`${docTitle} #${activeData.docNo} - Value Plus`);
+    const body = encodeURIComponent(`Dear ${activeData.customerName},\n\nPlease find the ${docTitle} #${activeData.docNo} for ₹${activeData.netAmount}.\nSalesperson: ${activeData.salesExec}\n\nValue Plus / Ashoka Enterprises\nGorakhpur`);
+    window.open(`mailto:?subject=${subject}&body=${body}`, "_blank");
+  };
+
+  const handleDownload = async () => {
+    toast.info(`Preparing ${activeData.isEstimate ? "Estimate" : "Tax Invoice"} print/PDF rendering...`);
+    await handlePrint();
   };
 
   return (
-    <>
-      <style>{`
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap');
-
-  :root{
-    --vp-blue:#3F63AD;
-    --vp-blue-dark:#2C4A85;
-    --vp-blue-tint:#EEF2FA;
-    --vp-green:#76C043;
-    --vp-green-dark:#5A9A30;
-    --vp-green-tint:#EEF8E6;
-    --ink:#111827;
-    --ink-soft:#4B5563;
-    --ink-faint:#8A93A3;
-    --line:#E4E8EF;
-    --line-soft:#EEF1F5;
-    --white:#FFFFFF;
-    --paper-bg:#EEF1F6;
-    --radius:14px;
-  }
-  *{ box-sizing:border-box; }
-  html,body{ margin:0; padding:0; }
-  body{
-    font-family:'Inter',-apple-system,Segoe UI,Roboto,Arial,sans-serif;
-    background:var(--paper-bg);
-    color:var(--ink);
-    -webkit-font-smoothing:antialiased;
-  }
-  .mono{ font-family:'JetBrains Mono', ui-monospace, monospace; }
-
-  /* ============ SCREEN CHROME ============ */
-  .toolbar{
-    max-width:860px;
-    margin:22px auto 14px auto;
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    padding:0 4px;
-  }
-  .toolbar .brandmark{
-    display:flex; align-items:center; gap:10px;
-    font-size:13.5px; color:var(--ink-soft); font-weight:600;
-  }
-  .toolbar .brandmark .dot{ width:8px; height:8px; border-radius:50%; background:var(--vp-green); }
-  .actions{ display:flex; gap:8px; flex-wrap:wrap; }
-  .btn{
-    display:inline-flex; align-items:center; gap:7px;
-    font-family:inherit; font-size:12.5px; font-weight:600;
-    padding:9px 14px; border-radius:9px; border:1px solid var(--line);
-    background:var(--white); color:var(--ink); cursor:pointer;
-    box-shadow:0 1px 2px rgba(16,24,40,0.04);
-    transition:transform .12s ease, box-shadow .12s ease, background .12s ease;
-  }
-  .btn:hover{ transform:translateY(-1px); box-shadow:0 4px 10px rgba(16,24,40,0.08); }
-  .btn:active{ transform:translateY(0); }
-  .btn svg{ width:14px; height:14px; flex:none; }
-  .btn.primary{ background:var(--vp-blue); border-color:var(--vp-blue); color:#fff; }
-  .btn.primary:hover{ background:var(--vp-blue-dark); }
-  .btn.ghost{ color:var(--ink-soft); }
-  .btn.whatsapp{ background:#25D366; border-color:#25D366; color:#fff; }
-  .btn.whatsapp:hover{ background:#1EBE59; }
-
-  /* ============ THE INVOICE (screen = card, print = page) ============ */
-  .sheet-wrap{
-    max-width:860px;
-    margin:0 auto 40px auto;
-  }
-  .sheet{
-    background:var(--white);
-    border-radius:var(--radius);
-    box-shadow:0 1px 3px rgba(16,24,40,0.06), 0 18px 40px -14px rgba(31,48,92,0.18);
-    overflow:hidden;
-    position:relative;
-    isolation:isolate;
-  }
-
-  /* ---- watermark ---- */
-  .watermark{
-    position:absolute; inset:0; z-index:0;
-    display:flex; align-items:center; justify-content:center;
-    pointer-events:none;
-  }
-  .watermark span{
-    font-size:130px; font-weight:800; letter-spacing:10px;
-    color:var(--vp-green); opacity:0.08;
-    transform:rotate(-30deg);
-    text-transform:uppercase;
-    white-space:nowrap;
-  }
-
-  /* ---- header ---- */
-  .inv-header{
-    position:relative; z-index:1;
-    display:flex; justify-content:space-between; gap:24px;
-    padding:16px 40px 12px 40px;
-    border-bottom:3px solid var(--vp-blue);
-  }
-  .co-block{ display:flex; gap:16px; align-items:center; }
-  
-  /* SIDEBAR LOGO EMBED */
-  .co-sidebar-logo {
-    background: var(--vp-blue);
-    padding: 8px 14px;
-    border-radius: 12px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 4px 12px rgba(63, 99, 173, 0.25);
-    flex-shrink: 0;
-    border: 1px solid rgba(255,255,255,0.15);
-  }
-  .co-sidebar-logo .brand-text {
-    display: flex;
-    align-items: center;
-    font-size: 22px;
-    font-weight: 900;
-    letter-spacing: -0.5px;
-    line-height: 1;
-  }
-  .co-sidebar-logo .val { color: #FFFFFF; }
-  .co-sidebar-logo .plus { color: #76C043; }
-  .co-sidebar-logo .tagline {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    margin-top: 4px;
-    opacity: 0.9;
-  }
-  .co-sidebar-logo .tagline-line {
-    height: 1px;
-    width: 12px;
-    background: rgba(255, 255, 255, 0.7);
-  }
-  .co-sidebar-logo .tagline-text {
-    color: #FFFFFF;
-    font-size: 9.5px;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    white-space: nowrap;
-  }
-
-  .co-name-row{ display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
-  .co-wordmark{ font-size:19px; font-weight:800; color:var(--vp-blue); letter-spacing:0.2px; white-space:nowrap; }
-  .co-legal{ font-size:11.5px; color:var(--ink-faint); font-weight:600; white-space:nowrap; }
-  .co-details{ margin-top:4px; font-size:11px; color:var(--ink-soft); line-height:1.5; max-width:420px; }
-  .co-details .row{ display:flex; flex-wrap:wrap; gap:5px; margin-bottom:1px; }
-  .co-details b{ color:var(--ink); font-weight:600; }
-
-  .inv-meta{ text-align:right; flex:none; }
-  .inv-badge{
-    display:inline-block; font-size:11px; font-weight:800; letter-spacing:1.6px;
-    color:var(--white); background:var(--ink); padding:5px 12px; border-radius:5px;
-    margin-bottom:10px;
-  }
-  .inv-meta table{ border-collapse:collapse; margin-left:auto; }
-  .inv-meta td{ padding:2.5px 0; font-size:11.5px; text-align:right; white-space:nowrap; }
-  .inv-meta td.k{ color:var(--ink-faint); padding-right:14px; }
-  .inv-meta td.v{ color:var(--ink); font-weight:700; }
-
-  /* ---- parties ---- */
-  .parties{
-    position:relative; z-index:1;
-    display:flex;
-    border-bottom:1px solid var(--line);
-  }
-  .party{
-    flex:1; padding:10px 40px; font-size:11.5px; color:var(--ink-soft); line-height:1.45;
-  }
-  .party + .party{ border-left:1px solid var(--line); }
-  .party .label{
-    font-size:10px; font-weight:800; letter-spacing:1px; text-transform:uppercase;
-    color:var(--vp-blue); margin-bottom:8px;
-  }
-  .party .cust-name{ font-size:13.5px; font-weight:700; color:var(--ink); margin-bottom:3px; }
-  .party .kv{ display:flex; gap:5px; }
-  .party .kv b{ color:var(--ink); font-weight:600; }
-
-  /* ---- table ---- */
-  .table-wrap{
-    position:relative; z-index:1;
-    padding:0 40px; margin-top:10px;
-    max-height:520px; overflow:auto;
-  }
-  table.items{ width:100%; border-collapse:collapse; }
-  table.items thead th{
-    position:sticky; top:0; z-index:2;
-    background:var(--vp-blue); color:#fff;
-    font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.6px;
-    padding:7px 10px; text-align:left; border:none;
-  }
-  table.items thead th:first-child{ border-top-left-radius:7px; }
-  table.items thead th:last-child{ border-top-right-radius:7px; }
-  table.items th.num, table.items td.num{ text-align:right; }
-  table.items td{
-    padding:6px 10px; font-size:11px; color:var(--ink-soft);
-    border-bottom:1px solid var(--line-soft);
-    page-break-inside:avoid; break-inside:avoid;
-  }
-  table.items tbody tr:nth-child(even){ background:#FAFBFD; }
-  table.items tbody tr{ page-break-inside:avoid; break-inside:avoid; }
-  .p-name{ font-weight:700; color:var(--ink); word-wrap:break-word; max-width: 200px; }
-  .p-hsn{ font-size:9.5px; color:var(--ink-faint); margin-top:1px; word-wrap:break-word; word-break:break-all; max-width: 200px; }
-
-  /* ---- summary + payment ---- */
-  .lower{
-    position:relative; z-index:1;
-    display:flex; gap:18px;
-    padding:12px 40px 6px 40px;
-  }
-  .lower-left{ flex:1.15; display:flex; flex-direction:column; gap:9px; }
-  .lower-right{ flex:1; }
-
-  .box{
-    border:1px solid var(--line); border-radius:10px; padding:9px 14px;
-  }
-  .box .label{
-    font-size:9.5px; font-weight:800; letter-spacing:0.8px; text-transform:uppercase;
-    color:var(--ink-faint); margin-bottom:6px;
-  }
-
-  .payment-box{ display:flex; gap:22px; flex-wrap:wrap; }
-  .pay-item{ font-size:12px; }
-  .pay-item .k{ color:var(--ink-faint); font-size:10.5px; text-transform:uppercase; letter-spacing:0.4px; margin-bottom:4px; }
-  .pay-item .v{ font-weight:700; color:var(--ink); }
-  .status-pill{
-    display:inline-flex; align-items:center; gap:6px;
-    font-size:11px; font-weight:800; padding:4px 11px; border-radius:20px;
-    background:var(--vp-green-tint); color:var(--vp-green-dark); text-transform:capitalize;
-  }
-  .status-pill .dot{ width:7px; height:7px; border-radius:50%; background:var(--vp-green-dark); }
-  .status-pill.pending{ background:#FEF3C7; color:#B45309; }
-  .status-pill.pending .dot{ background:#B45309; }
-
-  .bank-grid{ display:flex; gap:18px; align-items:center; }
-  .bank-info{ flex:1; font-size:11px; color:var(--ink-soft); line-height:1.55; }
-  .bank-info b{ color:var(--ink); font-weight:600; }
-  .qr-box{
-    width:62px; height:62px; flex:none; border-radius:8px; border:1px solid var(--line);
-    display:grid; grid-template-columns:repeat(7,1fr); grid-template-rows:repeat(7,1fr);
-    padding:6px; gap:1.5px; background:#fff;
-  }
-  .qr-box i{ background:var(--ink); border-radius:1px; }
-  .qr-caption{ font-size:9px; color:var(--ink-faint); text-align:center; margin-top:5px; letter-spacing:0.3px; }
-
-  .totals .row{
-    display:flex; justify-content:space-between; padding:3px 0; font-size:11px; color:var(--ink-soft);
-  }
-  .totals .row span:last-child{ font-weight:600; color:var(--ink); }
-  .totals .row.grand{
-    margin-top:6px; padding:8px 16px; border-radius:10px;
-    background:linear-gradient(120deg,var(--vp-blue),var(--vp-blue-dark));
-    color:#fff; font-size:15px; font-weight:800;
-  }
-  .totals .row.grand span:last-child{ color:#fff; font-size:19px; }
-  .totals .words{
-    font-size:9.5px; color:var(--ink-faint); margin-top:6px; line-height:1.4;
-    border-top:1px dashed var(--line); padding-top:6px;
-  }
-  .totals .words b{ color:var(--ink-soft); }
-
-  .barcode{ display:flex; gap:1.4px; align-items:flex-end; height:22px; margin-top:6px; }
-  .barcode i{ width:2.2px; background:var(--ink); display:block; }
-
-  /* ---- terms ---- */
-  .terms{
-    position:relative; z-index:1;
-    padding:14px 40px 6px 40px; display:flex; gap:24px;
-    border-top:1px solid var(--line-soft); margin-top:8px;
-  }
-  .terms .col{ flex:1; font-size:10px; color:var(--ink-soft); line-height:1.45; }
-  .terms .label{
-    font-size:10px; font-weight:800; letter-spacing:0.8px; text-transform:uppercase;
-    color:var(--vp-blue); margin-bottom:6px;
-  }
-  .terms ul{ margin:0; padding:0; list-style:none; }
-  .terms li{
-    position:relative; padding-left:12px; margin-bottom:4px;
-  }
-  .terms li::before{
-    content:"•"; position:absolute; left:0; top:0; color:var(--vp-blue); font-weight:bold; font-size:12px; line-height:1;
-  }
-
-  /* ---- signatures / footer ---- */
-  .sign-row{
-    position:relative; z-index:1;
-    display:flex; justify-content:space-between; align-items:flex-end;
-    padding:64px 40px 16px 40px;
-  }
-  .stamp{
-    width:74px; height:74px; border-radius:50%; border:2px dashed #C9CFDB;
-    display:flex; align-items:center; justify-content:center; text-align:center;
-    color:#C3CAD7; font-size:8.5px; font-weight:800; letter-spacing:0.6px; text-transform:uppercase;
-    transform:rotate(-8deg); line-height:1.3; flex:none;
-  }
-  .sign-block{ text-align:center; }
-  .sign-line{
-    min-width:180px; width:max-content; margin:0 auto; border-top:1px solid #9AA2B1; padding-top:7px; font-size:10.5px; color:var(--ink-faint); white-space:nowrap;
-  }
-  .footer-bar{
-    position:relative; z-index:1;
-    text-align:center; padding:8px 20px 10px 20px;
-    border-top:1px solid var(--line);
-    font-size:10px; color:var(--ink-faint);
-  }
-  .footer-bar b{ color:var(--vp-blue); }
-
-  /* ============ FORM DRAWER / EDITOR ============ */
-  .form-card {
-    max-width: 860px;
-    margin: 0 auto 24px auto;
-    background: #FFFFFF;
-    border-radius: var(--radius);
-    padding: 24px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.06);
-    border: 1px solid var(--line);
-  }
-  .form-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 14px;
-  }
-  .form-field {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-  }
-  .form-field label {
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--ink-soft);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-  .form-field input, .form-field select {
-    padding: 8px 12px;
-    font-size: 13px;
-    border-radius: 8px;
-    border: 1px solid var(--line);
-    outline: none;
-    font-family: inherit;
-    transition: border-color 0.15s;
-  }
-  .form-field input:focus, .form-field select:focus {
-    border-color: var(--vp-blue);
-    box-shadow: 0 0 0 3px rgba(63,99,173,0.1);
-  }
-  .items-edit-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 12px;
-  }
-  .items-edit-table th {
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    color: var(--ink-soft);
-    text-align: left;
-    padding: 8px;
-    background: var(--paper-bg);
-  }
-  .items-edit-table td {
-    padding: 6px;
-    border-bottom: 1px solid var(--line);
-  }
-  .items-edit-table input {
-    width: 100%;
-    padding: 6px 8px;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    font-size: 12px;
-  }
-
-  /* ============ RESPONSIVE (screen only) ============ */
-  @media (max-width:720px){
-    .inv-header{ flex-direction:column; }
-    .inv-meta{ text-align:left; }
-    .inv-meta table{ margin-left:0; }
-    .inv-meta td{ text-align:left; }
-    .parties{ flex-direction:column; }
-    .party + .party{ border-left:none; border-top:1px solid var(--line); }
-    .lower{ flex-direction:column; }
-    .terms{ flex-direction:column; gap:14px; }
-    .sign-row{ flex-direction:column; gap:24px; align-items:center; }
-    .form-grid{ grid-template-columns: 1fr; }
-  }
-
-  /* ============ PRINT ============ */
-  @media print{
-    @page{ size:A4; margin:10mm; }
-    html,body{ background:#fff !important; }
-    .toolbar, .no-print, .form-card{ display:none !important; }
-    .sheet-wrap{ max-width:none; margin:0; }
-    .sheet{
-      box-shadow:none !important; border-radius:0 !important; margin:0 !important;
-    }
-    .table-wrap{ max-height:none !important; overflow:visible !important; }
-    table.items thead th{ position:static !important; }
-    table, tr, td, th{ page-break-inside:avoid; break-inside:avoid; }
-    .box, .parties, .lower, .terms{ page-break-inside:avoid; break-inside:avoid; }
-    a{ text-decoration:none; color:inherit; }
-  }
-      `}</style>
-
-      {/* TOP TOOLBAR */}
-      <div className="toolbar no-print">
-        <div className="brandmark">
+    <div className="min-h-screen bg-slate-100 p-4 md:p-8 print:p-0 print:bg-white text-slate-900 font-sans">
+      {/* ─── ACTION BAR (HIDDEN IN PRINT) ────────────────────────── */}
+      <div className="max-w-[860px] mx-auto mb-6 bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-3 print:hidden">
+        <div className="flex items-center gap-2">
           {onBack ? (
-            <button type="button" onClick={onBack} className="flex items-center gap-1.5 text-[#3F63AD] hover:underline mr-2">
-              <ArrowLeft className="w-4 h-4" /> Back to Invoices
+            <button onClick={onBack} className="px-3 py-1.5 rounded-lg border text-xs font-semibold hover:bg-slate-50 flex items-center gap-1.5">
+              <ArrowLeft className="w-3.5 h-3.5" /> Back
             </button>
           ) : (
-            <Link href="/sales/invoices" className="flex items-center gap-1.5 text-[#3F63AD] hover:underline mr-2">
-              <ArrowLeft className="w-4 h-4" /> Back to Invoices
+            <Link href={activeData.isEstimate ? "/sales/estimates" : "/sales/invoices"} className="px-3 py-1.5 rounded-lg border text-xs font-semibold hover:bg-slate-50 flex items-center gap-1.5">
+              <ArrowLeft className="w-3.5 h-3.5" /> {activeData.isEstimate ? "Estimates List" : "Invoices List"}
             </Link>
           )}
-          <span className="dot"></span> 
-          <span>VALUEPLUS ERP — GST Invoice Builder</span>
+          <span className="text-xs font-mono font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-md">
+            {activeData.isEstimate ? "Estimate No: " : "Doc.No: "} {activeData.docNo}
+          </span>
+          {!activeData.isEstimate && (
+            <span className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded-md border ${
+              (activeData.reprintCount || 0) > 0 
+                ? "bg-amber-50 text-amber-800 border-amber-300" 
+                : "bg-slate-100 text-slate-700 border-slate-200"
+            }`}>
+              🖨️ Reprints: {activeData.reprintCount || 0}
+            </span>
+          )}
+          {activeData.isEstimate && (
+            <span className="text-[11px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md">
+              Salesperson: {activeData.salesExec}
+            </span>
+          )}
         </div>
-        <div className="actions">
-          <button 
-            className={`btn ${isEditing ? "primary" : "ghost"}`} 
-            onClick={() => setIsEditing(!isEditing)}
-          >
-            <Edit3 className="w-4 h-4" />
-            {isEditing ? "Preview Invoice" : "Fill / Edit Form"}
+
+        <div className="flex items-center gap-2">
+          <button onClick={handleDownload} className="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-800 text-xs font-bold flex items-center gap-1.5 shadow-sm">
+            <Download className="w-3.5 h-3.5" /> Download PDF
           </button>
-          <button className="btn whatsapp" onClick={() => toast.success(`Sharing ${formData.invoiceNo} via WhatsApp...`)}>
-            <MessageSquare className="w-4 h-4" />
-            WhatsApp
-          </button>
-          <button className="btn ghost" onClick={() => window.print()}>
-            <Printer className="w-4 h-4" />
-            Print
-          </button>
-          <button className="btn primary" onClick={() => window.print()}>
-            <Download className="w-4 h-4" />
-            Download PDF
+          <button onClick={handlePrint} className="px-4 py-1.5 rounded-lg bg-[#30539C] hover:bg-[#203a70] text-white text-xs font-bold flex items-center gap-1.5 shadow-sm">
+            <Printer className="w-3.5 h-3.5" /> {activeData.isEstimate ? "Print Estimate" : "Print Invoice"}
           </button>
         </div>
       </div>
 
-      {/* INTERACTIVE FORM EDITING DRAWER / PANEL */}
-      {isEditing && (
-        <div className="form-card no-print">
-          <div className="flex items-center justify-between border-b pb-3 mb-4">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-[#3F63AD]" />
-              <h3 className="font-bold text-lg">Edit Invoice Details</h3>
-            </div>
-            <button className="btn primary" onClick={() => setIsEditing(false)}>
-              <CheckCircle2 className="w-4 h-4 mr-1" /> Done Editing
-            </button>
+      {/* ─── OFFICIAL VALUE PLUS TAX INVOICE / ESTIMATE SPECIFICATION CONTAINER ─── */}
+      <div className="max-w-[860px] mx-auto bg-white border border-slate-400 p-8 shadow-xl print:border-none print:shadow-none print:p-0 print:m-0 text-[11px] leading-tight">
+        
+        {/* TOP HEADER: BRAND LOGO */}
+        <div className="flex flex-col items-center justify-center pb-2 border-b border-slate-300">
+          <div className="flex items-center text-3xl font-black tracking-tight">
+            <span className="text-[#30539C]">VALUE</span>
+            <span className="text-[#76C043]">PLUS</span>
           </div>
-
-          <div className="space-y-6">
-            {/* Header & Meta */}
-            <div>
-              <h4 className="text-xs font-bold uppercase tracking-wider text-[#3F63AD] mb-3 flex items-center gap-1.5">
-                <FileText className="w-4 h-4" /> Invoice Details
-              </h4>
-              <div className="form-grid">
-                <div className="form-field">
-                  <label>Invoice Number</label>
-                  <input value={formData.invoiceNo} onChange={(e) => setFormData({ ...formData, invoiceNo: e.target.value })} />
-                </div>
-                <div className="form-field">
-                  <label>Invoice Date</label>
-                  <input type="date" value={formData.invoiceDate} onChange={(e) => setFormData({ ...formData, invoiceDate: e.target.value })} />
-                </div>
-                <div className="form-field">
-                  <label>Due Date</label>
-                  <input type="date" value={formData.dueDate} onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })} />
-                </div>
-                <div className="form-field">
-                  <label>Order Number</label>
-                  <input value={formData.orderNo} onChange={(e) => setFormData({ ...formData, orderNo: e.target.value })} />
-                </div>
-                <div className="form-field">
-                  <label>E-Way Bill No.</label>
-                  <input value={formData.ewayBillNo} onChange={(e) => setFormData({ ...formData, ewayBillNo: e.target.value })} />
-                </div>
-                <div className="form-field">
-                  <label>Place of Supply</label>
-                  <input value={formData.placeOfSupply} onChange={(e) => setFormData({ ...formData, placeOfSupply: e.target.value })} />
-                </div>
-              </div>
-            </div>
-
-            {/* Customer Details */}
-            <div>
-              <h4 className="text-xs font-bold uppercase tracking-wider text-[#3F63AD] mb-3 flex items-center gap-1.5">
-                <User className="w-4 h-4" /> Customer & Shipping Info
-              </h4>
-              <div className="form-grid">
-                <div className="form-field">
-                  <label>Customer Name</label>
-                  <input value={formData.customerName} onChange={(e) => setFormData({ ...formData, customerName: e.target.value })} />
-                </div>
-                <div className="form-field">
-                  <label>Customer GSTIN</label>
-                  <input value={formData.customerGstin} onChange={(e) => setFormData({ ...formData, customerGstin: e.target.value })} />
-                </div>
-                <div className="form-field">
-                  <label>Customer Mobile Number</label>
-                  <input value={formData.customerPhone} onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })} />
-                </div>
-                <div className="form-field col-span-2">
-                  <label>Billing Address</label>
-                  <input value={formData.customerAddress} onChange={(e) => setFormData({ ...formData, customerAddress: e.target.value })} />
-                </div>
-                <div className="form-field">
-                  <label>State & PIN</label>
-                  <input value={formData.customerPin} onChange={(e) => setFormData({ ...formData, customerPin: e.target.value })} />
-                </div>
-              </div>
-            </div>
-
-            {/* Line Items */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-[#3F63AD] flex items-center gap-1.5">
-                  <Layers className="w-4 h-4" /> Line Items ({formData.items.length})
-                </h4>
-                <button className="btn ghost" onClick={addItem}>
-                  <Plus className="w-3.5 h-3.5 mr-1" /> Add Product Line
-                </button>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="items-edit-table">
-                  <thead>
-                    <tr>
-                      <th style={{ width: "30%" }}>Item Name</th>
-                      <th style={{ width: "12%" }}>HSN</th>
-                      <th style={{ width: "10%" }}>Qty</th>
-                      <th style={{ width: "10%" }}>Unit</th>
-                      <th style={{ width: "14%" }}>Rate (₹)</th>
-                      <th style={{ width: "12%" }}>Disc (₹)</th>
-                      <th style={{ width: "10%" }}>GST %</th>
-                      <th style={{ width: "4%" }}></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {formData.items.map((item, idx) => (
-                      <tr key={item.id}>
-                        <td>
-                          <input value={item.name} onChange={(e) => handleItemChange(idx, "name", e.target.value)} />
-                        </td>
-                        <td>
-                          <input value={item.hsn} onChange={(e) => handleItemChange(idx, "hsn", e.target.value)} />
-                        </td>
-                        <td>
-                          <input type="number" min="1" value={item.qty} onChange={(e) => handleItemChange(idx, "qty", Math.max(1, Number(e.target.value)))} />
-                        </td>
-                        <td>
-                          <input value={item.unit} onChange={(e) => handleItemChange(idx, "unit", e.target.value)} />
-                        </td>
-                        <td>
-                          <input type="number" min="0" value={item.rate} onChange={(e) => handleItemChange(idx, "rate", Math.max(0, Number(e.target.value)))} />
-                        </td>
-                        <td>
-                          <input type="number" min="0" value={item.discount} onChange={(e) => handleItemChange(idx, "discount", Math.max(0, Number(e.target.value)))} />
-                        </td>
-                        <td>
-                          <input type="number" min="0" value={item.gstRate} onChange={(e) => handleItemChange(idx, "gstRate", Math.max(0, Number(e.target.value)))} />
-                        </td>
-                        <td className="text-center">
-                          <button onClick={() => removeItem(idx)} className="text-red-500 hover:text-red-700 p-1">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Payment & Bank Details */}
-            <div>
-              <h4 className="text-xs font-bold uppercase tracking-wider text-[#3F63AD] mb-3 flex items-center gap-1.5">
-                <CreditCard className="w-4 h-4" /> Payment & Bank Details
-              </h4>
-              <div className="form-grid">
-                <div className="form-field">
-                  <label>Payment Status</label>
-                  <select value={formData.paymentStatus} onChange={(e) => setFormData({ ...formData, paymentStatus: e.target.value })}>
-                    <option value="paid">Paid</option>
-                    <option value="pending">Pending</option>
-                    <option value="partial">Partial</option>
-                  </select>
-                </div>
-                <div className="form-field">
-                  <label>Payment Method</label>
-                  <input value={formData.paymentMethod} onChange={(e) => setFormData({ ...formData, paymentMethod: e.target.value })} />
-                </div>
-                <div className="form-field">
-                  <label>Shipping Charges (₹)</label>
-                  <input type="number" min="0" value={formData.shippingCharges} onChange={(e) => setFormData({ ...formData, shippingCharges: Math.max(0, Number(e.target.value)) })} />
-                </div>
-                <div className="form-field">
-                  <label>Bank Name</label>
-                  <input value={formData.bankName} onChange={(e) => setFormData({ ...formData, bankName: e.target.value })} />
-                </div>
-                <div className="form-field">
-                  <label>Account Number</label>
-                  <input value={formData.accountNo} onChange={(e) => setFormData({ ...formData, accountNo: e.target.value })} />
-                </div>
-                <div className="form-field">
-                  <label>IFSC Code</label>
-                  <input value={formData.ifscCode} onChange={(e) => setFormData({ ...formData, ifscCode: e.target.value })} />
-                </div>
-              </div>
-            </div>
+          <p className="text-[10px] text-slate-500 tracking-wider mt-0.5">plug into great experience |</p>
+          <div className="flex items-center gap-2 mt-1">
+            <span className="h-[1px] w-6 bg-slate-400" />
+            <span className="text-xs font-bold text-slate-800 tracking-wider font-hindi">— रिश्ता विश्वास का —</span>
+            <span className="h-[1px] w-6 bg-slate-400" />
           </div>
         </div>
-      )}
 
-      {/* PRINTABLE INVOICE SHEET */}
-      <div className="sheet-wrap">
-        <div className="sheet" id="invoice-sheet">
-          {/* Watermark */}
-          <div className="watermark">
-            <span>{formData.paymentStatus}</span>
+        {/* INVOICE / ESTIMATE TITLE & META ROW */}
+        <div className="flex items-center justify-between py-2 border-b border-slate-400 font-bold">
+          {activeData.isEstimate ? (
+            <span className="text-xs text-[#30539C] font-black uppercase tracking-wide">
+              COMMERCIAL ESTIMATE / QUOTATION <span className="font-normal text-[10px] text-slate-600">(Price Estimate · Not a Tax Invoice)</span>
+            </span>
+          ) : (
+            <span className="text-xs flex items-center gap-1.5">
+              TAX INVOICE 
+              <span className={`font-bold text-[10px] ${
+                (activeData.reprintCount || 0) > 0 
+                  ? "text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-300 font-mono font-black" 
+                  : "text-slate-600 font-normal"
+              }`}>
+                {(activeData.reprintCount || 0) > 0 
+                  ? `(DUPLICATE / REPRINT #${activeData.reprintCount})` 
+                  : "(Original for Recipient)"}
+              </span>
+            </span>
+          )}
+          <span className="text-xs font-mono">
+            {activeData.isEstimate ? "Estimate No : " : "Doc.No : "}
+            <span className="text-black font-black">{activeData.docNo}</span>
+          </span>
+          <span className="text-xs">Dated : <span className="font-mono">{activeData.dated}</span></span>
+        </div>
+
+        {/* COMPANY & SALES EXECUTIVE / SALESPERSON DETAILS */}
+        <div className="grid grid-cols-12 border-b border-slate-400 py-2 gap-2">
+          <div className="col-span-5 pr-2">
+            <p className="font-black text-xs text-slate-900">{activeData.companyName}</p>
+            <p className="text-[10px] text-slate-700 uppercase mt-0.5">{activeData.companyAddress}</p>
+            <p className="text-[10px] text-slate-800 mt-1">
+              Ph:<span className="font-mono font-bold">{activeData.companyPhone}</span> Web: <span className="font-mono">{activeData.companyWeb}</span>
+            </p>
           </div>
 
-          {/* Header */}
-          <div className="inv-header">
-            <div className="co-block">
-              {/* EXACT SIDEBAR BRAND LOGO EMBED */}
-              <div className="co-sidebar-logo">
-                <div className="brand-text">
-                  <span className="val">VALUE</span>
-                  <span className="plus">PLUS</span>
-                </div>
-                <div className="tagline">
-                  <div className="tagline-line" />
-                  <span className="tagline-text">रिश्ता विश्वास का</span>
-                  <div className="tagline-line" />
-                </div>
-              </div>
-
-              <div>
-                <div className="co-name-row">
-                  <span className="co-wordmark">{formData.companyName}</span>
-                  <span className="co-legal">{formData.companyLegal}</span>
-                </div>
-                <div className="co-details">
-                  <div className="row">{formData.companyAddress}</div>
-                  <div className="row">
-                    <b>GSTIN:</b>&nbsp;{formData.companyGstin} &nbsp;·&nbsp; <b>PAN:</b>&nbsp;{formData.companyPan}
-                  </div>
-                  <div className="row">
-                    <b>Ph:</b>&nbsp;{formData.companyPhone} &nbsp;·&nbsp; <b>Email:</b>&nbsp;{formData.companyEmail}
-                  </div>
-                  <div className="row">
-                    <b>Web:</b>&nbsp;{formData.companyWeb}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="inv-meta">
-              <div className="inv-badge">{formData.invoiceType}</div>
-              <table>
-                <tbody>
-                  <tr><td className="k">Invoice No.</td><td className="v mono">{formData.invoiceNo}</td></tr>
-                  <tr><td className="k">Invoice Date</td><td className="v">{formData.invoiceDate ? new Date(formData.invoiceDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}</td></tr>
-                  <tr><td className="k">Due Date</td><td className="v">{formData.dueDate ? new Date(formData.dueDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}</td></tr>
-                  <tr><td className="k">Order No.</td><td className="v mono">{formData.orderNo}</td></tr>
-                  <tr><td className="k">E-Way Bill No.</td><td className="v mono">{formData.ewayBillNo}</td></tr>
-                  <tr><td className="k">Place of Supply</td><td className="v">{formData.placeOfSupply}</td></tr>
-                </tbody>
-              </table>
-            </div>
+          <div className="col-span-4 pl-2 border-l border-slate-300 text-[10px] space-y-0.5">
+            <p><span className="font-semibold">GSTIN :</span> <span className="font-mono font-bold">{activeData.companyGstin}</span></p>
+            <p><span className="font-semibold">State :</span> {activeData.companyState}</p>
+            <p><span className="font-semibold">PAN :</span> <span className="font-mono font-bold">{activeData.companyPan}</span></p>
           </div>
 
-          {/* Parties */}
-          <div className="parties">
-            <div className="party">
-              <div className="label">Bill To</div>
-              <div className="cust-name">{formData.customerName}</div>
-              <div className="kv"><b>GSTIN:</b> {formData.customerGstin}</div>
-              <div className="kv"><b>Phone:</b> {formData.customerPhone}</div>
-              <div className="kv"><b>Email:</b> {formData.customerEmail}</div>
-              <div style={{ marginTop: "6px" }}>{formData.customerAddress}</div>
-              {(formData.customerState || (formData.customerPin && !/^0+$/.test(String(formData.customerPin)))) && (
-                <div className="kv"><b>State/PIN:</b> {formData.customerState} {(!formData.customerPin || /^0+$/.test(String(formData.customerPin))) ? "" : `— ${formData.customerPin}`}</div>
-              )}
-            </div>
-            <div className="party">
-              <div className="label">Ship To</div>
-              <div className="cust-name">{formData.shippingName || formData.customerName}</div>
-              <div style={{ marginTop: "6px" }}>{formData.shippingAddress || formData.customerAddress}</div>
-              {(formData.shippingState || (formData.shippingPin && !/^0+$/.test(String(formData.shippingPin)))) && (
-                <div className="kv"><b>State/PIN:</b> {formData.shippingState} {(!formData.shippingPin || /^0+$/.test(String(formData.shippingPin))) ? "" : `— ${formData.shippingPin}`}</div>
-              )}
-              <div className="kv" style={{ marginTop: "10px" }}>
-                <b>Delivery Address same as Shipping Address</b>
-              </div>
-            </div>
+          <div className="col-span-3 text-right text-[10px]">
+            <p className="font-bold text-slate-900">
+              {activeData.isEstimate ? "Salesperson : " : "Sales Exec. : "}
+              <span className="uppercase font-black text-[#30539C]">{activeData.salesExec}</span>
+            </p>
+          </div>
+        </div>
+
+        {/* BILL TO / TAX DETAILS / SHIPPING DETAILS (3 COLUMNS) */}
+        <div className="grid grid-cols-12 border-b border-slate-400 text-[10px] divide-x divide-slate-400">
+          {/* Col 1: Bill To */}
+          <div className="col-span-4 p-2 space-y-1">
+            <p className="font-bold border-b pb-0.5 uppercase text-slate-800">Bill to: Customer</p>
+            <p className="font-black text-xs text-slate-900">{activeData.customerName}</p>
+            <p className="text-slate-700">Ph./Mobile No.: <span className="font-mono font-bold">{activeData.customerPhone}</span></p>
           </div>
 
-          {/* Items Table */}
-          <div className="table-wrap">
-            <table className="items">
-              <thead>
-                <tr>
-                  <th style={{ width: "28px" }}>#</th>
-                  <th>Product</th>
-                  <th>HSN</th>
-                  <th className="num">Qty</th>
-                  <th>Unit</th>
-                  <th className="num">Rate</th>
-                  <th className="num">Disc.</th>
-                  <th className="num">GST%</th>
-                  <th className="num">GST Amt</th>
-                  <th className="num">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {calculatedItems.map((item, idx) => (
-                  <tr key={item.id || idx}>
-                    <td>{idx + 1}</td>
-                    <td>
-                      <div className="p-name">{item.name}</div>
-                      {item.serialImei && <div className="p-hsn" style={{ color: "#3F63AD", fontWeight: 600 }}>IMEI/SN: {item.serialImei}</div>}
-                      <div className="p-hsn">HSN {item.hsn}</div>
-                    </td>
-                    <td className="mono">{item.hsn}</td>
-                    <td className="num">{item.qty}</td>
-                    <td>{item.unit}</td>
-                    <td className="num">{item.rate.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
-                    <td className="num">{item.discount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
-                    <td className="num">{item.gstRate}%</td>
-                    <td className="num">{item.gstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
-                    <td className="num">{item.totalAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          {/* Col 2: Tax Details */}
+          <div className="col-span-4 p-2 space-y-1">
+            <p className="font-bold border-b pb-0.5 uppercase text-slate-800">TAX Details</p>
+            <p>GSTIN : <span className="font-mono font-bold">{activeData.customerGstin || "Unregistered"}</span></p>
+            <p>State : {activeData.customerState}</p>
+            <p>PAN : <span className="font-mono font-bold">{activeData.customerPan || "N/A"}</span></p>
           </div>
 
-          {/* Summary & Payment */}
-          <div className="lower">
-            <div className="lower-left">
-              {formData.invoiceType !== "PROFORMA ESTIMATE" && (
-                <div className="box">
-                  <div className="label">Payment Status</div>
-                  <div className="payment-box">
-                    <div className="pay-item">
-                      <div className="k">Status</div>
-                      <span className={`status-pill ${formData.paymentStatus}`}>
-                        <span className="dot"></span>
-                        {formData.paymentStatus}
-                      </span>
-                    </div>
-                    <div className="pay-item">
-                      <div className="k">Method</div>
-                      <div className="v font-semibold">{formData.paymentMethod}</div>
-                    </div>
-                    {(formData.paymentMethod?.includes("Finance") || formData.paymentMethod?.includes("EMI")) && formData.financeCompany && (
-                      <>
-                        <div className="pay-item">
-                          <div className="k">Finance Provider</div>
-                          <div className="v font-bold text-[#3F63AD]">{formData.financeCompany} {formData.financeApprovalNo ? `(#${formData.financeApprovalNo})` : ''}</div>
-                        </div>
-                        <div className="pay-item">
-                          <div className="k">Down Payment Paid</div>
-                          <div className="v font-bold text-emerald-700">₹ {formData.downPayment.toLocaleString("en-IN")} <span className="text-xs font-semibold text-slate-500">({formData.downPaymentMode || "Cash"})</span></div>
-                        </div>
-                        <div className="pay-item">
-                          <div className="k">Financed Amount</div>
-                          <div className="v font-bold text-purple-700">₹ {Math.max(0, totals.grandTotal - formData.downPayment).toLocaleString("en-IN")}</div>
-                        </div>
-                        <div className="pay-item">
-                          <div className="k">EMI Scheme</div>
-                          <div className="v font-bold text-blue-700">
-                            {formData.financeSchemeType === "no_cost"
-                              ? "No-Cost EMI (0% Interest Offer)"
-                              : `Standard Interest EMI (${formData.financeInterestRate}% p.a.)`}
-                          </div>
-                        </div>
-                        <div className="pay-item">
-                          <div className="k">Monthly EMI</div>
-                          <div className="v font-extrabold text-slate-900">
-                            ₹ {(formData.monthlyEMI || Math.round(Math.max(0, totals.grandTotal - formData.downPayment) / (formData.financeTenureMonths || 6))).toLocaleString("en-IN")} / mo ({formData.financeTenureMonths || 6} Months)
-                          </div>
-                        </div>
-                        {formData.financeSchemeType !== "no_cost" && formData.totalInterest > 0 && (
-                          <div className="pay-item">
-                            <div className="k">Total EMI Interest</div>
-                            <div className="v font-bold text-amber-700">₹ {formData.totalInterest.toLocaleString("en-IN")}</div>
-                          </div>
-                        )}
-                      </>
+          {/* Col 3: Shipping Details */}
+          <div className="col-span-4 p-2 space-y-1">
+            <p className="font-bold border-b pb-0.5 uppercase text-slate-800">Shipping Details</p>
+            <p className="font-black text-slate-900 uppercase">{activeData.customerName}</p>
+            <p className="text-slate-700 capitalize">{activeData.shippingAddress}</p>
+            <p className="text-slate-700">Ph:/Mobile:/<span className="font-mono font-bold">{activeData.customerPhone}</span></p>
+            {activeData.customerGstin && <p>GSTNO: <span className="font-mono font-bold">{activeData.customerGstin}</span></p>}
+          </div>
+        </div>
+
+        {/* ─── PRODUCT / SERVICES TABLE (OFFICIAL FORMAT) ─────────── */}
+        <div className="border-b border-slate-400">
+          <table className="w-full text-left text-[10px] border-collapse">
+            <thead>
+              <tr className="border-b border-slate-400 font-bold bg-slate-50 text-slate-800">
+                <th className="p-1 border-r border-slate-400 w-8 text-center">S.no</th>
+                <th className="p-1 border-r border-slate-400">Name of Product /Service</th>
+                <th className="p-1 border-r border-slate-400 text-center w-16">HSN SAC</th>
+                <th className="p-1 border-r border-slate-400 text-center w-10">UOM</th>
+                <th className="p-1 border-r border-slate-400 text-center w-8">Qty</th>
+                <th className="p-1 border-r border-slate-400 text-right w-16">Rate</th>
+                <th className="p-1 border-r border-slate-400 text-right w-16">Amount</th>
+                <th className="p-1 border-r border-slate-400 text-right w-12">Disc.</th>
+                <th className="p-1 border-r border-slate-400 text-right w-16">Taxable Value</th>
+                <th className="p-1 border-r border-slate-400 text-right w-14">SGST Rate / Amt</th>
+                <th className="p-1 border-r border-slate-400 text-right w-14">CGST Rate / Amt</th>
+                <th className="p-1 text-right w-16">Total</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-300">
+              {activeData.items.map((it: any) => (
+                <tr key={it.sno} className="align-top">
+                  <td className="p-1 border-r border-slate-400 text-center font-bold">{it.sno}</td>
+                  <td className="p-1 border-r border-slate-400 font-medium">
+                    <div className="font-bold text-slate-900">{it.name}</div>
+                    {it.vpCode && <div className="text-[9px] font-mono text-slate-500">VP Code: {it.vpCode}</div>}
+                    {it.serialNo && (
+                      <div className="text-[9px] font-mono text-slate-700">
+                        1 No. : Serial No: <strong>{it.serialNo}</strong>
+                      </div>
                     )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="lower-right">
-              <div className="box">
-                <div className="label">Invoice Summary</div>
-                <div className="totals">
-                  <div className="row">
-                    <span>Subtotal</span>
-                    <span>{formatCurrency(totals.grossSubtotal)}</span>
-                  </div>
-                  <div className="row">
-                    <span>Discount</span>
-                    <span>– {formatCurrency(totals.totalDiscount)}</span>
-                  </div>
-                  <div className="row">
-                    <span>Taxable Value</span>
-                    <span>{formatCurrency(totals.taxableValue)}</span>
-                  </div>
-                  {totals.cgst > 0 ? (
-                    <>
-                      <div className="row">
-                        <span>CGST @ 9%</span>
-                        <span>{formatCurrency(totals.cgst)}</span>
+                    {it.batchNo && (
+                      <div className="text-[9px] font-mono text-slate-700">
+                        1 No. : Batchno: <strong>{it.batchNo}</strong>
                       </div>
-                      <div className="row">
-                        <span>SGST @ 9%</span>
-                        <span>{formatCurrency(totals.sgst)}</span>
+                    )}
+                    {it.extendedWarranty && (
+                      <div className="text-[9px] font-semibold text-purple-700">
+                        • {it.extendedWarranty} {it.extendedWarrantyAmount > 0 ? `(₹${it.extendedWarrantyAmount})` : ""}
                       </div>
-                    </>
-                  ) : (
-                    <div className="row">
-                      <span>IGST @ 18%</span>
-                      <span>{formatCurrency(totals.igst)}</span>
-                    </div>
-                  )}
-                  {totals.shipping > 0 && (
-                    <div className="row">
-                      <span>Shipping Charges</span>
-                      <span>{formatCurrency(totals.shipping)}</span>
-                    </div>
-                  )}
-                  {totals.roundOff !== 0 && (
-                    <div className="row">
-                      <span>Round Off</span>
-                      <span>{totals.roundOff > 0 ? `+ ₹ ${totals.roundOff}` : `– ₹ ${Math.abs(totals.roundOff)}`}</span>
-                    </div>
-                  )}
-                  <div className="row grand">
-                    <span>Grand Total</span>
-                    <span>{formatCurrency(totals.grandTotal)}</span>
-                  </div>
-                  <div className="words">
-                    <b>Amount in Words:</b> {totals.amountInWords}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+                    )}
+                  </td>
+                  <td className="p-1 border-r border-slate-400 text-center font-mono">{it.hsn}</td>
+                  <td className="p-1 border-r border-slate-400 text-center">{it.uom}</td>
+                  <td className="p-1 border-r border-slate-400 text-center font-bold">{it.qty}</td>
+                  <td className="p-1 border-r border-slate-400 text-right font-mono">{it.rate?.toFixed(2)}</td>
+                  <td className="p-1 border-r border-slate-400 text-right font-mono">{it.amount?.toFixed(2)}</td>
+                  <td className="p-1 border-r border-slate-400 text-right font-mono">{it.disc?.toFixed(2)}</td>
+                  <td className="p-1 border-r border-slate-400 text-right font-mono font-bold">{it.taxableValue?.toFixed(2)}</td>
+                  <td className="p-1 border-r border-slate-400 text-right font-mono">
+                    <span className="text-[9px] block text-slate-500">{it.sgstRate?.toFixed(2)}%</span>
+                    {it.sgstAmount?.toFixed(2)}
+                  </td>
+                  <td className="p-1 border-r border-slate-400 text-right font-mono">
+                    <span className="text-[9px] block text-slate-500">{it.cgstRate?.toFixed(2)}%</span>
+                    {it.cgstAmount?.toFixed(2)}
+                  </td>
+                  <td className="p-1 text-right font-mono font-bold text-slate-900">{it.total?.toFixed(2)}</td>
+                </tr>
+              ))}
 
-          {/* Terms */}
-          <div className="terms">
-            <div className="col">
-              <div className="label">Terms &amp; Conditions</div>
-              <ul>
-                <li>Goods once sold are not returnable after 7 days of delivery.</li>
-                <li>All disputes are subject to Prayagraj jurisdiction only.</li>
-              </ul>
-            </div>
-            <div className="col">
-              <div className="label">Return Policy</div>
-              <ul>
-                <li>Defective items replaced within 7 days with original packaging.</li>
-                <li>Return freight to be borne by the customer.</li>
-              </ul>
-            </div>
-            <div className="col">
-              <div className="label">Payment Terms</div>
-              <ul>
-                <li>Payment due within 10 days from the invoice date.</li>
-                <li>Late payments attract 1.5% interest per month.</li>
-              </ul>
-            </div>
-          </div>
+              {/* EMPTY ROWS TO PRESERVE OFFICIAL DENSITY */}
+              {activeData.items.length < 3 && Array.from({ length: 3 - activeData.items.length }).map((_, i) => (
+                <tr key={`empty-${i}`} className="h-6">
+                  <td className="border-r border-slate-400"></td>
+                  <td className="border-r border-slate-400"></td>
+                  <td className="border-r border-slate-400"></td>
+                  <td className="border-r border-slate-400"></td>
+                  <td className="border-r border-slate-400"></td>
+                  <td className="border-r border-slate-400"></td>
+                  <td className="border-r border-slate-400"></td>
+                  <td className="border-r border-slate-400"></td>
+                  <td className="border-r border-slate-400"></td>
+                  <td className="border-r border-slate-400"></td>
+                  <td className="border-r border-slate-400"></td>
+                  <td></td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-slate-400 font-bold bg-slate-50">
+                <td colSpan={4} className="p-1 text-right border-r border-slate-400">Total</td>
+                <td className="p-1 text-center border-r border-slate-400">{activeData.items.reduce((s: number, it: any) => s + it.qty, 0)}</td>
+                <td className="p-1 border-r border-slate-400"></td>
+                <td className="p-1 text-right border-r border-slate-400 font-mono">{activeData.subtotal.toFixed(2)}</td>
+                <td className="p-1 text-right border-r border-slate-400 font-mono">0.00</td>
+                <td className="p-1 text-right border-r border-slate-400 font-mono">{activeData.subtotal.toFixed(2)}</td>
+                <td className="p-1 text-right border-r border-slate-400 font-mono">{activeData.sgst.toFixed(2)}</td>
+                <td className="p-1 text-right border-r border-slate-400 font-mono">{activeData.cgst.toFixed(2)}</td>
+                <td className="p-1 text-right font-mono text-slate-900">{activeData.netAmount.toFixed(2)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
 
-          {/* Signatures */}
-          <div className="sign-row">
-            <div className="sign-block">
-              <div className="sign-line">Customer Signature</div>
-            </div>
-            <div className="sign-block">
-              <div className="sign-line">
-                Authorized Signatory<br />
-                <span style={{ fontWeight: "700", color: "var(--ink)" }}>for {formData.companyLegal}</span>
-              </div>
-            </div>
+        {/* ─── AMOUNT IN WORDS, ROUND OFF, NET AMOUNT ────────────── */}
+        <div className="grid grid-cols-12 border-b border-slate-400 text-[10px]">
+          <div className="col-span-8 p-2 border-r border-slate-400 space-y-1">
+            <p className="text-slate-600 font-medium">Total Invoice Amount in words:</p>
+            <p className="font-bold text-slate-900 text-xs tracking-wide">
+              {numberToWordsIndian(activeData.netAmount)}
+            </p>
           </div>
-
-          {/* Footer Bar */}
-          <div className="footer-bar" style={{ fontSize: "12px", fontWeight: "700", color: "var(--vp-blue)" }}>
-            Thanks for shopping with us! &nbsp;·&nbsp; <b>VALUEPLUS — रिश्ता विश्वास का</b>
+          <div className="col-span-4 divide-y divide-slate-300">
+            <div className="flex justify-between p-1.5">
+              <span className="font-semibold">Round Off</span>
+              <span className="font-mono font-bold">{activeData.roundOff?.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between p-1.5 font-bold bg-slate-50 text-xs">
+              <span>Net Amount</span>
+              <span className="font-mono text-black font-black">{activeData.netAmount?.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between p-1.5 text-[9px]">
+              <span>GST Payable on Reverse Charge</span>
+              <span>Yes[] No[X]</span>
+            </div>
           </div>
         </div>
+
+        {/* ─── BANK DETAILS & JURISDICTION ───────────────────────── */}
+        <div className="grid grid-cols-12 border-b border-slate-400 text-[10px]">
+          <div className="col-span-8 p-2 border-r border-slate-400 space-y-1">
+            <p className="font-bold border-b border-slate-300 pb-0.5 text-slate-800">Our Bank Detail for RTGS / NEFT</p>
+            <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px]">
+              <div><span className="font-semibold">Account No. :</span> <span className="font-mono font-bold">50200044746701</span></div>
+              <div><span className="font-semibold">Bank :</span> <span className="font-bold">HDFC BANK LTD</span></div>
+              <div><span className="font-semibold">Branch :</span> <span className="font-bold">MOHADDIPUR, GORAKHPUR</span></div>
+              <div><span className="font-semibold">IFSC Code :</span> <span className="font-mono font-bold">HDFC0000284</span></div>
+            </div>
+          </div>
+          <div className="col-span-4 p-2 flex flex-col justify-end text-right">
+            <p className="font-bold text-slate-900">For: {activeData.companyName}</p>
+          </div>
+        </div>
+
+        {/* ─── DECLARATION & AUTHORISED SIGNATORY ────────────────── */}
+        <div className="grid grid-cols-12 border-b border-slate-400 text-[9px] p-2 gap-2">
+          <div className="col-span-8 space-y-1">
+            <p className="font-semibold text-slate-700 italic">E.& O.E. (Subject to Gorakhpur jurisdiction)</p>
+            <p className="font-bold text-slate-800 uppercase">Declaration :</p>
+            <p className="text-slate-600 leading-normal text-[8.5px]">
+              We Declare that this invoice shows the actual price of the goods described and that all particulars are true and correct. Goods once sold will not be taken back or exchanged. All after sale services will be provided only by the concerned company's Service Centre and the firm shall not be responsible under any circumstances.
+            </p>
+          </div>
+          <div className="col-span-4 flex flex-col justify-between items-end text-right pt-6">
+            <div className="h-8" />
+            <p className="font-bold text-slate-800 uppercase border-t border-slate-300 pt-1 w-36 text-center">
+              Authorised Signatory
+            </p>
+          </div>
+        </div>
+
+        {/* ─── REMARKS & PAYMENT SUMMARY ─────────────────────────── */}
+        <div className="py-2 border-b border-slate-400 text-[10px] space-y-1">
+          <p><span className="font-bold">Remarks:</span> Mode: <span className="font-bold uppercase">{activeData.paymentMode}</span> {activeData.financeDoId ? `• Finance DO: ${activeData.financeDoId}` : ""} {activeData.vehicleNumber ? `• Vehicle No: ${activeData.vehicleNumber}` : ""}</p>
+          <p><span className="font-bold">Payment Details:</span> Paid: <span className="font-mono font-bold">₹{activeData.paidAmount?.toFixed(2)}</span> {activeData.balanceAmount > 0 ? `• Balance Due: ₹${activeData.balanceAmount?.toFixed(2)}` : "• Full Settlement Received"}</p>
+        </div>
+
+        {/* ─── FOOTER & DISPATCH INFORMATION ──────────────────────── */}
+        <div className="pt-2 flex items-center justify-between text-[8.5px] text-slate-500 font-mono">
+          <span>Page: 1 of 1</span>
+          <span>Despatched from: {activeData.companyAddress}</span>
+          <span>{new Date().toLocaleTimeString("en-IN")}</span>
+        </div>
       </div>
-    </>
+    </div>
   );
 }
+
+
+export default function ValueplusInvoice(props: any) {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-xs font-bold text-slate-500">Loading Value Plus Tax Invoice...</div>}>
+      <ValueplusInvoiceContent {...props} />
+    </Suspense>
+  );
+}
+
+

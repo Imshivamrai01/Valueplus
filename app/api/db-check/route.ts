@@ -4,8 +4,8 @@ import mongoose from "mongoose";
 
 export async function GET() {
   try {
-    const conn = await connectToDatabase();
-    const db = conn.connection ? conn.connection.db : conn.db;
+    await connectToDatabase();
+    const db = mongoose.connection?.db;
     
     if (!db) {
       return NextResponse.json({ success: false, message: "Database object not ready" }, { status: 500 });

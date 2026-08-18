@@ -7,8 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, Search, ArrowLeftRight, Warehouse, Trash2, AlertTriangle, X } from "lucide-react";
-import { useState, useMemo } from "react";
+import { Plus, Search, ArrowLeftRight, Warehouse, Trash2, AlertTriangle, X, Check, Package } from "lucide-react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { toast } from "sonner";
 import { formatDate } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -25,6 +25,180 @@ interface TransferItem {
   status: "received" | "in-transit" | "draft";
 }
 
+function SearchableItemSelect({
+  items,
+  selectedItemId,
+  onSelect,
+}: {
+  items: any[];
+  selectedItemId: string;
+  onSelect: (item: any) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const selectedItem = items.find((i) => i._id === selectedItemId);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const filtered = useMemo(() => {
+    if (!query.trim()) return items.slice(0, 15);
+    const q = query.toLowerCase().trim();
+    return items.filter((it: any) => {
+      const name = (it.name || "").toLowerCase();
+      const hsn = String(it.hsnCode || it.hsn || "").toLowerCase();
+      const code = (it.code || "").toLowerCase();
+      const vpCode = (it.vpCode || "").toLowerCase();
+      const brand = (it.brand || "").toLowerCase();
+      const category = (it.category || "").toLowerCase();
+      return (
+        name.includes(q) ||
+        hsn.includes(q) ||
+        code.includes(q) ||
+        vpCode.includes(q) ||
+        brand.includes(q) ||
+        category.includes(q)
+      );
+    }).slice(0, 20);
+  }, [items, query]);
+
+  if (selectedItem && !isOpen) {
+    const isOut = (selectedItem.currentStock || 0) <= 0;
+    return (
+      <div 
+        onClick={() => {
+          setQuery("");
+          setIsOpen(true);
+        }}
+        className={`flex items-center justify-between p-2 rounded-lg border transition-colors cursor-pointer ${
+          isOut 
+            ? "border-red-300 bg-red-50/70 hover:bg-red-100/80" 
+            : "border-slate-200 bg-slate-50 hover:bg-slate-100/80"
+        }`}
+      >
+        <div className="flex-1 min-w-0 pr-2">
+          <div className="font-bold text-xs text-slate-900 truncate">{selectedItem.name}</div>
+          <div className="flex items-center gap-1.5 mt-0.5 text-[10px]">
+            <span className="font-mono font-bold text-[#3F63AD] bg-blue-50 px-1 rounded border border-blue-200">
+              {selectedItem.vpCode || selectedItem.code}
+            </span>
+            <span className="text-slate-600 font-mono bg-slate-200/70 px-1 rounded">
+              HSN: <b className="text-slate-800">{selectedItem.hsnCode || selectedItem.hsn || "8528"}</b>
+            </span>
+            <span className="text-slate-400">•</span>
+            {isOut ? (
+              <span className="text-red-700 font-bold bg-red-100 px-1.5 py-0.2 rounded border border-red-300">
+                OUT OF STOCK (0 {selectedItem.unit || "Pcs"})
+              </span>
+            ) : (
+              <span className="text-emerald-700 font-semibold">
+                Live Stock: {selectedItem.currentStock} {selectedItem.unit || "Pcs"}
+              </span>
+            )}
+          </div>
+        </div>
+        <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px] text-slate-500 hover:text-blue-600">
+          Change
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative w-full" ref={containerRef}>
+      <div className="relative">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+        <Input
+          placeholder="Search by Product Name, HSN Code (e.g. 8418, 8516), VP Code, Brand..."
+          value={query}
+          onFocus={() => setIsOpen(true)}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setIsOpen(true);
+          }}
+          className="pl-8 h-8 text-xs bg-white border-slate-300 focus:border-[#3F63AD]"
+          autoFocus={isOpen}
+        />
+        {selectedItem && (
+          <button 
+            type="button" 
+            onClick={() => setIsOpen(false)} 
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 hover:text-slate-600"
+          >
+            Cancel
+          </button>
+        )}
+      </div>
+
+      {isOpen && (
+        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-white rounded-lg border border-slate-200 shadow-xl max-h-56 overflow-y-auto divide-y divide-slate-100">
+          {filtered.length === 0 ? (
+            <div className="p-3 text-center text-xs text-slate-400">
+              No matching products found for "{query}"
+            </div>
+          ) : (
+            filtered.map((it: any) => {
+              const isOut = (it.currentStock || 0) <= 0;
+              return (
+                <div
+                  key={it._id}
+                  onClick={() => {
+                    if (isOut) {
+                      toast.error(`"${it.name}" is OUT OF STOCK. Cannot be transferred.`);
+                      return;
+                    }
+                    onSelect(it);
+                    setIsOpen(false);
+                    setQuery("");
+                  }}
+                  className={`p-2.5 cursor-pointer transition-colors flex items-center justify-between gap-2 ${
+                    isOut 
+                      ? "bg-red-50/40 hover:bg-red-50/80 opacity-75" 
+                      : "hover:bg-blue-50/80"
+                  }`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-xs text-slate-900 truncate">{it.name}</div>
+                    <div className="flex items-center gap-1.5 mt-0.5 text-[10px]">
+                      <span className="font-mono font-bold text-[#3F63AD] bg-blue-50 px-1 py-0.2 rounded border border-blue-200">
+                        {it.vpCode || it.code}
+                      </span>
+                      <span className="text-slate-600 font-mono bg-slate-100 px-1 py-0.2 rounded">
+                        HSN: <b className="text-slate-800">{it.hsnCode || it.hsn || "8528"}</b>
+                      </span>
+                      <span className="text-slate-500 font-medium">{it.brand}</span>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    {isOut ? (
+                      <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-red-100 text-red-800 border border-red-300">
+                        OUT OF STOCK
+                      </span>
+                    ) : (
+                      <span className="text-[10.5px] font-bold font-mono px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        {it.currentStock} {it.unit || "Pcs"}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function StockTransferPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
@@ -33,7 +207,7 @@ export default function StockTransferPage() {
   const [formData, setFormData] = useState({
     fromWarehouse: "Main Store - Mumbai",
     toWarehouse: "Pune Branch",
-    items: [{ itemId: "", itemName: "", quantity: 1, unit: "PCS" }],
+    items: [{ itemId: "", itemName: "", quantity: 1, unit: "PCS", hsn: "", currentStock: 0 }],
   });
 
   const { data: items = [] } = useQuery({ 
@@ -45,16 +219,27 @@ export default function StockTransferPage() {
     }
   });
 
+  const handleItemSelect = (index: number, it: any) => {
+    if ((it.currentStock || 0) <= 0) {
+      toast.error(`"${it.name}" is OUT OF STOCK. Cannot be transferred.`);
+      return;
+    }
+    const updated = [...formData.items];
+    updated[index] = {
+      ...updated[index],
+      itemId: it._id,
+      itemName: it.name,
+      unit: it.unit || "PCS",
+      hsn: it.hsnCode || it.hsn || "8528",
+      currentStock: it.currentStock || 0,
+      quantity: 1,
+    };
+    setFormData({ ...formData, items: updated });
+  };
+
   const handleItemChange = (index: number, field: string, value: any) => {
     const updated = [...formData.items];
-    if (field === "itemId") {
-      const it = items.find((i: any) => i._id === value);
-      updated[index].itemId = value;
-      updated[index].itemName = it ? it.name : "";
-      updated[index].unit = it ? it.unit : "PCS";
-    } else {
-      updated[index] = { ...updated[index], [field]: value };
-    }
+    updated[index] = { ...updated[index], [field]: value };
     setFormData({ ...formData, items: updated });
   };
 
@@ -68,14 +253,21 @@ export default function StockTransferPage() {
   });
 
   const filtered = useMemo(() => {
-    return transfers.filter(
-      (t) =>
-        !search ||
-        t.transferNo.toLowerCase().includes(search.toLowerCase()) ||
-        t.itemName.toLowerCase().includes(search.toLowerCase()) ||
-        t.fromWarehouse.toLowerCase().includes(search.toLowerCase()) ||
-        t.toWarehouse.toLowerCase().includes(search.toLowerCase())
-    );
+    return transfers.filter((t) => {
+      if (!search) return true;
+      const q = search.toLowerCase();
+      const matchHeader = 
+        t.transferNo?.toLowerCase().includes(q) ||
+        t.fromWarehouse?.toLowerCase().includes(q) ||
+        t.toWarehouse?.toLowerCase().includes(q);
+      
+      const matchItems = t.items?.some((line: any) => 
+        line.itemName?.toLowerCase().includes(q) ||
+        (line.hsn && String(line.hsn).toLowerCase().includes(q))
+      );
+
+      return matchHeader || matchItems;
+    });
   }, [transfers, search]);
 
   const createTransferMutation = useMutation({
@@ -93,7 +285,7 @@ export default function StockTransferPage() {
       queryClient.invalidateQueries({ queryKey: ["stock-transfers"] });
       toast.success(`Stock Transfer ${data.transferNo || ""} initiated!`);
       setIsFormOpen(false);
-      setFormData({ fromWarehouse: "Main Store - Mumbai", toWarehouse: "Pune Branch", items: [{ itemId: "", itemName: "", quantity: 1, unit: "PCS" }] });
+      setFormData({ fromWarehouse: "Main Store - Mumbai", toWarehouse: "Pune Branch", items: [{ itemId: "", itemName: "", quantity: 1, unit: "PCS", hsn: "" }] });
     },
     onError: (error: any) => {
       toast.error(error.message || "An error occurred");
@@ -105,7 +297,7 @@ export default function StockTransferPage() {
       const res = await fetch(`/api/stock-transfers?transferNo=${encodeURIComponent(transferNo)}`, { method: "DELETE" });
       const json = await res.json();
       if (!json.success) throw new Error(json.error || "Failed to delete stock transfer");
-      return json;
+      return json.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["stock-transfers"] });
@@ -121,6 +313,21 @@ export default function StockTransferPage() {
     if (formData.items.length === 0 || !formData.items[0].itemId) {
       toast.error("Please add at least one item to transfer");
       return;
+    }
+
+    for (const line of formData.items) {
+      if (!line.itemId) {
+        toast.error("Please select a valid product item for all rows");
+        return;
+      }
+      if ((line.currentStock ?? 0) <= 0) {
+        toast.error(`"${line.itemName}" is OUT OF STOCK. Cannot transfer.`);
+        return;
+      }
+      if (line.quantity > (line.currentStock ?? 0)) {
+        toast.error(`Transfer quantity for "${line.itemName}" (${line.quantity}) exceeds available stock (${line.currentStock}).`);
+        return;
+      }
     }
 
     const payload = {
@@ -158,7 +365,7 @@ export default function StockTransferPage() {
         <div className="flex items-center justify-between p-4 border-b">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Search transfers, stores..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+            <Input placeholder="Search transfers, stores, products, HSN..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 text-xs" />
           </div>
         </div>
 
@@ -250,6 +457,7 @@ export default function StockTransferPage() {
                     <SelectTrigger className="bg-slate-50 border-slate-300"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Main Store - Mumbai">Main Store - Mumbai</SelectItem>
+                      <SelectItem value="Main Store - Gorakhpur">Main Store - Gorakhpur</SelectItem>
                       <SelectItem value="Pune Branch">Pune Branch</SelectItem>
                       <SelectItem value="Delhi Hub">Delhi Hub</SelectItem>
                       <SelectItem value="Bengaluru Store">Bengaluru Store</SelectItem>
@@ -263,6 +471,7 @@ export default function StockTransferPage() {
                     <SelectTrigger className="bg-slate-50 border-slate-300"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Main Store - Mumbai">Main Store - Mumbai</SelectItem>
+                      <SelectItem value="Main Store - Gorakhpur">Main Store - Gorakhpur</SelectItem>
                       <SelectItem value="Pune Branch">Pune Branch</SelectItem>
                       <SelectItem value="Delhi Hub">Delhi Hub</SelectItem>
                       <SelectItem value="Bengaluru Store">Bengaluru Store</SelectItem>
@@ -278,7 +487,7 @@ export default function StockTransferPage() {
                   <table className="w-full text-sm">
                     <thead className="bg-slate-50 border-b">
                       <tr>
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600">Product Item</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600">Product Item (Search Name, HSN, VP Code)</th>
                         <th className="px-3 py-2 text-right text-xs font-semibold text-slate-600 w-24">Quantity</th>
                         <th className="px-3 py-2 text-center text-xs font-semibold text-slate-600 w-12"></th>
                       </tr>
@@ -287,30 +496,35 @@ export default function StockTransferPage() {
                       {formData.items.map((line, idx) => (
                         <tr key={idx} className="bg-white">
                           <td className="p-2">
-                            <Select value={line.itemId} onValueChange={(val) => handleItemChange(idx, "itemId", val)}>
-                              <SelectTrigger className="w-full bg-transparent border-slate-200 h-8 text-sm">
-                                <SelectValue placeholder="Select Product..." />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {items.map((it: any) => (
-                                  <SelectItem key={it._id} value={it._id}>
-                                    {it.name} <span className="text-muted-foreground ml-2">(Stock: {it.currentStock || 0})</span>
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                            <SearchableItemSelect
+                              items={items}
+                              selectedItemId={line.itemId}
+                              onSelect={(it) => handleItemSelect(idx, it)}
+                            />
                           </td>
-                          <td className="p-2">
+                          <td className="p-2 align-top">
                             <Input
                               type="number"
                               min="1"
-                              className="h-8 text-right bg-transparent"
+                              max={line.currentStock || undefined}
+                              className={`h-8 text-right bg-transparent text-xs font-bold ${
+                                line.currentStock !== undefined && line.quantity > line.currentStock
+                                  ? "border-red-500 text-red-600 bg-red-50"
+                                  : ""
+                              }`}
                               value={line.quantity}
                               onKeyDown={(e) => ["-", "+", "e", "E"].includes(e.key) && e.preventDefault()}
                               onChange={(e) => handleItemChange(idx, "quantity", Math.max(1, Number(e.target.value)))}
                             />
+                            {line.currentStock !== undefined && line.currentStock > 0 && (
+                              <span className={`text-[9.5px] font-mono block text-right mt-0.5 ${
+                                line.quantity > line.currentStock ? "text-red-600 font-bold" : "text-slate-400"
+                              }`}>
+                                Max: {line.currentStock}
+                              </span>
+                            )}
                           </td>
-                          <td className="p-2 text-center">
+                          <td className="p-2 text-center align-top">
                             <button
                               type="button"
                               onClick={() => setFormData({ ...formData, items: formData.items.filter((_, i) => i !== idx) })}
@@ -329,7 +543,7 @@ export default function StockTransferPage() {
                       variant="outline"
                       size="sm"
                       className="h-7 text-xs border-dashed text-slate-600"
-                      onClick={() => setFormData({ ...formData, items: [...formData.items, { itemId: "", itemName: "", quantity: 1, unit: "PCS" }] })}
+                      onClick={() => setFormData({ ...formData, items: [...formData.items, { itemId: "", itemName: "", quantity: 1, unit: "PCS", hsn: "" }] })}
                     >
                       <Plus className="w-3 h-3 mr-1" /> Add Product
                     </Button>
@@ -380,4 +594,3 @@ export default function StockTransferPage() {
     </PageShell>
   );
 }
-

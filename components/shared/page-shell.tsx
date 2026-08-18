@@ -12,12 +12,16 @@ interface BreadcrumbItem {
 interface PageShellProps {
   title: string;
   subtitle?: string;
+  description?: string;
+  icon?: any;
   breadcrumbs?: BreadcrumbItem[];
   actions?: ReactNode;
   children: ReactNode;
 }
 
-export function PageShell({ title, subtitle, breadcrumbs, actions, children }: PageShellProps) {
+export function PageShell({ title, subtitle, description, breadcrumbs, actions, children }: PageShellProps) {
+  const sub = subtitle || description;
+
   return (
     <div className="page-container">
       {/* Header */}
@@ -40,7 +44,7 @@ export function PageShell({ title, subtitle, breadcrumbs, actions, children }: P
             </div>
           )}
           <h1 className="text-xl font-bold text-foreground">{title}</h1>
-          {subtitle && <p className="text-sm text-muted-foreground mt-0.5">{subtitle}</p>}
+          {sub && <p className="text-sm text-muted-foreground mt-0.5">{sub}</p>}
         </div>
         {actions && <div className="flex items-center gap-2">{actions}</div>}
       </div>

@@ -6,7 +6,7 @@ export interface IPaymentTransaction extends Document {
   partyType: "Customer" | "Supplier";
   partyName: string;
   amount: number;
-  paymentMode: "Cash" | "UPI" | "Bank Transfer" | "Credit Card" | "Cheque" | "Cash Counter" | "UPI / Card / NetBanking" | "Finance / Consumer EMI" | "UPI / PhonePe / GPay";
+  paymentMode: string;
   date: string;
   referenceId?: string; // e.g. Invoice Number or Bill Number
   notes?: string;
@@ -20,7 +20,7 @@ const PaymentTransactionSchema = new Schema<IPaymentTransaction>(
     partyType: { type: String, enum: ["Customer", "Supplier"], required: true },
     partyName: { type: String, required: true },
     amount: { type: Number, required: true },
-    paymentMode: { type: String, enum: ["Cash", "UPI", "Bank Transfer", "Credit Card", "Cheque", "Cash Counter", "UPI / Card / NetBanking", "Finance / Consumer EMI", "UPI / PhonePe / GPay"], required: true },
+    paymentMode: { type: String, required: true },
     date: { type: String, required: true },
     referenceId: { type: String },
     notes: { type: String },

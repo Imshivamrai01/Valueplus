@@ -46,7 +46,64 @@ const STORAGE_KEYS = {
   OFFLINE_INVOICES: "valueplus_offline_invoices_v1",
   CACHED_ITEMS: "valueplus_cached_items_v1",
   CACHED_CUSTOMERS: "valueplus_cached_customers_v1",
+  DASHBOARD_STATS_PREFIX: "valueplus_dashboard_stats_",
+  DASHBOARD_EXTENDED: "valueplus_dashboard_extended_v1",
 };
+
+/**
+ * Cache Dashboard Stats & Widgets for offline instant render
+ */
+export function cacheDashboardStats(key: string, data: any): void {
+  if (typeof window === "undefined" || !data) return;
+  try {
+    localStorage.setItem(`${STORAGE_KEYS.DASHBOARD_STATS_PREFIX}${key}`, JSON.stringify({
+      data,
+      cachedAt: new Date().toISOString(),
+    }));
+  } catch (err) {
+    console.warn("Dashboard stats cache save error:", err);
+  }
+}
+
+export function getCachedDashboardStats(key: string): any | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(`${STORAGE_KEYS.DASHBOARD_STATS_PREFIX}${key}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed?.data || null;
+  } catch (err) {
+    return null;
+  }
+}
+
+/**
+ * Cache Dashboard Extended Data (Stock breakdown, Warranty, Audit, Staff)
+ */
+export function cacheDashboardExtended(data: any): void {
+  if (typeof window === "undefined" || !data) return;
+  try {
+    const existing = getCachedDashboardExtended() || {};
+    localStorage.setItem(STORAGE_KEYS.DASHBOARD_EXTENDED, JSON.stringify({
+      data: { ...existing, ...data },
+      cachedAt: new Date().toISOString(),
+    }));
+  } catch (err) {
+    console.warn("Dashboard extended cache save error:", err);
+  }
+}
+
+export function getCachedDashboardExtended(): any | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.DASHBOARD_EXTENDED);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed?.data || null;
+  } catch (err) {
+    return null;
+  }
+}
 
 /**
  * Get all queued offline invoices from local storage

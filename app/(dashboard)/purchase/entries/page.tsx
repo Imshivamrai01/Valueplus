@@ -7,13 +7,14 @@ import { Badge } from "@/components/ui/badge";
 import { AutocompleteSearch } from "@/components/shared/autocomplete-search";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, Search, ClipboardList, Trash2, AlertTriangle, MoreHorizontal, XCircle } from "lucide-react";
+import { Plus, Search, ClipboardList, Trash2, AlertTriangle, MoreHorizontal, XCircle, Printer, Download, Eye } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PurchaseCreationModal } from "@/components/PurchaseCreationModal";
+import { PurchaseBillPrintModal } from "@/components/PurchaseBillPrintModal";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/shared/date-range-filter";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
@@ -57,6 +58,7 @@ export default function PurchaseEntriesPage() {
   const [dateRange, setDateRange] = useState(() => resolveDateRange("This Month"));
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [entryToDelete, setEntryToDelete] = useState<string | null>(null);
+  const [billToPrint, setBillToPrint] = useState<any | null>(null);
 
   const deleteMutation = useMutation({
     mutationFn: async (billNo: string) => {
@@ -109,8 +111,8 @@ export default function PurchaseEntriesPage() {
         <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b">
           <AutocompleteSearch
             data={entries}
-            searchKeys={["billNumber", "supplierName"]}
-            displayKey="billNumber"
+            searchKeys={["billNumber", "billNo", "supplierName"]}
+            displayKey="billNo"
             subDisplayKey="supplierName"
             placeholder="Search Bill #, Supplier..."
             value={search}
@@ -155,7 +157,15 @@ export default function PurchaseEntriesPage() {
               ) : (
                 filtered.map((e: any) => (
                   <tr key={e._id || e.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-3 font-mono font-bold text-[#3F63AD]">{e.billNo}</td>
+                    <td className="px-4 py-3 font-mono font-bold text-[#3F63AD]">
+                      <span 
+                        className="cursor-pointer hover:underline flex items-center gap-1"
+                        onClick={() => setBillToPrint(e)}
+                        title="Click to View & Print Bill"
+                      >
+                        {e.billNo}
+                      </span>
+                    </td>
                     <td className="px-4 py-3 font-medium text-foreground">{e.supplierName}</td>
                     <td className="px-4 py-3">
                       {e.linkedPoNo ? (
@@ -173,26 +183,43 @@ export default function PurchaseEntriesPage() {
                     <td className="px-4 py-3 text-center">
                       <Badge variant={e.status === "paid" ? "success" : e.status === "partial" ? "info" : "warning"}>{e.status}</Badge>
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-48">
-                          <DropdownMenuItem 
-                            className="gap-2 text-red-600 focus:bg-red-50 focus:text-red-700 cursor-pointer"
-                            onClick={() => {
-                              if(confirm(`Are you sure you want to delete bill ${e.billNo}?`)) {
-                                deleteMutation.mutate(e.billNo);
-                              }
-                            }}
-                          >
-                            <XCircle className="w-4 h-4" /> Delete Entry
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                    <td className="px-4 py-3 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <Button 
+                          size="icon" 
+                          variant="ghost" 
+                          className="h-8 w-8 text-slate-500 hover:text-[#3F63AD] hover:bg-blue-50"
+                          onClick={() => setBillToPrint(e)}
+                          title="Print / Download Bill"
+                        >
+                          <Printer className="w-4 h-4" />
+                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-48">
+                            <DropdownMenuItem 
+                              className="gap-2 cursor-pointer"
+                              onClick={() => setBillToPrint(e)}
+                            >
+                              <Eye className="w-4 h-4 text-blue-600" /> View / Print Bill
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              className="gap-2 text-red-600 focus:bg-red-50 focus:text-red-700 cursor-pointer"
+                              onClick={() => {
+                                if(confirm(`Are you sure you want to delete bill ${e.billNo}?`)) {
+                                  deleteMutation.mutate(e.billNo);
+                                }
+                              }}
+                            >
+                              <XCircle className="w-4 h-4" /> Delete Entry
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -207,7 +234,13 @@ export default function PurchaseEntriesPage() {
         onClose={() => setIsFormOpen(false)} 
         mode="entry" 
       />
+
+      {/* Print / Download Purchase Bill Modal */}
+      <PurchaseBillPrintModal
+        isOpen={!!billToPrint}
+        onClose={() => setBillToPrint(null)}
+        billData={billToPrint}
+      />
     </PageShell>
   );
 }
-

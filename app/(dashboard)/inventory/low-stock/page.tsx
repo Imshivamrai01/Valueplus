@@ -84,7 +84,7 @@ export default function LowStockPage() {
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 border-b border-slate-100 text-xs uppercase text-slate-500 font-bold">
               <tr>
-                <th className="px-6 py-4">Item Code</th>
+                <th className="px-6 py-4">VP Code</th>
                 <th className="px-6 py-4">Item Name</th>
                 <th className="px-6 py-4">Category</th>
                 <th className="px-6 py-4 text-right">Current Stock</th>
@@ -111,7 +111,7 @@ export default function LowStockPage() {
                   const isZero = stock <= 0;
                   return (
                     <tr key={item.code} className="hover:bg-slate-50/50">
-                      <td className="px-6 py-4 font-medium text-slate-900">{item.code}</td>
+                      <td className="px-6 py-4 font-mono font-bold text-blue-600">{item.vpCode || item.code}</td>
                       <td className="px-6 py-4 font-medium text-[#2E3192]">{item.name}</td>
                       <td className="px-6 py-4 text-slate-600">{item.category}</td>
                       <td className="px-6 py-4 text-right">

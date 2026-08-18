@@ -48,21 +48,30 @@ export async function GET(request: Request) {
 
     let totalRevenue = 0;
     let cashRevenue = 0;
+    let upiRevenue = 0;
     let onlineRevenue = 0;
+    let cardRevenue = 0;
     let financeRevenue = 0;
+    let warrantyRevenue = 0;
+    let warrantyCount = 0;
+    let dueRevenue = 0;
+    let dueCount = 0;
 
     const cashTxns: any[] = [];
+    const upiTxns: any[] = [];
     const onlineTxns: any[] = [];
+    const cardTxns: any[] = [];
     const financeTxns: any[] = [];
+    const dueTxns: any[] = [];
     const isSingleDay = Boolean(startDateParam && endDateParam && startDateParam === endDateParam);
     
     // Initialize continuous buckets so graph curves are always complete & smooth
-    const dailyRevenueMap: Record<string, { revenue: number, profit: number, expense: number, cash: number, online: number, finance: number }> = {};
+    const dailyRevenueMap: Record<string, { revenue: number, profit: number, expense: number, cash: number, upi: number, online: number, card: number, finance: number }> = {};
     
     if (isSingleDay) {
       const hourlySlots = ["08:00 AM", "10:00 AM", "12:00 PM", "02:00 PM", "04:00 PM", "06:00 PM", "08:00 PM", "10:00 PM"];
       hourlySlots.forEach(slot => {
-        dailyRevenueMap[slot] = { revenue: 0, profit: 0, expense: 0, cash: 0, online: 0, finance: 0 };
+        dailyRevenueMap[slot] = { revenue: 0, profit: 0, expense: 0, cash: 0, upi: 0, online: 0, card: 0, finance: 0 };
       });
     } else if (startDateParam && endDateParam) {
       const s = new Date(startDateParam);
@@ -72,68 +81,127 @@ export async function GET(request: Request) {
         const monthShort = cur.toLocaleString('en-US', { month: 'short' });
         const day = cur.getDate();
         const displayDate = `${day < 10 ? '0' + day : day} ${monthShort}`;
-        dailyRevenueMap[displayDate] = { revenue: 0, profit: 0, expense: 0, cash: 0, online: 0, finance: 0 };
+        dailyRevenueMap[displayDate] = { revenue: 0, profit: 0, expense: 0, cash: 0, upi: 0, online: 0, card: 0, finance: 0 };
         cur.setDate(cur.getDate() + 1);
       }
     }
 
     filteredInvoices.forEach((inv: any) => {
-      totalRevenue += inv.total || 0;
+      const total = Number(inv.total) || 0;
+      const paid = Number(inv.paidAmount) || (inv.status === "paid" ? total : 0);
+      const due = Number(inv.balanceAmount) !== undefined && !isNaN(Number(inv.balanceAmount))
+        ? Number(inv.balanceAmount)
+        : Math.max(0, total - paid);
 
-      let paymentMode = "finance";
-      
-      if (inv.paymentMode) {
-        const mode = inv.paymentMode.toLowerCase();
-        if (mode.includes("upi") || mode.includes("card") || mode.includes("bank") || mode.includes("netbanking") || mode.includes("online")) {
-          paymentMode = "online";
-        } else if (mode.includes("cash")) {
-          paymentMode = "cash";
-        } else if (mode.includes("finance") || mode.includes("emi")) {
-          paymentMode = "finance";
-        }
-      } else {
-        paymentMode = inv.notes?.toLowerCase().includes("inter-state")
-          ? "online"
-          : inv.paymentTerms?.includes("45") || inv.paymentTerms?.includes("60") || inv.notes?.toLowerCase().includes("finance")
-          ? "finance"
-          : inv.status === "paid"
-          ? "cash"
-          : "finance";
+      totalRevenue += total;
+
+      // Track Dues / Outstanding
+      if (due > 0 || inv.status === "pending" || inv.status === "partial" || inv.status === "unpaid") {
+        const actualDue = due > 0 ? due : total;
+        dueRevenue += actualDue;
+        dueCount += 1;
+        dueTxns.push({
+          id: inv.invoiceNumber,
+          customer: inv.customerName,
+          amount: total,
+          paidAmount: paid,
+          dueAmount: actualDue,
+          time: (inv.date || "Today") + " Due",
+          mode: inv.paymentMode || "Due Credit",
+          status: inv.status || "pending",
+          dueDate: inv.dueDate,
+        });
       }
 
-      if (paymentMode === "cash") {
-        cashRevenue += inv.total;
+      // Track Extended Warranty
+      let invWarrantyAmt = Number(inv.extendedWarrantyTotal) || Number(inv.warrantyAmount) || 0;
+      let hasWarranty = invWarrantyAmt > 0 || Boolean(inv.extendedWarranty);
+      
+      if (Array.isArray(inv.items)) {
+        let itemWarrantySum = 0;
+        inv.items.forEach((it: any) => {
+          const itWarrantyAmt = Number(it.extendedWarrantyAmount) || 0;
+          if (itWarrantyAmt > 0 || (it.extendedWarrantyPlan && it.extendedWarrantyPlan !== "none" && it.extendedWarrantyPlan !== "No Warranty")) {
+            hasWarranty = true;
+            itemWarrantySum += itWarrantyAmt;
+          }
+        });
+        if (invWarrantyAmt === 0 && itemWarrantySum > 0) {
+          invWarrantyAmt = itemWarrantySum;
+        }
+      }
+
+      if (hasWarranty || invWarrantyAmt > 0) {
+        warrantyRevenue += invWarrantyAmt;
+        warrantyCount += 1;
+      }
+
+      const rawMode = (inv.paymentMode || "").toLowerCase();
+
+      if (rawMode.includes("cash") || (!rawMode && inv.status === "paid")) {
+        cashRevenue += total;
         cashTxns.push({
           id: inv.invoiceNumber,
           customer: inv.customerName,
-          amount: inv.total,
+          amount: total,
           time: inv.date + " 02:30 PM",
           mode: inv.paymentMode || "Cash Counter",
           status: inv.status,
+          reprintCount: inv.reprintCount || 0,
+          lastPrintedAt: inv.lastPrintedAt,
         });
-      } else if (paymentMode === "online") {
-        onlineRevenue += inv.total;
+      } else if (rawMode.includes("upi") || rawMode.includes("phonepe") || rawMode.includes("gpay") || rawMode.includes("paytm") || rawMode.includes("qr")) {
+        upiRevenue += total;
+        upiTxns.push({
+          id: inv.invoiceNumber,
+          customer: inv.customerName,
+          amount: total,
+          time: inv.date + " 11:15 AM",
+          mode: inv.paymentMode || "UPI / QR Code",
+          status: inv.status,
+          reprintCount: inv.reprintCount || 0,
+          lastPrintedAt: inv.lastPrintedAt,
+        });
+      } else if (rawMode.includes("card") || rawMode.includes("pos") || rawMode.includes("debit") || rawMode.includes("credit")) {
+        cardRevenue += total;
+        cardTxns.push({
+          id: inv.invoiceNumber,
+          customer: inv.customerName,
+          amount: total,
+          time: inv.date + " 01:20 PM",
+          mode: inv.paymentMode || "Card (POS)",
+          status: inv.status,
+          reprintCount: inv.reprintCount || 0,
+          lastPrintedAt: inv.lastPrintedAt,
+        });
+      } else if (rawMode.includes("online") || rawMode.includes("bank") || rawMode.includes("netbanking") || rawMode.includes("neft") || rawMode.includes("rtgs") || rawMode.includes("imps")) {
+        onlineRevenue += total;
         onlineTxns.push({
           id: inv.invoiceNumber,
           customer: inv.customerName,
-          amount: inv.total,
-          time: inv.date + " 11:15 AM",
-          mode: inv.paymentMode || "UPI / NetBanking",
+          amount: total,
+          time: inv.date + " 12:45 PM",
+          mode: inv.paymentMode || "Online NetBanking",
           status: inv.status,
+          reprintCount: inv.reprintCount || 0,
+          lastPrintedAt: inv.lastPrintedAt,
         });
       } else {
-        financeRevenue += inv.total;
+        financeRevenue += total;
         financeTxns.push({
           id: inv.invoiceNumber,
           customer: inv.customerName,
-          amount: inv.total,
+          amount: total,
           time: inv.date + " 04:45 PM",
-          mode: (inv.paymentMode && inv.financeCompany) ? `${inv.paymentMode} (${inv.financeCompany})` : inv.paymentMode || "Finance / Credit (Net 60)",
+          mode: (inv.paymentMode && inv.financeCompany) ? `${inv.paymentMode} (${inv.financeCompany})` : inv.paymentMode || "Finance (Bajaj / HDB)",
           status: inv.status,
           dueDate: inv.dueDate,
-          balanceAmount: inv.balanceAmount || inv.total,
+          balanceAmount: inv.balanceAmount || total,
+          reprintCount: inv.reprintCount || 0,
+          lastPrintedAt: inv.lastPrintedAt,
         });
       }
+
 
       let bucketKey = "";
       if (isSingleDay) {
@@ -167,7 +235,7 @@ export async function GET(request: Request) {
       }
 
       if (!dailyRevenueMap[bucketKey]) {
-        dailyRevenueMap[bucketKey] = { revenue: 0, profit: 0, expense: 0, cash: 0, online: 0, finance: 0 };
+        dailyRevenueMap[bucketKey] = { revenue: 0, profit: 0, expense: 0, cash: 0, upi: 0, online: 0, card: 0, finance: 0 };
       }
       dailyRevenueMap[bucketKey].revenue += inv.total || 0;
       dailyRevenueMap[bucketKey].profit += 1;
@@ -304,21 +372,30 @@ export async function GET(request: Request) {
       metrics: {
         totalRevenue: totalRevenue || 0,
         cashRevenue,
+        upiRevenue,
         onlineRevenue,
+        cardRevenue,
         financeRevenue,
+        warrantyRevenue,
+        warrantyCount,
+        dueRevenue,
+        dueCount,
         totalExpenses,
         netProfit: (totalRevenue || 0) - totalExpenses,
         totalOrders: filteredInvoices.length || 0,
-        pendingOrders: allInvoices.filter(i => i.status === "pending").length || 0,
+        pendingOrders: allInvoices.filter((i: any) => i.status === "pending").length || 0,
         lowStockItems: allItems.filter((it: any) => Number(it.currentStock) <= (Number(it.reorderLevel) + 5)).length || 0,
         customersCount: allCustomers.length || 0,
         suppliersCount: allSuppliers.length || 0,
       },
       transactions: {
         cash: cashTxns,
+        upi: upiTxns,
         online: onlineTxns,
+        card: cardTxns,
         finance: financeTxns,
-        all: [...cashTxns, ...onlineTxns, ...financeTxns],
+        due: dueTxns,
+        all: [...cashTxns, ...upiTxns, ...onlineTxns, ...cardTxns, ...financeTxns],
       },
       expenses: {
         total: totalExpenses,

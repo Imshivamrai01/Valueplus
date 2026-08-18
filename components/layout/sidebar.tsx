@@ -74,18 +74,19 @@ export function Sidebar() {
       </div>
 
       {/* Business Selector */}
-      <div className="px-4 py-4 flex-shrink-0 border-b border-white/5">
+      <div className="px-4 py-3 flex-shrink-0 border-b border-white/5">
         <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-black/10 hover:bg-black/20 border border-white/5 transition-all shadow-sm text-left group">
-          <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-white text-sm font-bold flex-shrink-0 group-hover:bg-white/20 transition-colors">
-            VP
+          <div className="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center text-white text-xs font-black flex-shrink-0 group-hover:bg-white/20 transition-colors">
+            AE
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-white text-sm font-semibold truncate tracking-tight">ValuePlus Trading</p>
-            <p className="text-white/60 text-[11px] truncate font-medium mt-0.5">FY 2026-27 • HO</p>
+            <p className="text-white text-xs font-bold truncate tracking-tight">ASHOKA ENTERPRISES</p>
+            <p className="text-white/70 text-[10px] truncate font-medium mt-0.5">Gorakhpur • GST: 09ANHPJ7242D1Z2</p>
           </div>
-          <ChevronDown className="w-4 h-4 text-white/40 flex-shrink-0 group-hover:text-white/80 transition-colors" />
+          <ChevronDown className="w-3.5 h-3.5 text-white/40 flex-shrink-0 group-hover:text-white/80 transition-colors" />
         </button>
       </div>
+
 
       {/* Navigation */}
       <ScrollArea className="flex-1 px-3 py-4">

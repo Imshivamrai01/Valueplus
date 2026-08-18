@@ -13,13 +13,14 @@ export async function GET() {
       if (inv.customerId) {
         const cust = await Customer.findById(inv.customerId);
         if (cust) {
+          const c = cust as any;
           const updates: any = {};
-          if (!inv.customerPhone) updates.customerPhone = cust.phone || "";
-          if (!inv.customerEmail) updates.customerEmail = cust.email || "";
-          if (!inv.customerAddress) updates.customerAddress = cust.billingAddress?.line1 || cust.address || "";
-          if (!inv.customerCity) updates.customerCity = cust.billingAddress?.city || cust.city || "";
-          if (!inv.customerPin) updates.customerPin = cust.billingAddress?.pincode || cust.pin || "";
-          if (!inv.placeOfSupply) updates.placeOfSupply = cust.billingAddress?.state || cust.state || "Uttar Pradesh (09)";
+          if (!inv.customerPhone) updates.customerPhone = c.phone || "";
+          if (!inv.customerEmail) updates.customerEmail = c.email || "";
+          if (!inv.customerAddress) updates.customerAddress = c.billingAddress?.line1 || c.address || "";
+          if (!inv.customerCity) updates.customerCity = c.billingAddress?.city || c.city || "";
+          if (!inv.customerPin) updates.customerPin = c.billingAddress?.pincode || c.pin || "";
+          if (!inv.placeOfSupply) updates.placeOfSupply = c.billingAddress?.state || c.state || "Uttar Pradesh (09)";
 
           if (Object.keys(updates).length > 0) {
             await Invoice.findByIdAndUpdate(inv._id, { $set: updates });

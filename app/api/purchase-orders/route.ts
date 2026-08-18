@@ -14,8 +14,9 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  let body: any = {};
   try {
-    const body = await req.json();
+    body = await req.json();
     await connectToDatabase();
 
     // 1. Auto-create Supplier in Master if doesn't exist

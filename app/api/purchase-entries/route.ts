@@ -6,6 +6,7 @@ import Supplier from "@/models/Supplier";
 import Item from "@/models/Item";
 import PurchaseOrder from "@/models/PurchaseOrder";
 import StockRequest from "@/models/StockRequest";
+import SerialNumber from "@/models/SerialNumber";
 
 export async function GET(req: Request) {
   try {
@@ -140,6 +141,42 @@ export async function POST(req: Request) {
               reorderLevel: 5,
               status: "active"
             });
+          }
+
+          // Auto-register and sync individual unit Serial Numbers (IMEI / Serial IDs)
+          if (item.serialNumbers && Array.isArray(item.serialNumbers) && item.serialNumbers.length > 0) {
+            const itId = existingItem?._id ? existingItem._id.toString() : (item.itemId || "");
+            const vp = existingItem?.vpCode || existingItem?.code || item.vpCode || item.itemCode || "VP-GEN";
+            const itName = existingItem?.name || item.name || "";
+
+            for (const sn of item.serialNumbers) {
+              const cleanSn = String(sn || "").trim();
+              if (cleanSn) {
+                await SerialNumber.findOneAndUpdate(
+                  { serialNumber: cleanSn },
+                  {
+                    $set: {
+                      itemId: itId,
+                      vpCode: vp,
+                      itemName: itName,
+                      status: body.type === "debit-note" ? "RETURNED" : "AVAILABLE",
+                      purchaseEntryId: entry._id.toString(),
+                      price: rate,
+                      warehouse: existingItem?.warehouse || "Main Store - Gorakhpur",
+                    },
+                    $push: {
+                      history: {
+                        action: body.type === "debit-note" ? `Debit Note Return #${newBillNo}` : `Inward Purchase Bill #${newBillNo}`,
+                        date: new Date(),
+                        performedBy: "Store Purchase Inward",
+                        details: `Supplier: ${body.supplierName} | Rate: ₹${rate}`,
+                      }
+                    }
+                  },
+                  { upsert: true, new: true }
+                );
+              }
+            }
           }
 
           // Auto-update any Stock Requests for this item from "Pending" / "Sent" to "Fulfilled"

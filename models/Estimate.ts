@@ -14,6 +14,11 @@ export interface IEstimate extends Document {
   date: Date;
   expiryDate?: Date;
   customerName: string;
+  customerPhone?: string;
+  customerAddress?: string;
+  customerGST?: string;
+  salesExecutive?: string;
+  salesperson?: string;
   status: "Draft" | "Sent" | "Accepted" | "Rejected" | "Expired" | "Converted";
   items?: IEstimateItem[];
   subTotal?: number;
@@ -37,6 +42,11 @@ const EstimateSchema = new Schema<IEstimate>(
     date: { type: Date, default: Date.now },
     expiryDate: { type: Date },
     customerName: { type: String, required: true },
+    customerPhone: { type: String, default: "" },
+    customerAddress: { type: String, default: "" },
+    customerGST: { type: String, default: "" },
+    salesExecutive: { type: String, default: "AMIT SINGH" },
+    salesperson: { type: String, default: "AMIT SINGH" },
     status: { type: String, enum: ["Draft", "Sent", "Accepted", "Rejected", "Expired", "Converted"], default: "Draft" },
     items: { type: [EstimateItemSchema], default: [] },
     subTotal: { type: Number, default: 0 },
@@ -47,5 +57,8 @@ const EstimateSchema = new Schema<IEstimate>(
   { timestamps: true, collection: "estimates" }
 );
 
-const Estimate: Model<IEstimate> = mongoose.models.Estimate || mongoose.model<IEstimate>("Estimate", EstimateSchema);
+if (mongoose.models.Estimate) {
+  delete mongoose.models.Estimate;
+}
+const Estimate: Model<IEstimate> = mongoose.model<IEstimate>("Estimate", EstimateSchema);
 export default Estimate;

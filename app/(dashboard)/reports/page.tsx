@@ -410,7 +410,7 @@ export default function ReportsPage() {
               <table className="w-full text-sm text-left">
                 <thead className="text-xs text-muted-foreground bg-slate-50 border-b uppercase font-medium">
                   <tr>
-                    <th className="px-4 py-3">Item Code</th>
+                    <th className="px-4 py-3">VP Code</th>
                     <th className="px-4 py-3">Item Name</th>
                     <th className="px-4 py-3">Category</th>
                     <th className="px-4 py-3 text-right">Unit Price</th>

@@ -10,14 +10,14 @@ export async function GET(request: Request) {
     const partyId = searchParams.get("partyId");
     
     const filter = partyId ? { partyId } : {};
-    let payments = await PaymentTransaction.find(filter).sort({ date: -1 }).lean();
+    let payments: any[] = await PaymentTransaction.find(filter).sort({ date: -1 }).lean();
     
     // Fetch old invoices that have paidAmount > 0 and include them as transactions if not already there
     const Invoice = (await import("@/models/Invoice")).default;
     const invoiceFilter = partyId ? { customerId: partyId, paidAmount: { $gt: 0 } } : { paidAmount: { $gt: 0 } };
     const paidInvoices = await Invoice.find(invoiceFilter).lean();
 
-    const existingRefs = new Set(payments.map(p => p.referenceId));
+    const existingRefs = new Set(payments.map((p: any) => p.referenceId));
 
     const virtualPayments = paidInvoices
       .filter((inv: any) => !existingRefs.has(inv.invoiceNumber))

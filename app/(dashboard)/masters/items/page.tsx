@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search, Filter, Download, Upload, Printer, MoreHorizontal, Edit, Trash2, Eye, Package, TrendingUp, AlertTriangle, CheckCircle, X } from "lucide-react";
 import { toast } from "sonner";
@@ -50,11 +51,20 @@ const EMPTY_FORM: ItemFormData = {
   warehouse: WAREHOUSES[0], status: "active",
 };
 
-export default function ItemsPage() {
+function ItemsPageContent() {
+  const searchParams = useSearchParams();
+  const queryCategory = searchParams?.get("category");
+
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState(queryCategory || "all");
   const [statusFilter, setStatusFilter] = useState("all");
+
+  useEffect(() => {
+    if (queryCategory) {
+      setCategoryFilter(queryCategory);
+    }
+  }, [queryCategory]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -238,6 +248,29 @@ export default function ItemsPage() {
     setSelectedIds([]);
   };
 
+  const [importing, setImporting] = useState(false);
+
+  const handleImportStock3 = async () => {
+    setImporting(true);
+    const toastId = toast.loading("Importing real stock from Stock3.json...");
+    try {
+      const res = await fetch("/api/admin/import-stock", { method: "POST" });
+      const json = await res.json();
+      if (json.success) {
+        toast.success(`Successfully imported ${json.summary?.totalItemsImported || 0} real items from Stock3.json!`, { id: toastId });
+        queryClient.invalidateQueries({ queryKey: ["items"] });
+        queryClient.invalidateQueries({ queryKey: ["brands"] });
+        queryClient.invalidateQueries({ queryKey: ["categories"] });
+      } else {
+        toast.error(json.error || "Import failed", { id: toastId });
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to trigger import", { id: toastId });
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const getStockStatus = (item: any) => {
     if (item.currentStock === 0) return { label: "Out of Stock", variant: "destructive" as const, low: true };
     if (item.currentStock <= item.reorderLevel) return { label: "Reorder Needed", variant: "destructive" as const, low: true };
@@ -251,8 +284,14 @@ export default function ItemsPage() {
       breadcrumbs={[{ label: "Masters", href: "/masters/items" }, { label: "Items" }]}
       actions={
         <>
-          <Button variant="outline" size="sm" onClick={() => toast.info("Import feature coming soon")}>
-            <Upload className="w-4 h-4 mr-1.5" /> Import
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleImportStock3}
+            disabled={importing}
+            className="border-blue-300 text-[#3F63AD] hover:bg-blue-50 font-semibold"
+          >
+            <Upload className="w-4 h-4 mr-1.5" /> {importing ? "Importing..." : "Import Stock3.json"}
           </Button>
           <Button variant="outline" size="sm" onClick={() => downloadCSV(items.map(i => ({...i})), "items.csv")}>
             <Download className="w-4 h-4 mr-1.5" /> Export
@@ -289,10 +328,10 @@ export default function ItemsPage() {
         <div className="flex flex-wrap items-center gap-3 p-4 border-b">
           <AutocompleteSearch
             data={items}
-            searchKeys={["name", "code", "brand", "category"]}
+            searchKeys={["name", "code", "vpCode", "brand", "category"]}
             displayKey="name"
-            subDisplayKey="code"
-            placeholder="Search items, code, brand, category..."
+            subDisplayKey="vpCode"
+            placeholder="Search items, VP Code, brand, category..."
             value={search}
             onSearchChange={(val) => { setSearch(val); setPage(1); }}
             className="flex-1 min-w-48"
@@ -384,7 +423,11 @@ export default function ItemsPage() {
                           </div>
                           <div>
                             <p className="font-medium text-foreground">{item.name}</p>
-                            <p className="text-xs text-muted-foreground">{item.code} · {item.brand}</p>
+                            <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                              <span className="font-mono text-blue-600 font-bold bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200">VP: {item.vpCode || item.code}</span>
+                              <span>·</span>
+                              <span>{item.brand}</span>
+                            </p>
                           </div>
                         </div>
                       </td>
@@ -521,9 +564,9 @@ export default function ItemsPage() {
                   </datalist>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Item Code (SKU)</Label>
+                  <Label className="text-xs font-semibold text-slate-700">VP Code (Item SKU)</Label>
                   <Input
-                    placeholder="Auto-generated (e.g. ITM-0016)"
+                    placeholder="Auto-generated (e.g. VP-10029)"
                     value={formData.code}
                     onChange={(e) => setFormData((f) => ({ ...f, code: e.target.value }))}
                     className="bg-slate-50 border-slate-300 font-mono"
@@ -681,7 +724,9 @@ export default function ItemsPage() {
           <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-5 flex justify-between items-center">
             <div>
               <h3 className="text-lg font-bold tracking-tight">Product Details & Sales History</h3>
-              <p className="text-xs text-slate-300 mt-0.5">{viewingItem?.code} · {viewingItem?.brand}</p>
+              <p className="text-xs text-slate-300 mt-0.5">
+                VP Code: <span className="font-mono text-amber-300 font-bold">{viewingItem?.vpCode || viewingItem?.code}</span> · {viewingItem?.brand}
+              </p>
             </div>
             <Badge variant="outline" className="bg-white/10 text-white border-white/20">
               Stock: {viewingItem?.currentStock} {viewingItem?.unit}
@@ -788,5 +833,13 @@ export default function ItemsPage() {
         </DialogContent>
       </Dialog>
     </PageShell>
+  );
+}
+
+export default function ItemsPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-xs font-bold text-slate-500">Loading Value Plus Items...</div>}>
+      <ItemsPageContent />
+    </Suspense>
   );
 }

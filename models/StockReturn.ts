@@ -1,7 +1,7 @@
 import mongoose, { Schema, Document, Model } from "mongoose";
 
 export interface IStockReturnItem {
-  itemId: mongoose.Types.ObjectId;
+  itemId: mongoose.Types.ObjectId | string;
   itemName: string;
   quantity: number;
   reason?: string;
@@ -17,7 +17,7 @@ export interface IStockReturn extends Document {
 }
 
 const StockReturnItemSchema = new Schema<IStockReturnItem>({
-  itemId: { type: String, required: true },
+  itemId: { type: Schema.Types.ObjectId, ref: "Item", required: true },
   itemName: { type: String, required: true },
   quantity: { type: Number, required: true, min: 1 },
   reason: { type: String },

@@ -5,20 +5,43 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Receipt, Users, CreditCard, Sparkles, ShoppingCart, Plus, Trash2, Printer, XCircle, Phone, UserCheck, UserPlus, X } from "lucide-react";
+import { 
+  Receipt, Users, CreditCard, Sparkles, ShoppingCart, Plus, Trash2, Printer, 
+  XCircle, Phone, UserCheck, UserPlus, X, Shield, AlertTriangle, FileText, CheckCircle2, Truck
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { INDIA_STATES, INDIA_STATES_AND_DISTRICTS, normalizeStateName, normalizeCityName } from "@/lib/data/locations";
 import { saveOfflineInvoice, getCachedCatalogItems, getCachedCustomers, cacheCustomers } from "@/lib/offline-storage";
+import ValueplusInvoice from "@/app/invoice/page";
 
 function formatCurrency(val: number) {
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(val);
+  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(val || 0);
 }
 
-export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoice" }: { isOpen: boolean; onClose: () => void; onSuccess?: () => void; mode?: "invoice" | "estimate" | "sales-order" | "credit-note" }) {
+export const WARRANTY_PLANS = [
+  { id: "none", name: "No Warranty", duration: 0, price: 0 },
+  { id: "ew_1yr", name: "1 Year Extended Warranty", duration: 12, price: 1499 },
+  { id: "ew_2yr", name: "2 Year Extended Warranty", duration: 24, price: 2799 },
+  { id: "screen_care", name: "1 Year Screen & Accidental Care", duration: 12, price: 1999 },
+  { id: "complete_care", name: "Comprehensive ValuePlus Protection (2 Yrs)", duration: 24, price: 3499 },
+];
+
+export function InvoiceCreationModal({ 
+  isOpen, 
+  onClose, 
+  onSuccess, 
+  mode = "invoice" 
+}: { 
+  isOpen: boolean; 
+  onClose: () => void; 
+  onSuccess?: () => void; 
+  mode?: "invoice" | "estimate" | "sales-order" | "credit-note" 
+}) {
   const queryClient = useQueryClient();
   const [offlineInvoiceToPrint, setOfflineInvoiceToPrint] = useState<any>(null);
+  const [generatedInvoiceToPrint, setGeneratedInvoiceToPrint] = useState<any>(null);
 
   const { data: customers = getCachedCustomers() } = useQuery({
     queryKey: ["customers"],
@@ -42,6 +65,19 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
         return json.success ? json.data : getCachedCatalogItems();
       } catch (e) {
         return getCachedCatalogItems();
+      }
+    }
+  });
+
+  const { data: serialNumbers = [] } = useQuery({
+    queryKey: ["serialNumbers"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/serial-numbers?status=AVAILABLE");
+        const json = await res.json();
+        return json.success ? json.data : [];
+      } catch (e) {
+        return [];
       }
     }
   });
@@ -82,21 +118,57 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
     customerPhone: "",
     customerEmail: "",
     customerGstin: "",
+    customerPan: "",
     customerAddress: "",
-    customerCity: "",
-    customerPin: "",
-    placeOfSupply: "Uttar Pradesh",
-    paymentMode: "Cash Counter",
+    customerCity: "Gorakhpur",
+    customerState: "Uttar Pradesh",
+    customerPin: "273001",
+    placeOfSupply: "Uttar Pradesh(09)",
+    vehicleNumber: "",
+    
+    // Primary Payment Mode: "Cash" | "UPI" | "Online" | "Card" | "Finance"
+    paymentMode: "Cash" as "Cash" | "UPI" | "Online" | "Card" | "Finance",
     paymentStatus: "Paid",
-    financeCompany: "Bajaj Finserv",
-    financeApprovalNo: "",
+    
+    // Cash specifics
+    cashReceivedBy: "Amit Singh (Counter #1)",
+    cashRemarks: "",
+    
+    // UPI specifics
+    upiTxnId: "",
+    upiRemarks: "",
+    
+    // Online specifics
+    onlineTxnId: "",
+    onlineRefId: "",
+    onlineGateway: "Razorpay POS",
+    onlineRemarks: "",
+    
+    // Card specifics + MDR
+    cardAmount: 0,
+    cardType: "HDFC POS Swipe",
+    cardTxnId: "",
+    cardMdrPercent: 2.0, // Configurable MDR %
+    cardRemarks: "",
+    
+    // Finance specifics
+    financeProvider: "Bajaj Finance Limited",
+    financeDoId: "",
+    financeAppId: "",
+    financeGrossLoan: 0,
+    financeDownPayment: 0,
+    financeDownPaymentMode: "Cash",
+    financeTenureMonths: 8,
+    financeSchemeType: "no_cost",
+    financeInterestRate: 0,
+    financeApprovalStatus: "Approved" as "Pending" | "Under Review" | "Approved" | "Disbursed" | "Reconciled",
+    financePdfUrl: "",
+    financeRemarks: "",
+    
     downPayment: 0,
     downPaymentMode: "Cash",
     shippingCharges: 0,
-    financeTenureMonths: 6,
-    financeSchemeType: "no_cost",
-    financeInterestRate: 14,
-    salesExecutive: "Rohan Verma (Emp #104)",
+    salesExecutive: "AMIT SINGH",
     advanceAmount: 0,
     linkedEstimateNumber: "",
     lineItems: [] as any[],
@@ -122,7 +194,7 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
         } else if (mode === "credit-note") {
           newNo = `CN-2026-${String(invoices.filter((i:any) => i.type === "credit-note").length + 1).padStart(4, "0")}-${randomSuffix}`;
         } else {
-          newNo = `INV-2026-${String(invoices.filter((i:any) => i.type !== "credit-note").length + 1).padStart(4, "0")}-${randomSuffix}`;
+          newNo = `SVAK2026RI${String(invoices.filter((i:any) => i.type !== "credit-note").length + 602).padStart(5, "0")}`;
         }
         return { ...prev, invoiceNo: newNo };
       });
@@ -131,52 +203,52 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
 
   const [activeSuggestRow, setActiveSuggestRow] = useState<number | null>(null);
 
+  // Billing & GST Calculations
   const billCalculations = useMemo(() => {
     let subtotal = 0;
     let totalTaxable = 0;
     let totalGst = 0;
+    let warrantyTotal = 0;
 
     billingForm.lineItems.forEach((item) => {
-      const lineTaxable = ((item.rate || 0) - (item.discount || 0)) * (item.qty || 1);
-      const lineGst = lineTaxable * ((item.gstRate || 0) / 100);
-      subtotal += (item.rate || 0) * (item.qty || 1);
+      const lineTaxable = ((Number(item.rate) || 0) - (Number(item.discount) || 0)) * (Number(item.qty) || 1);
+      const lineGst = lineTaxable * ((Number(item.gstRate) || 0) / 100);
+      subtotal += (Number(item.rate) || 0) * (Number(item.qty) || 1);
       totalTaxable += lineTaxable;
       totalGst += lineGst;
+      if (item.extendedWarrantyAmount) {
+        warrantyTotal += Number(item.extendedWarrantyAmount);
+      }
     });
 
     const isIntraState = billingForm.placeOfSupply.includes("09") || billingForm.placeOfSupply.toLowerCase().includes("uttar pradesh");
     const cgst = isIntraState ? totalGst / 2 : 0;
     const sgst = isIntraState ? totalGst / 2 : 0;
     const igst = isIntraState ? 0 : totalGst;
-    const grandTotal = Math.round(totalTaxable + totalGst + Number(billingForm.shippingCharges || 0));
+    
+    // Product grand total + warranty + shipping
+    const rawTotal = totalTaxable + totalGst + warrantyTotal + Number(billingForm.shippingCharges || 0);
+    const grandTotal = Math.round(rawTotal);
+    const roundOff = Number((grandTotal - rawTotal).toFixed(2));
 
-    return { subtotal, totalTaxable, totalGst, cgst, sgst, igst, grandTotal };
+    // Card MDR Calculation: MDR % of grand total, Net Settlement = grandTotal - MDR
+    const cardMdrAmount = Number(((grandTotal * (billingForm.cardMdrPercent || 2.0)) / 100).toFixed(2));
+    const cardNetSettlement = Number((grandTotal - cardMdrAmount).toFixed(2));
+
+    return { 
+      subtotal, 
+      totalTaxable, 
+      totalGst, 
+      cgst, 
+      sgst, 
+      igst, 
+      warrantyTotal, 
+      roundOff, 
+      grandTotal,
+      cardMdrAmount,
+      cardNetSettlement
+    };
   }, [billingForm]);
-
-  const emiBreakdown = useMemo(() => {
-    const grandTotal = billCalculations.grandTotal;
-    const dp = Number(billingForm.downPayment) || 0;
-    const financedPrincipal = Math.max(0, grandTotal - dp);
-    const tenure = Number(billingForm.financeTenureMonths) || 6;
-    const isNoCost = billingForm.financeSchemeType === "no_cost";
-    const annualRate = Number(billingForm.financeInterestRate) || 12;
-
-    if (financedPrincipal === 0 || tenure <= 0) {
-      return { financedPrincipal: 0, monthlyEMI: 0, totalInterest: 0, totalPayable: dp, isNoCost: true };
-    }
-
-    if (isNoCost) {
-      const monthlyEMI = Math.round(financedPrincipal / tenure);
-      return { financedPrincipal, monthlyEMI, totalInterest: 0, totalPayable: dp + financedPrincipal, isNoCost: true };
-    } else {
-      const r = (annualRate / 12) / 100;
-      const emiFactor = Math.pow(1 + r, tenure);
-      const monthlyEMI = Math.round((financedPrincipal * r * emiFactor) / (emiFactor - 1));
-      const totalLoanPayable = monthlyEMI * tenure;
-      const totalInterest = Math.max(0, totalLoanPayable - financedPrincipal);
-      return { financedPrincipal, monthlyEMI, totalInterest, totalPayable: dp + totalLoanPayable, isNoCost: false };
-    }
-  }, [billCalculations.grandTotal, billingForm.downPayment, billingForm.financeSchemeType, billingForm.financeInterestRate, billingForm.financeTenureMonths]);
 
   const [phoneLookupStatus, setPhoneLookupStatus] = useState<"idle" | "existing" | "new">("idle");
 
@@ -192,7 +264,7 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
     if (cleanPhone.length === 10) {
       const found = customers.find((c: any) => c.phone === cleanPhone);
       if (found) {
-        const normalizedState = normalizeStateName(found.billingAddress?.state || found.state || "");
+        const normalizedState = normalizeStateName(found.billingAddress?.state || found.state || "Uttar Pradesh");
         setBillingForm((prev) => ({
           ...prev,
           customerId: found._id,
@@ -200,9 +272,10 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
           customerPhone: cleanPhone,
           customerEmail: found.email || "",
           customerGstin: found.gstNumber || found.gst || "",
-          placeOfSupply: normalizedState,
-          customerCity: normalizeCityName(found.billingAddress?.city || found.city || "", normalizedState),
-          customerPin: found.billingAddress?.pincode || found.pin || found.pincode || "",
+          customerPan: found.panNumber || "",
+          placeOfSupply: normalizedState.includes("09") ? normalizedState : `${normalizedState}(09)`,
+          customerCity: normalizeCityName(found.billingAddress?.city || found.city || "Gorakhpur", normalizedState),
+          customerPin: found.billingAddress?.pincode || found.pin || found.pincode || "273001",
           customerAddress: found.billingAddress?.line1 ? `${found.billingAddress.line1}` : found.address || "",
         }));
         setPhoneLookupStatus("existing");
@@ -211,84 +284,11 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
         setBillingForm((prev) => ({
           ...prev,
           customerId: "new",
-          customerName: "",
           customerPhone: cleanPhone,
-          customerEmail: "",
-          customerGstin: "",
-          customerAddress: "",
-          customerCity: "",
-          customerPin: "",
         }));
         setPhoneLookupStatus("new");
       }
     }
-  };
-
-  // Keep old function for estimate loading compatibility
-  const handleSelectCustomer = (custId: string) => {
-    if (custId === "new") {
-      setBillingForm((prev) => ({
-        ...prev,
-        customerId: "new", customerName: "", customerPhone: "", customerEmail: "", customerGstin: "", customerAddress: "", customerCity: "", customerPin: ""
-      }));
-      setPhoneLookupStatus("new");
-      return;
-    }
-    const found = customers.find((c: any) => c._id === custId);
-    if (found) {
-      const normalizedState = normalizeStateName(found.billingAddress?.state || found.state || "");
-      setBillingForm((prev) => ({
-        ...prev,
-        customerId: found._id,
-        customerName: found.name,
-        customerPhone: found.phone || "",
-        customerEmail: found.email || "",
-        customerGstin: found.gstNumber || found.gst || "",
-        placeOfSupply: normalizedState,
-        customerCity: normalizeCityName(found.billingAddress?.city || found.city || "", normalizedState),
-        customerPin: found.billingAddress?.pincode || found.pin || found.pincode || "",
-        customerAddress: found.billingAddress?.line1 ? `${found.billingAddress.line1}` : found.address || "",
-      }));
-      setPhoneLookupStatus("existing");
-    }
-  };
-
-  const handleLoadEstimate = (estNumber: string) => {
-    const est = estimatesList.find((e: any) => e.estimateNumber === estNumber || e.estimateNo === estNumber);
-    if (!est) return;
-    
-    let matchedCust = null;
-    if (est.customerId && est.customerId !== "new") {
-      matchedCust = customers.find((c: any) => c._id === est.customerId);
-    } else {
-      matchedCust = customers.find((c: any) => c.name === est.customerName);
-    }
-    
-    if (matchedCust) {
-      handleSelectCustomer(matchedCust._id);
-    } else {
-      setBillingForm(prev => ({
-        ...prev, customerName: est.customerName, customerId: "new"
-      }));
-    }
-
-    setBillingForm(prev => ({
-      ...prev,
-      linkedEstimateNumber: estNumber,
-      salesExecutive: est.salesPerson || (est.notes?.includes("Estimate generated by ") ? est.notes.split("Estimate generated by ")[1] : prev.salesExecutive),
-      lineItems: (est.items || []).map((item: any, idx: number) => ({
-        id: String(Date.now() + idx),
-        itemId: item.itemId || "",
-        itemCode: item.itemCode || "",
-        name: item.name || item.itemName || "",
-        serialImei: "",
-        qty: item.quantity || item.qty || 1,
-        rate: item.rate || 0,
-        discount: item.discount || 0,
-        gstRate: item.tax || item.gstRate || 0,
-      }))
-    }));
-    toast.success(`Loaded Estimate ${estNumber}`);
   };
 
   const addLineItem = () => {
@@ -296,7 +296,22 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
       ...prev,
       lineItems: [
         ...prev.lineItems,
-        { id: String(Date.now()), name: "", serialImei: "", qty: 1, rate: 0, discount: 0, gstRate: 18 },
+        { 
+          id: String(Date.now()), 
+          name: "", 
+          itemCode: "", 
+          vpCode: "", 
+          serialNumber: "", 
+          batchNumber: "", 
+          qty: 1, 
+          rate: 0, 
+          discount: 0, 
+          gstRate: 18, 
+          availableStock: 0,
+          extendedWarrantyPlan: "none",
+          extendedWarrantyAmount: 0,
+          extendedWarrantyDuration: 0,
+        },
       ],
     }));
   };
@@ -310,33 +325,56 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
 
   const handleLineItemChange = (idx: number, field: string, value: any) => {
     const updated = [...billingForm.lineItems];
-    if (field === "qty" && mode === "tax-invoice") {
-      const maxStock = updated[idx].maxStock !== undefined ? updated[idx].maxStock : Infinity;
+    if (field === "qty" && mode === "invoice") {
+      const maxStock = updated[idx].availableStock !== undefined ? updated[idx].availableStock : Infinity;
       if (value > maxStock) {
-        toast.error(`Only ${maxStock} units in stock!`);
-        value = maxStock;
+        toast.warning(`Warning: Requested ${value} units exceeds available stock of ${maxStock}!`);
       }
     }
-    updated[idx] = { ...updated[idx], [field]: value };
+    
+    if (field === "extendedWarrantyPlan") {
+      const plan = WARRANTY_PLANS.find(p => p.id === value);
+      updated[idx] = {
+        ...updated[idx],
+        extendedWarrantyPlan: plan ? plan.name : "No Warranty",
+        extendedWarrantyAmount: plan ? plan.price : 0,
+        extendedWarrantyDuration: plan ? plan.duration : 0,
+      };
+    } else {
+      updated[idx] = { ...updated[idx], [field]: value };
+    }
+    
     setBillingForm((prev) => ({ ...prev, lineItems: updated }));
   };
 
   const selectProductSuggestion = (idx: number, prod: any) => {
-    if (mode === "tax-invoice" && (prod.currentStock || 0) <= 0) {
-      toast.error(`${prod.name} is out of stock and cannot be invoiced!`);
-      setActiveSuggestRow(null);
+    const isOutOfStock = (prod.currentStock || 0) <= 0;
+    if (isOutOfStock && mode === "invoice") {
+      toast.error(`"${prod.name}" is OUT OF STOCK. Cannot be billed in a Tax Invoice.`);
       return;
     }
+
     const updated = [...billingForm.lineItems];
+    const itemVpCode = prod.vpCode || prod.code;
     updated[idx] = {
       ...updated[idx],
       name: prod.name,
       rate: prod.sellingPrice || prod.rate || 0,
       gstRate: prod.gstRate || 18,
       itemCode: prod.code,
+      vpCode: itemVpCode,
       itemId: prod._id,
-      maxStock: prod.currentStock || Infinity
+      availableStock: prod.currentStock !== undefined ? prod.currentStock : 0,
+      batchNumber: prod.batchNumber || "",
+      isSerialized: prod.isSerialized || false,
     };
+    
+    if (isOutOfStock) {
+      toast.warning(`Notice: ${prod.name} is OUT OF STOCK.`);
+    } else {
+      toast.info(`Selected: ${prod.name} (VP Code: ${itemVpCode}) — Available Stock: ${prod.currentStock}`);
+    }
+
     setBillingForm((prev) => ({ ...prev, lineItems: updated }));
     setActiveSuggestRow(null);
   };
@@ -344,54 +382,33 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
   const createInvoiceMutation = useMutation({
     networkMode: "always",
     mutationFn: async (payload: any) => {
-      // 1. If explicit offline, save directly without network delay
       if (typeof navigator !== "undefined" && !navigator.onLine) {
         const offlineRecord = saveOfflineInvoice(payload);
         return { isOffline: true, data: offlineRecord };
       }
 
-      // 2. Set an AbortController with 3.5s timeout for network requests
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3500);
-
-      try {
-        const res = await fetch("/api/invoices", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-          signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-        const json = await res.json();
-        if (!json.success) throw new Error(json.error || "Failed to generate invoice");
-        return { isOffline: false, data: json.data };
-      } catch (err: any) {
-        clearTimeout(timeoutId);
-        console.warn("Network request failed or timed out, saving to offline storage:", err);
-        const offlineRecord = saveOfflineInvoice(payload);
-        return { isOffline: true, data: offlineRecord };
-      }
+      const res = await fetch("/api/invoices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || "Failed to generate invoice");
+      return { isOffline: false, data: json.data };
     },
     onSuccess: (result: any) => {
       if (result.isOffline) {
-        toast.warning("⚡ Offline Mode: Tax Invoice generated & saved locally. It will auto-sync when internet reconnects!", { duration: 6000 });
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(new CustomEvent("erp-invoice-created"));
-          window.dispatchEvent(new CustomEvent("valueplus-offline-queue-changed"));
-        }
+        toast.warning("⚡ Saved locally in offline queue. Auto-sync on connection.", { duration: 5000 });
         setOfflineInvoiceToPrint(result.data);
       } else {
-        toast.success("Invoice generated successfully");
+        toast.success(`Invoice ${result.data?.invoiceNumber || ""} finalized successfully!`);
         queryClient.invalidateQueries({ queryKey: ["invoices"] });
         queryClient.invalidateQueries({ queryKey: ["dashboard"] });
         queryClient.invalidateQueries({ queryKey: ["items"] });
-        queryClient.invalidateQueries({ queryKey: ["customers"] });
+        queryClient.invalidateQueries({ queryKey: ["serialNumbers"] });
         queryClient.invalidateQueries({ queryKey: ["reports"] });
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(new CustomEvent("erp-invoice-created"));
-        }
+        setGeneratedInvoiceToPrint(result.data);
         onSuccess && onSuccess();
-        onClose();
       }
     },
     onError: (error: any) => {
@@ -401,78 +418,42 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
 
   const handleFinalSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!billingForm.customerPhone || billingForm.customerPhone.length !== 10) {
-      toast.error("Mobile number (10 digits) is mandatory.");
+    if (!billingForm.customerName.trim()) {
+      toast.error("Customer Name is mandatory.");
       return;
     }
-    if (!billingForm.customerName || billingForm.lineItems.length === 0) {
-      toast.error("Customer Name and at least 1 item are required.");
+    if (!billingForm.customerPhone || billingForm.customerPhone.length !== 10) {
+      toast.error("Valid 10-digit Customer Mobile number is mandatory.");
+      return;
+    }
+    if (billingForm.lineItems.length === 0) {
+      toast.error("Please add at least 1 product item to the bill.");
       return;
     }
 
-    // Auto-create new customer in MongoDB or local cache if phone is new
-    if (billingForm.customerId === "new" && billingForm.customerPhone) {
-      if (typeof navigator !== "undefined" && !navigator.onLine) {
-        // Save customer into local storage cache instantly
-        const offlineCust = {
-          _id: `OFFLINE-CUST-${Date.now()}`,
-          name: billingForm.customerName,
-          phone: billingForm.customerPhone,
-          email: billingForm.customerEmail,
-          gstNumber: billingForm.customerGstin,
-          state: billingForm.placeOfSupply,
-          city: billingForm.customerCity,
-          address: billingForm.customerAddress,
-          pincode: billingForm.customerPin,
-        };
-        const currentCached = getCachedCustomers();
-        cacheCustomers([offlineCust, ...currentCached]);
-        billingForm.customerId = offlineCust._id;
-      } else {
-        const custController = new AbortController();
-        const custTimeout = setTimeout(() => custController.abort(), 2500);
-        try {
-          const newCustPayload = {
-            name: billingForm.customerName,
-            phone: billingForm.customerPhone,
-            email: billingForm.customerEmail,
-            gstNumber: billingForm.customerGstin,
-            state: billingForm.placeOfSupply,
-            city: billingForm.customerCity,
-            address: billingForm.customerAddress,
-            pincode: billingForm.customerPin,
-            customerGroup: "Retail",
-            creditLimit: 100000,
-            status: "active",
-          };
-          const custRes = await fetch("/api/customers", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(newCustPayload),
-            signal: custController.signal
-          });
-          clearTimeout(custTimeout);
-          const custJson = await custRes.json();
-          if (custJson.success && custJson.data?._id) {
-            billingForm.customerId = custJson.data._id;
-            queryClient.invalidateQueries({ queryKey: ["customers"] });
-          }
-        } catch (err) {
-          clearTimeout(custTimeout);
-          console.warn("Auto-create customer skipped/timed out:", err);
-          billingForm.customerId = `OFFLINE-CUST-${Date.now()}`;
+    if (mode === "invoice") {
+      for (const it of billingForm.lineItems) {
+        if (it.availableStock !== undefined && it.availableStock <= 0) {
+          toast.error(`"${it.name}" is OUT OF STOCK. Cannot generate a Tax Invoice.`);
+          return;
+        }
+        if (it.availableStock !== undefined && it.qty > it.availableStock) {
+          toast.error(`Quantity for "${it.name}" (${it.qty}) exceeds available on-hand stock (${it.availableStock}).`);
+          return;
         }
       }
     }
+
     const formattedItems = billingForm.lineItems.map(item => {
-      const lineTaxable = ((item.rate || 0) - (item.discount || 0)) * (item.qty || 1);
-      const lineGst = lineTaxable * ((item.gstRate || 0) / 100);
+      const lineTaxable = ((Number(item.rate) || 0) - (Number(item.discount) || 0)) * (Number(item.qty) || 1);
+      const lineGst = lineTaxable * ((Number(item.gstRate) || 0) / 100);
       const isIntraState = billingForm.placeOfSupply.includes("09") || billingForm.placeOfSupply.toLowerCase().includes("uttar pradesh");
       return {
         itemId: item.itemId || `ITEM-${Date.now()}`,
         itemName: item.name,
         itemCode: item.itemCode || "GEN",
-        description: item.serialImei ? `IMEI: ${item.serialImei}` : "",
+        vpCode: item.vpCode || item.itemCode || "",
+        description: item.serialNumber ? `Serial/IMEI: ${item.serialNumber}` : (item.batchNumber ? `Batch: ${item.batchNumber}` : ""),
         quantity: item.qty,
         unit: "PCS",
         rate: item.rate,
@@ -483,54 +464,19 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
         cgst: isIntraState ? lineGst / 2 : 0,
         sgst: isIntraState ? lineGst / 2 : 0,
         igst: isIntraState ? 0 : lineGst,
-        amount: lineTaxable + lineGst
+        amount: lineTaxable + lineGst + (Number(item.extendedWarrantyAmount) || 0),
+        serialNumber: item.serialNumber || "",
+        batchNumber: item.batchNumber || "",
+        extendedWarrantyPlan: item.extendedWarrantyPlan && item.extendedWarrantyPlan !== "none" ? item.extendedWarrantyPlan : "",
+        extendedWarrantyAmount: item.extendedWarrantyAmount || 0,
+        extendedWarrantyDuration: item.extendedWarrantyDuration || 0,
       };
     });
 
-    if (mode === "estimate") {
-      const estimateItems = formattedItems.map(fi => ({
-        itemCode: fi.itemCode,
-        name: fi.itemName,
-        quantity: fi.quantity,
-        rate: fi.rate,
-        tax: fi.gstRate,
-        amount: fi.amount
-      }));
-
-      const estimatePayload = {
-        estimateNumber: billingForm.invoiceNo,
-        customerName: billingForm.customerName || "Cash Customer",
-        customerId: billingForm.customerId === "new" ? "new" : (billingForm.customerId || null),
-        date: billingForm.invoiceDate,
-        expiryDate: billingForm.dueDate,
-        status: "Sent",
-        items: estimateItems,
-        subTotal: billCalculations.subtotal,
-        taxTotal: billCalculations.totalGst,
-        total: billCalculations.grandTotal,
-        notes: "Estimate generated by " + billingForm.salesExecutive,
-        salesPerson: billingForm.salesExecutive
-      };
-
-      try {
-        const res = await fetch("/api/estimates", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(estimatePayload)
-        });
-        const json = await res.json();
-        if (json.success) {
-          toast.success(`Estimate ${json.data.estimateNumber} generated!`);
-          onSuccess?.();
-          onClose();
-        } else {
-          toast.error(json.error || "Failed to create estimate");
-        }
-      } catch (err) {
-        toast.error("Failed to connect to server");
-      }
-      return;
-    }
+    const isFinance = billingForm.paymentMode === "Finance";
+    const downPay = Number(billingForm.financeDownPayment) || 0;
+    const paidAmt = isFinance ? downPay : billCalculations.grandTotal;
+    const balanceAmt = Math.max(0, billCalculations.grandTotal - paidAmt);
 
     createInvoiceMutation.mutate({
       ...billingForm,
@@ -538,7 +484,13 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
       type: mode === "credit-note" ? "credit-note" : (mode === "sales-order" ? "sales-order" : "tax-invoice"),
       date: billingForm.invoiceDate,
       customerName: billingForm.customerName,
-      customer: billingForm.customerName,
+      customerPhone: billingForm.customerPhone,
+      customerAddress: billingForm.customerAddress,
+      customerCity: billingForm.customerCity,
+      customerState: billingForm.customerState,
+      customerPin: billingForm.customerPin,
+      placeOfSupply: billingForm.placeOfSupply,
+      vehicleNumber: billingForm.vehicleNumber,
       
       items: formattedItems,
       subtotal: billCalculations.subtotal,
@@ -547,570 +499,700 @@ export function InvoiceCreationModal({ isOpen, onClose, onSuccess, mode = "invoi
       cgst: billCalculations.cgst,
       sgst: billCalculations.sgst,
       igst: billCalculations.igst,
+      extendedWarrantyTotal: billCalculations.warrantyTotal,
+      roundOff: billCalculations.roundOff,
       total: billCalculations.grandTotal,
       
-      paidAmount: mode === "credit-note" ? (billingForm.advanceAmount || 0) : (billingForm.paymentMode.includes("Finance") ? billingForm.downPayment : (mode === "sales-order" ? (billingForm.advanceAmount || 0) : billCalculations.grandTotal)),
-      balanceAmount: mode === "credit-note" ? Math.max(0, billCalculations.grandTotal - (billingForm.advanceAmount || 0)) : (billCalculations.grandTotal - (billingForm.paymentMode.includes("Finance") ? billingForm.downPayment : (mode === "sales-order" ? (billingForm.advanceAmount || 0) : billCalculations.grandTotal))),
-      status: (mode === "sales-order" ? ((billingForm.advanceAmount || 0) > 0 ? "partial" : "pending") : (mode === "credit-note" ? ((billingForm.advanceAmount || 0) >= billCalculations.grandTotal ? "paid" : "pending") : "paid")),
-      monthlyEMI: emiBreakdown.monthlyEMI,
-      totalInterest: emiBreakdown.totalInterest,
-      linkedEstimateNumber: billingForm.linkedEstimateNumber,
+      paidAmount: paidAmt,
+      balanceAmount: balanceAmt,
+      status: balanceAmt === 0 ? "paid" : (paidAmt > 0 ? "partial" : "sent"),
+      
+      // Payment specifics
+      cardMdrPercent: billingForm.cardMdrPercent,
+      cardMdrAmount: billCalculations.cardMdrAmount,
+      cardNetSettlement: billCalculations.cardNetSettlement,
+      
+      financeGrossLoan: isFinance ? (billCalculations.grandTotal - downPay) : 0,
+      financeNetLoan: isFinance ? (billCalculations.grandTotal - downPay) : 0,
     });
   };
 
   return (
     <>
       <Dialog open={isOpen && !offlineInvoiceToPrint} onOpenChange={onClose}>
-      <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto p-0 rounded-2xl border-none shadow-2xl">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-6 rounded-t-2xl flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/20">
-              <Receipt className="w-6 h-6 text-[#76C043]" />
-            </div>
-            <div>
-              <h3 className="text-xl font-bold tracking-tight flex items-center gap-2">
-                {mode === "estimate" ? "Create Estimate / Quotation" : mode === "sales-order" ? "Record Sales Order" : mode === "credit-note" ? "Issue Credit Note" : "Generate Tax Invoice"}
-                <span className="text-xs px-2 py-0.5 rounded-full bg-[#76C043]/20 text-[#76C043] border border-[#76C043]/30 font-mono">
-                  {mode === "estimate" ? "PROFORMA" : mode === "sales-order" ? "ORDER" : mode === "credit-note" ? "CREDIT NOTE" : "B2C / B2B POS"}
-                </span>
-              </h3>
-              <p className="text-xs text-slate-300 mt-0.5">
-                {mode === "estimate" 
-                  ? "Provide price estimates and commercial quotes to customers without affecting inventory"
-                  : mode === "sales-order"
-                  ? "Book confirmed customer order with delivery schedules and payment terms"
-                  : mode === "credit-note"
-                  ? "Issue credit note to customer for sales returns, generating an inventory rollback and ledger adjustment"
-                  : "Finalize sale, generate GST tax invoice and process payment receipts"}
-              </p>
+        <DialogContent className="max-w-6xl max-h-[94vh] overflow-y-auto p-0 rounded-2xl border-none shadow-2xl">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-[#1B2537] via-[#243753] to-[#1B2537] text-white p-6 rounded-t-2xl flex items-center justify-between border-b border-white/10">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/20">
+                <Receipt className="w-6 h-6 text-[#76C043]" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold tracking-tight flex items-center gap-2">
+                  {mode === "estimate" ? "Create Commercial Estimate" : mode === "sales-order" ? "Sales Order Booking" : mode === "credit-note" ? "Issue Credit Note" : "Value Plus Tax Invoice Billing"}
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#76C043]/20 text-[#76C043] border border-[#76C043]/30 font-mono font-bold">
+                    {mode === "credit-note" ? "CREDIT NOTE" : "TAX INVOICE (ORIGINAL)"}
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-300 mt-0.5">
+                  M/S ASHOKA ENTERPRISES • Gorakhpur, Uttar Pradesh • GSTIN: 09ANHPJ7242D1Z2
+                </p>
+              </div>
             </div>
           </div>
-        </div>
 
-        <form onSubmit={handleFinalSubmit} className="p-6 space-y-6 bg-slate-50/50">
-          {/* CUSTOMER PARTICULARS & INVOICE DETAILS */}
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-            <div className="flex items-center justify-between border-b pb-3">
-              <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#3F63AD] flex items-center gap-2">
-                <Users className="w-4 h-4 text-[#3F63AD]" /> 1. CUSTOMER PARTICULARS & INVOICE DETAILS
-              </h4>
-              {mode === "sales-order" && (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-slate-500">Import from Estimate:</span>
-                  <Select onValueChange={handleLoadEstimate}>
-                    <SelectTrigger className="h-8 w-[200px] text-xs bg-blue-50 border-blue-200 font-semibold text-[#3F63AD]">
-                      <SelectValue placeholder="Select Estimate..." />
-                    </SelectTrigger>
+          <form onSubmit={handleFinalSubmit} className="p-6 space-y-6 bg-slate-50/70">
+            {/* SECTION 1: CUSTOMER-FIRST BILLING FORM */}
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+              <div className="flex items-center justify-between border-b pb-3">
+                <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#3F63AD] flex items-center gap-2">
+                  <Users className="w-4 h-4 text-[#3F63AD]" /> 1. CUSTOMER PARTICULARS (CUSTOMER-FIRST IDENTIFICATION)
+                </h4>
+                <div className="text-xs text-slate-500 font-semibold">
+                  Default: <span className="text-[#3F63AD] font-bold">Gorakhpur, Uttar Pradesh</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                {/* 1. CUSTOMER NAME — FIRST MAJOR FIELD (REQ 5) */}
+                <div className="space-y-1.5 md:col-span-2">
+                  <Label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    Customer Name * <span className="text-[10px] text-slate-500 font-normal">(First Name & Last Name)</span>
+                  </Label>
+                  <Input 
+                    placeholder="e.g. Ajay Tiwari / Mohd Dilshad" 
+                    value={billingForm.customerName} 
+                    onChange={(e) => setBillingForm({ ...billingForm, customerName: e.target.value })} 
+                    className="bg-slate-50 border-slate-300 font-bold text-slate-900"
+                    autoFocus
+                  />
+                </div>
+
+                {/* 2. MOBILE NUMBER */}
+                <div className="space-y-1.5 md:col-span-1">
+                  <Label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <Phone className="w-3.5 h-3.5 text-[#3F63AD]" /> Mobile Number *
+                  </Label>
+                  <div className="relative">
+                    <Input 
+                      type="text"
+                      maxLength={10}
+                      placeholder="10-digit mobile"
+                      value={billingForm.customerPhone} 
+                      onChange={(e) => handlePhoneLookup(e.target.value)}
+                      className={cn(
+                        "bg-slate-50 border-slate-300 font-mono tracking-wider",
+                        phoneLookupStatus === "existing" && "border-emerald-400 bg-emerald-50/50 ring-2 ring-emerald-100",
+                        phoneLookupStatus === "new" && "border-amber-400 bg-amber-50/50 ring-2 ring-amber-100"
+                      )}
+                    />
+                    {phoneLookupStatus === "existing" && (
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-emerald-600 text-xs font-bold">✓ Exists</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* 3. DOCUMENT NUMBER */}
+                <div className="space-y-1.5 md:col-span-1">
+                  <Label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Doc / Invoice No.</Label>
+                  <Input value={billingForm.invoiceNo} onChange={e => setBillingForm({ ...billingForm, invoiceNo: e.target.value })} className="font-mono text-xs font-bold text-[#3F63AD] bg-blue-50/60 border-blue-200" />
+                </div>
+
+                {/* 4. ADDRESS */}
+                <div className="space-y-1.5 md:col-span-2">
+                  <Label className="text-xs font-semibold text-slate-700">Billing & Delivery Address</Label>
+                  <Input 
+                    placeholder="e.g. C31 Divya Nagar / Turkmanpur, Gita Press" 
+                    value={billingForm.customerAddress} 
+                    onChange={(e) => setBillingForm({ ...billingForm, customerAddress: e.target.value })} 
+                    className="bg-slate-50 border-slate-300"
+                  />
+                </div>
+
+                {/* 5. STATE (DEFAULT: UTTAR PRADESH) */}
+                <div className="space-y-1.5 md:col-span-1">
+                  <Label className="text-xs font-semibold text-slate-700">State (Prefilled)</Label>
+                  <Select value={billingForm.customerState} onValueChange={(v) => setBillingForm({ ...billingForm, customerState: v, placeOfSupply: `${v}(09)` })}>
+                    <SelectTrigger className="bg-slate-50 border-slate-300 font-semibold"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {estimatesList.map((est: any) => (
-                        <SelectItem key={est._id} value={est.estimateNumber || est.estimateNo}>
-                          {est.estimateNumber || est.estimateNo} - {est.customerName}
-                        </SelectItem>
-                      ))}
+                      {INDIA_STATES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
-              )}
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* MOBILE NUMBER — PRIMARY FIELD */}
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                  <Phone className="w-3.5 h-3.5 text-[#3F63AD]" /> Customer Mobile Number *
-                </Label>
-                <div className="relative">
+
+                {/* 6. CITY / DISTRICT (DEFAULT: GORAKHPUR) */}
+                <div className="space-y-1.5 md:col-span-1">
+                  <Label className="text-xs font-semibold text-slate-700">City / District (Prefilled)</Label>
                   <Input 
-                    type="text"
-                    maxLength={10}
-                    placeholder="Enter 10-digit mobile number"
-                    value={billingForm.customerPhone} 
-                    onChange={(e) => handlePhoneLookup(e.target.value)}
-                    className={cn(
-                      "bg-slate-50 border-slate-300 font-mono text-base tracking-wider pr-10",
-                      phoneLookupStatus === "existing" && "border-emerald-400 bg-emerald-50/50 ring-2 ring-emerald-100",
-                      phoneLookupStatus === "new" && "border-amber-400 bg-amber-50/50 ring-2 ring-amber-100"
-                    )}
-                    autoFocus
+                    value={billingForm.customerCity} 
+                    onChange={(e) => setBillingForm({ ...billingForm, customerCity: e.target.value })} 
+                    className="bg-slate-50 border-slate-300 font-semibold"
                   />
-                  {phoneLookupStatus === "existing" && (
-                    <span className="absolute right-2 top-1/2 -translate-y-1/2">
-                      <UserCheck className="w-4 h-4 text-emerald-600" />
-                    </span>
-                  )}
-                  {phoneLookupStatus === "new" && (
-                    <span className="absolute right-2 top-1/2 -translate-y-1/2">
-                      <UserPlus className="w-4 h-4 text-amber-600" />
-                    </span>
-                  )}
-                </div>
-                {phoneLookupStatus === "existing" && (
-                  <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1 mt-0.5"><UserCheck className="w-3 h-3" /> Existing Customer — Data Prefilled</span>
-                )}
-                {phoneLookupStatus === "new" && (
-                  <span className="text-[10px] font-bold text-amber-600 flex items-center gap-1 mt-0.5"><UserPlus className="w-3 h-3" /> New Customer — Will be auto-created</span>
-                )}
-              </div>
-
-              {/* CUSTOMER NAME — Always a text input */}
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-700">Customer Name *</Label>
-                <Input 
-                  placeholder="Enter Customer Name" 
-                  value={billingForm.customerName} 
-                  onChange={(e) => setBillingForm({ ...billingForm, customerName: e.target.value })} 
-                  className={cn(
-                    "bg-slate-50 border-slate-300",
-                    phoneLookupStatus === "existing" && "bg-emerald-50/30"
-                  )}
-                  readOnly={phoneLookupStatus === "existing"}
-                />
-              </div>
-
-              <div className="space-y-1">
-                <Label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{mode === "estimate" ? "Estimate No." : mode === "sales-order" ? "Order No." : "Invoice No."}</Label>
-                <Input value={billingForm.invoiceNo} onChange={e => setBillingForm({ ...billingForm, invoiceNo: e.target.value })} className="h-8 font-mono text-xs font-bold text-[#3F63AD] bg-blue-50 border-blue-200" />
-              </div>
-
-                <div className="space-y-1">
-                  <Label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{mode === "estimate" ? "Valid Until" : "Due Date"}</Label>
-                  <Input type="date" min={new Date().toISOString().split('T')[0]} value={billingForm.dueDate} onChange={e => setBillingForm({ ...billingForm, dueDate: e.target.value })} className="h-8 text-xs bg-slate-50 border-slate-300" />
                 </div>
 
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-700">Customer Email ID</Label>
-                <Input type="email" value={billingForm.customerEmail} onChange={(e) => setBillingForm({ ...billingForm, customerEmail: e.target.value })} className="bg-slate-50 border-slate-300" />
-              </div>
+                {/* 7. GSTIN */}
+                <div className="space-y-1.5 md:col-span-1">
+                  <Label className="text-xs font-semibold text-slate-700">Customer GSTIN (Optional)</Label>
+                  <Input placeholder="09XXXXX1234X1ZX" value={billingForm.customerGstin} onChange={(e) => setBillingForm({ ...billingForm, customerGstin: e.target.value })} className="font-mono bg-slate-50 border-slate-300 text-xs uppercase" />
+                </div>
 
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-700">GSTIN Number</Label>
-                <Input value={billingForm.customerGstin} onChange={(e) => setBillingForm({ ...billingForm, customerGstin: e.target.value })} className="font-mono bg-slate-50 border-slate-300" />
-              </div>
+                {/* 8. PAN */}
+                <div className="space-y-1.5 md:col-span-1">
+                  <Label className="text-xs font-semibold text-slate-700">Customer PAN (Optional)</Label>
+                  <Input placeholder="ABCDE1234F" value={billingForm.customerPan} onChange={(e) => setBillingForm({ ...billingForm, customerPan: e.target.value })} className="font-mono bg-slate-50 border-slate-300 text-xs uppercase" />
+                </div>
 
-              {/* SALES EXECUTIVE ASSIGNMENT */}
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-700">Sales Representative / Executive *</Label>
-                <Select value={billingForm.salesExecutive} onValueChange={(v) => setBillingForm({ ...billingForm, salesExecutive: v })}>
-                  <SelectTrigger className="bg-blue-50/50 border-blue-200 font-bold text-[#3F63AD]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Rohan Verma (Emp #104)">Rohan Verma (Emp #104)</SelectItem>
-                    <SelectItem value="Priya Singh (Emp #108)">Priya Singh (Emp #108)</SelectItem>
-                    <SelectItem value="Amit Kumar (Emp #112)">Amit Kumar (Emp #112)</SelectItem>
-                    <SelectItem value="Neha Gupta (Emp #115)">Neha Gupta (Emp #115)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+                {/* 9. VEHICLE NUMBER (REQ 29) */}
+                <div className="space-y-1.5 md:col-span-1">
+                  <Label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                    <Truck className="w-3.5 h-3.5 text-blue-600" /> Vehicle Number (Optional)
+                  </Label>
+                  <Input 
+                    placeholder="e.g. UP53 CA 1234" 
+                    value={billingForm.vehicleNumber} 
+                    onChange={(e) => setBillingForm({ ...billingForm, vehicleNumber: e.target.value })} 
+                    className="font-mono bg-slate-50 border-slate-300 uppercase text-xs"
+                  />
+                </div>
 
-              <div className="space-y-1.5 md:col-span-1">
-                <Label className="text-xs font-semibold text-slate-700">Place of Supply (State)</Label>
-                <Select value={billingForm.placeOfSupply} onValueChange={(v) => setBillingForm({ ...billingForm, placeOfSupply: v, customerCity: "" })}>
-                  <SelectTrigger className="bg-slate-50 border-slate-300"><SelectValue placeholder="Select State" /></SelectTrigger>
-                  <SelectContent>
-                    {(INDIA_STATES.includes(billingForm.placeOfSupply) ? INDIA_STATES : [...INDIA_STATES, billingForm.placeOfSupply].filter(Boolean)).map(s => (
-                      <SelectItem key={s} value={s}>{s}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5 md:col-span-1">
-                <Label className="text-xs font-semibold text-slate-700">District / City</Label>
-                <Select 
-                  value={billingForm.customerCity} 
-                  onValueChange={(v) => setBillingForm({ ...billingForm, customerCity: v })}
-                  disabled={!billingForm.placeOfSupply}
-                >
-                  <SelectTrigger className="bg-slate-50 border-slate-300">
-                    <SelectValue placeholder="Select District" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(() => {
-                      const available = INDIA_STATES_AND_DISTRICTS[billingForm.placeOfSupply] || [];
-                      const options = available.includes(billingForm.customerCity) ? available : [...available, billingForm.customerCity].filter(Boolean);
-                      return options.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>);
-                    })()}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5 md:col-span-1">
-                <Label className="text-xs font-semibold text-slate-700">PIN Code</Label>
-                <Input value={billingForm.customerPin} onChange={(e) => setBillingForm({ ...billingForm, customerPin: e.target.value })} className="bg-slate-50 border-slate-300" />
-              </div>
-
-              <div className="space-y-1.5 md:col-span-4">
-                <Label className="text-xs font-semibold text-slate-700">Customer Address</Label>
-                <Input value={billingForm.customerAddress} onChange={(e) => setBillingForm({ ...billingForm, customerAddress: e.target.value })} className="bg-slate-50 border-slate-300" />
+                {/* 10. SALES EXECUTIVE */}
+                <div className="space-y-1.5 md:col-span-1">
+                  <Label className="text-xs font-semibold text-slate-700">Sales Executive</Label>
+                  <Select value={billingForm.salesExecutive} onValueChange={(v) => setBillingForm({ ...billingForm, salesExecutive: v })}>
+                    <SelectTrigger className="bg-blue-50/50 border-blue-200 font-bold text-[#3F63AD]"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="AMIT SINGH">AMIT SINGH (Head Store Exec)</SelectItem>
+                      <SelectItem value="ROHAN VERMA">ROHAN VERMA (Electronics)</SelectItem>
+                      <SelectItem value="PRIYA SHARMA">PRIYA SHARMA (Appliances)</SelectItem>
+                      <SelectItem value="DEEPAK RAI">DEEPAK RAI (Mobile)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* ITEMS PARTICULARS SECTION */}
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#3F63AD] flex items-center gap-2">
-                <ShoppingCart className="w-4 h-4 text-[#3F63AD]" /> 2. ITEMS & SERIAL / IMEI PARTICULARS
-              </h4>
-              <Button type="button" size="sm" onClick={addLineItem} variant="outline" className="text-xs gap-1 border-[#3F63AD] text-[#3F63AD] font-bold">
-                <Plus className="w-3.5 h-3.5" /> Add Product Row
-              </Button>
-            </div>
+            {/* SECTION 2: ITEMS, VP CODES, STOCK, SERIALS & EXTENDED WARRANTY */}
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#3F63AD] flex items-center gap-2">
+                    <ShoppingCart className="w-4 h-4 text-[#3F63AD]" /> 2. PRODUCTS, VP CODES, INVENTORY STOCK & SERIAL / WARRANTY
+                  </h4>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Select product to inspect live stock. For serialized units, choose from available serial numbers.
+                  </p>
+                </div>
+                <Button type="button" size="sm" onClick={addLineItem} variant="outline" className="text-xs gap-1 border-[#3F63AD] text-[#3F63AD] font-bold">
+                  <Plus className="w-3.5 h-3.5" /> Add Product Item
+                </Button>
+              </div>
 
-            <div className="overflow-visible min-h-[240px]">
-              <table className="w-full text-xs text-left">
-                <thead className="bg-slate-100 border-b text-slate-700 uppercase font-bold">
-                  <tr>
-                    <th className="p-2 text-left w-64">ITEM DESCRIPTION</th>
-                    <th className="p-2 text-left w-48">SERIAL / IMEI NO.</th>
-                    <th className="p-2 text-center w-16">QTY</th>
-                    <th className="p-2 text-right w-28">RATE (₹)</th>
-                    <th className="p-2 text-right w-24">DISC (₹)</th>
-                    <th className="p-2 text-center w-20">GST %</th>
-                    <th className="p-2 text-right w-28">LINE TOTAL (₹)</th>
-                    <th className="p-2 text-center w-10"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {billingForm.lineItems.map((item, idx) => {
-                    const lineTaxable = ((item.rate || 0) - (item.discount || 0)) * (item.qty || 1);
-                    const lineGst = lineTaxable * ((item.gstRate || 0) / 100);
-                    const lineTotal = lineTaxable + lineGst;
+              <div className="space-y-3">
+                {billingForm.lineItems.map((item, idx) => {
+                  const lineTaxable = ((Number(item.rate) || 0) - (Number(item.discount) || 0)) * (Number(item.qty) || 1);
+                  const lineGst = lineTaxable * ((Number(item.gstRate) || 0) / 100);
+                  const warrantyAmt = Number(item.extendedWarrantyAmount) || 0;
+                  const lineTotal = lineTaxable + lineGst + warrantyAmt;
 
-                    const query = (item.name || "").toLowerCase().trim();
-                    const suggestions = query === ""
-                      ? catalogItems
-                      : catalogItems.filter(
-                          (p: any) => p.name.toLowerCase().includes(query) || (p.code || "").toLowerCase().includes(query)
-                        );
+                  const query = (item.name || "").toLowerCase().trim();
+                  const suggestions = query === ""
+                    ? catalogItems
+                    : catalogItems.filter(
+                        (p: any) => p.name.toLowerCase().includes(query) || (p.code || "").toLowerCase().includes(query) || (p.vpCode || "").toLowerCase().includes(query)
+                      );
 
-                    return (
-                      <tr key={item.id} className={cn("transition-colors", activeSuggestRow === idx ? "relative z-50 bg-blue-50/20" : "relative z-10 hover:bg-slate-50")}>
-                        <td className="p-2 relative z-50">
+                  // Filter available serial numbers for this item with robust matching
+                  const itNameLower = (item.name || "").toLowerCase().trim();
+                  const itCodeLower = (item.itemCode || "").toLowerCase().trim();
+                  const itVpLower = (item.vpCode || "").toLowerCase().trim();
+                  const itIdStr = item.itemId ? item.itemId.toString() : "";
+
+                  const matchingSerials = serialNumbers.filter((s: any) => {
+                    if (s.status !== "AVAILABLE") return false;
+                    // Exclude if already chosen in another line item in the same invoice
+                    const isSelectedInOtherRow = billingForm.lineItems.some((otherLine, otherIdx) => otherIdx !== idx && otherLine.serialNumber === s.serialNumber);
+                    if (isSelectedInOtherRow) return false;
+
+                    const sVp = (s.vpCode || "").toLowerCase().trim();
+                    const sId = (s.itemId || "").toString();
+                    const sName = (s.itemName || "").toLowerCase().trim();
+
+                    if (itVpLower && sVp && sVp === itVpLower) return true;
+                    if (itIdStr && sId && sId === itIdStr) return true;
+                    if (itNameLower && sName && (sName === itNameLower || sName.includes(itNameLower) || itNameLower.includes(sName))) return true;
+                    if (itCodeLower && sVp && (sVp === itCodeLower || sVp.includes(itCodeLower))) return true;
+
+                    return false;
+                  });
+
+                  return (
+                    <div key={item.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3 relative hover:border-blue-300 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="w-6 h-6 rounded-full bg-[#3F63AD] text-white flex items-center justify-center text-xs font-bold">
+                            {idx + 1}
+                          </span>
+                          <span className="text-xs font-bold text-slate-800">
+                            {item.name ? item.name : "Select or search product item..."}
+                          </span>
+                          {item.vpCode && (
+                            <Badge variant="outline" className="font-mono text-[10px] font-bold bg-blue-50 text-[#3F63AD] border-blue-200">
+                              VP CODE: {item.vpCode}
+                            </Badge>
+                          )}
+                          {item.availableStock !== undefined && (
+                            <Badge className={cn("text-[10px] font-bold", item.availableStock > 0 ? "bg-emerald-100 text-emerald-800 border-emerald-300" : "bg-red-100 text-red-800 border-red-300")}>
+                              Available Stock: {item.availableStock} PCS
+                            </Badge>
+                          )}
+                        </div>
+                        <button type="button" onClick={() => removeLineItem(idx)} className="text-red-500 hover:text-red-700 p-1 flex items-center gap-1 text-xs">
+                          <Trash2 className="w-3.5 h-3.5" /> Remove
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+                        {/* PRODUCT SEARCH & AUTOCOMPLETE */}
+                        <div className="md:col-span-3 relative">
+                          <Label className="text-[11px] font-semibold text-slate-700">Product / Item Search *</Label>
                           <Input
-                            placeholder="Search catalog products..."
+                            placeholder="Type to search electronics/mobile catalog..."
                             value={item.name}
                             onChange={(e) => { handleLineItemChange(idx, "name", e.target.value); setActiveSuggestRow(idx); }}
                             onFocus={() => setActiveSuggestRow(idx)}
-                            onBlur={() => setTimeout(() => setActiveSuggestRow(null), 250)}
-                            className="h-8 text-xs bg-slate-50 border-slate-300 font-semibold"
+                            onBlur={() => setTimeout(() => setActiveSuggestRow(null), 300)}
+                            className="h-8 text-xs bg-white border-slate-300 font-semibold"
                           />
                           {activeSuggestRow === idx && suggestions.length > 0 && (
-                            <div className="absolute left-0 top-10 w-[420px] bg-white border-2 border-[#3F63AD] shadow-2xl rounded-xl z-[9999] max-h-64 overflow-y-auto divide-y divide-slate-100 p-1 font-sans">
-                              <div className="px-3 py-1.5 bg-slate-100 text-[10px] font-bold text-slate-600 uppercase tracking-wider flex justify-between">
+                            <div className="absolute left-0 top-12 w-full bg-white border-2 border-[#3F63AD] shadow-2xl rounded-xl z-[9999] max-h-60 overflow-y-auto divide-y divide-slate-100 p-1">
+                              <div className="px-3 py-1 bg-slate-100 text-[10px] font-bold text-slate-600 uppercase flex justify-between">
                                 <span>Catalog Match ({suggestions.length} items)</span>
                                 <span>Click to select</span>
                               </div>
                               {suggestions.map((prod: any, pIdx: number) => (
-                                <div key={pIdx} onMouseDown={(e) => { e.preventDefault(); selectProductSuggestion(idx, prod); }} className="p-2.5 hover:bg-blue-50 cursor-pointer flex items-center justify-between transition-colors rounded-lg group">
-                                  <div className="flex-1 min-w-0 pr-2">
-                                    <div className="flex items-center gap-2 mb-0.5">
-                                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-[#3F63AD]">{prod.category || "General"}</span>
-                                      <span className="text-[10px] font-mono font-bold text-slate-600">CODE: {prod.code}</span>
+                                <div 
+                                  key={pIdx} 
+                                  onMouseDown={(e) => { e.preventDefault(); selectProductSuggestion(idx, prod); }} 
+                                  className="p-2 hover:bg-blue-50 cursor-pointer flex items-center justify-between rounded-lg"
+                                >
+                                  <div>
+                                    <div className="flex items-center gap-1.5 mb-0.5">
+                                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-[#3F63AD]">{prod.category || "Electronics"}</span>
+                                      <span className="text-[9px] font-mono font-bold text-slate-600">VP: {prod.vpCode || prod.code}</span>
+                                      {(prod.currentStock || 0) <= 0 ? (
+                                        <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-red-100 text-red-800 border border-red-300">
+                                          OUT OF STOCK
+                                        </span>
+                                      ) : (
+                                        <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                          Stock: {prod.currentStock}
+                                        </span>
+                                      )}
                                     </div>
-                                    <p className="font-bold text-slate-900 text-xs truncate group-hover:text-[#3F63AD]">{prod.name}</p>
-                                    <p className="text-[10px] text-slate-500">GST Slab: <span className="font-semibold text-slate-700">{prod.gstRate}%</span></p>
+                                    <p className="font-bold text-slate-900 text-xs">{prod.name}</p>
                                   </div>
-                                  <div className="text-right flex-none">
-                                    <span className="font-black text-[#76C043] text-xs block">{formatCurrency(prod.sellingPrice || prod.rate || 0)}</span>
-                                  </div>
+                                  <span className="font-black text-[#76C043] text-xs">{formatCurrency(prod.sellingPrice || prod.rate || 0)}</span>
                                 </div>
                               ))}
                             </div>
                           )}
-                        </td>
-                        <td className="p-2"><Input placeholder="IMEI 3591820..." value={item.serialImei} onChange={(e) => handleLineItemChange(idx, "serialImei", e.target.value)} className="h-8 text-xs bg-slate-50 border-slate-300 font-mono px-2" /></td>
-                        <td className="p-2"><Input type="number" min="1" value={item.qty} onKeyDown={(e) => ["-", "+", "e", "E"].includes(e.key) && e.preventDefault()} onChange={(e) => handleLineItemChange(idx, "qty", Math.max(1, Number(e.target.value)))} className="h-8 text-xs bg-slate-50 border-slate-300 text-center font-bold px-1" /></td>
-                        <td className="p-2"><Input type="number" min="0" value={item.rate === 0 ? "" : item.rate} onKeyDown={(e) => ["-", "+", "e", "E"].includes(e.key) && e.preventDefault()} onChange={(e) => handleLineItemChange(idx, "rate", Math.max(0, Number(e.target.value)))} className="h-8 text-xs bg-slate-50 border-slate-300 text-right font-semibold px-2" /></td>
-                        <td className="p-2"><Input type="number" min="0" value={item.discount === 0 ? "" : item.discount} onKeyDown={(e) => ["-", "+", "e", "E"].includes(e.key) && e.preventDefault()} onChange={(e) => handleLineItemChange(idx, "discount", Math.max(0, Number(e.target.value)))} className="h-8 text-xs bg-slate-50 border-slate-300 text-right text-emerald-600 font-semibold px-2" /></td>
-                        <td className="p-2">
-                          <select value={item.gstRate} onChange={(e) => handleLineItemChange(idx, "gstRate", Number(e.target.value))} className="w-full h-8 rounded-md border border-slate-300 bg-slate-50 text-xs text-center">
-                            <option value="0">0%</option><option value="5">5%</option><option value="12">12%</option><option value="18">18%</option><option value="28">28%</option>
-                          </select>
-                        </td>
-                        <td className="p-2 text-right font-bold text-slate-900">{formatCurrency(lineTotal)}</td>
-                        <td className="p-2 text-center">
-                          <button type="button" onClick={() => removeLineItem(idx)} className="text-red-500 hover:text-red-700 p-1"><Trash2 className="w-4 h-4" /></button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                        </div>
+
+                        {/* SERIAL NUMBER DROPDOWN */}
+                        <div className="md:col-span-2">
+                          <div className="flex items-center justify-between mb-1">
+                            <Label className="text-[11px] font-semibold text-slate-700">Serial Number (In Store)</Label>
+                            {matchingSerials.length > 0 && (
+                              <span className="text-[9.5px] font-mono font-bold text-emerald-700 bg-emerald-50 px-1 rounded border border-emerald-200">
+                                {matchingSerials.length} Available
+                              </span>
+                            )}
+                          </div>
+                          {matchingSerials.length > 0 ? (
+                            <Select 
+                              value={item.serialNumber || ""} 
+                              onValueChange={(v) => handleLineItemChange(idx, "serialNumber", v)}
+                            >
+                              <SelectTrigger className="h-8 text-xs bg-white border-slate-300 font-mono font-bold text-[#3F63AD]">
+                                <SelectValue placeholder="Select In-Store Serial #" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {matchingSerials.map((s: any) => (
+                                  <SelectItem key={s._id || s.serialNumber} value={s.serialNumber}>
+                                    SN: {s.serialNumber} {s.batchNo ? `(Batch: ${s.batchNo})` : ""}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <Input 
+                              placeholder="e.g. 605PLTV314681" 
+                              value={item.serialNumber || ""} 
+                              onChange={(e) => handleLineItemChange(idx, "serialNumber", e.target.value)} 
+                              className="h-8 text-xs bg-white border-slate-300 font-mono"
+                            />
+                          )}
+                        </div>
+
+                        {/* BATCH NUMBER (REQ 18) */}
+                        <div className="md:col-span-1">
+                          <Label className="text-[11px] font-semibold text-slate-700">Batch No.</Label>
+                          <Input 
+                            placeholder="Batch #" 
+                            value={item.batchNumber} 
+                            onChange={(e) => handleLineItemChange(idx, "batchNumber", e.target.value)} 
+                            className="h-8 text-xs bg-white border-slate-300 font-mono"
+                          />
+                        </div>
+
+                        {/* QTY */}
+                        <div>
+                          <Label className="text-[11px] font-semibold text-slate-700">Qty (Pcs)</Label>
+                          <Input 
+                            type="number" min="1" 
+                            value={item.qty} 
+                            onChange={(e) => handleLineItemChange(idx, "qty", Math.max(1, Number(e.target.value)))} 
+                            className="h-8 text-xs bg-white border-slate-300 text-center font-bold"
+                          />
+                        </div>
+
+                        {/* RATE */}
+                        <div>
+                          <Label className="text-[11px] font-semibold text-slate-700">Rate (₹)</Label>
+                          <Input 
+                            type="number" min="0" 
+                            value={item.rate === 0 ? "" : item.rate} 
+                            onChange={(e) => handleLineItemChange(idx, "rate", Math.max(0, Number(e.target.value)))} 
+                            className="h-8 text-xs bg-white border-slate-300 text-right font-semibold"
+                          />
+                        </div>
+
+                        {/* DISCOUNT */}
+                        <div>
+                          <Label className="text-[11px] font-semibold text-slate-700">Disc (₹)</Label>
+                          <Input 
+                            type="number" min="0" 
+                            value={item.discount === 0 ? "" : item.discount} 
+                            onChange={(e) => handleLineItemChange(idx, "discount", Math.max(0, Number(e.target.value)))} 
+                            className="h-8 text-xs bg-white border-slate-300 text-right font-semibold text-emerald-700"
+                          />
+                        </div>
+
+                        {/* GST % */}
+                        <div>
+                          <Label className="text-[11px] font-semibold text-slate-700">GST Slab</Label>
+                          <Select value={String(item.gstRate)} onValueChange={(v) => handleLineItemChange(idx, "gstRate", Number(v))}>
+                            <SelectTrigger className="h-8 text-xs bg-white border-slate-300 font-semibold"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="0">0%</SelectItem>
+                              <SelectItem value="5">5%</SelectItem>
+                              <SelectItem value="12">12%</SelectItem>
+                              <SelectItem value="18">18% (Standard)</SelectItem>
+                              <SelectItem value="28">28% (Luxury)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {/* EXTENDED WARRANTY PLAN (REQ 19) */}
+                        <div className="md:col-span-2">
+                          <Label className="text-[11px] font-bold text-purple-900 flex items-center gap-1">
+                            <Shield className="w-3 h-3 text-purple-600" /> Extended Warranty Option
+                          </Label>
+                          <Select 
+                            value={WARRANTY_PLANS.find(p => p.name === item.extendedWarrantyPlan)?.id || "none"} 
+                            onValueChange={(v) => handleLineItemChange(idx, "extendedWarrantyPlan", v)}
+                          >
+                            <SelectTrigger className="h-8 text-xs bg-purple-50/60 border-purple-200 font-semibold text-purple-900">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {WARRANTY_PLANS.map((p) => (
+                                <SelectItem key={p.id} value={p.id}>
+                                  {p.name} {p.price > 0 ? `(+₹${p.price.toLocaleString("en-IN")})` : ""}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      {/* ROW TOTAL BAR */}
+                      <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-200/80">
+                        <div className="text-slate-600 flex items-center gap-3">
+                          <span>Taxable Value: <strong className="text-slate-800">{formatCurrency(lineTaxable)}</strong></span>
+                          <span>GST Tax: <strong className="text-slate-800">{formatCurrency(lineGst)}</strong></span>
+                          {warrantyAmt > 0 && (
+                            <span className="text-purple-700 font-semibold">Warranty: +{formatCurrency(warrantyAmt)}</span>
+                          )}
+                        </div>
+                        <div className="font-extrabold text-sm text-slate-900">
+                          Row Total: <span className="text-[#3F63AD]">{formatCurrency(lineTotal)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
 
-          {/* PAYMENT MODE & FINANCE SPLIT */}
-          {mode !== "estimate" && mode !== "credit-note" && (
+            {/* SECTION 3: DEDICATED PAYMENT MODES (CASH, UPI, ONLINE, CARD+MDR, FINANCE) */}
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-              <div className="space-y-1.5 pt-2">
-                <Label className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <CreditCard className="w-3.5 h-3.5 text-[#3F63AD]" /> Payment Mode & Finance Split
-                </Label>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <Select value={billingForm.paymentMode} onValueChange={(v) => setBillingForm({ ...billingForm, paymentMode: v })}>
-                    <SelectTrigger className="bg-slate-50 border-slate-300 font-semibold"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Cash Counter">Cash Counter</SelectItem>
-                      <SelectItem value="UPI / Card / NetBanking">UPI / Card / NetBanking</SelectItem>
-                      <SelectItem value="Finance / Consumer EMI">Finance / Consumer EMI (Bajaj, HDB, TVS)</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  {!billingForm.paymentMode.includes("Finance") && mode === "sales-order" && (
-                    <div className="md:col-span-2 flex flex-col justify-end">
-                       <Label className="text-xs font-semibold text-slate-700 mb-1.5">Advance Amount Received (₹)</Label>
-                       <Input 
-                         type="number" min="0"
-                         onKeyDown={(e) => ["-", "+", "e", "E"].includes(e.key) && e.preventDefault()}
-                         value={billingForm.advanceAmount || ""} 
-                         onChange={(e) => setBillingForm({ ...billingForm, advanceAmount: Math.max(0, Number(e.target.value)) })}
-                         className="bg-slate-50 border-slate-300 font-semibold"
-                         placeholder="e.g. 5000"
-                       />
-                    </div>
-                  )}
-
-                  {billingForm.paymentMode.includes("Finance") && (
-                    <>
-                      <Select value={billingForm.financeCompany} onValueChange={(v) => setBillingForm({ ...billingForm, financeCompany: v })}>
-                        <SelectTrigger className="bg-amber-50 border-amber-300 font-bold text-amber-900"><SelectValue placeholder="Select Finance Provider" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Bajaj Finserv">Bajaj Finserv</SelectItem><SelectItem value="HDB Financial Services">HDB Financial Services</SelectItem><SelectItem value="TVS Credit">TVS Credit</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Input placeholder="Loan / Approval #" value={billingForm.financeApprovalNo} onChange={(e) => setBillingForm({ ...billingForm, financeApprovalNo: e.target.value })} className="bg-amber-50 border-amber-300 font-mono text-xs" />
-                    </>
-                  )}
-                </div>
-
-                {billingForm.paymentMode.includes("Finance") && (
-                  <div className="mt-3 p-4 bg-gradient-to-br from-amber-50 to-orange-50/50 rounded-xl border border-amber-200/80 space-y-3">
-                    <div className="flex items-center justify-between border-b border-amber-200/60 pb-2">
-                      <span className="text-xs font-black text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-amber-600" /> Consumer Finance & EMI Breakdown
-                      </span>
-                      <div className="flex items-center bg-white/80 p-0.5 rounded-lg border border-amber-200">
-                        <button type="button" onClick={() => setBillingForm((prev) => ({ ...prev, financeSchemeType: "no_cost" }))} className={cn("px-2.5 py-0.5 rounded-md text-[11px] font-bold transition-all", billingForm.financeSchemeType === "no_cost" ? "bg-amber-600 text-white shadow-sm" : "text-amber-900 hover:bg-amber-100")}>No-Cost EMI (0%)</button>
-                        <button type="button" onClick={() => setBillingForm((prev) => ({ ...prev, financeSchemeType: "standard_interest" }))} className={cn("px-2.5 py-0.5 rounded-md text-[11px] font-bold transition-all", billingForm.financeSchemeType === "standard_interest" ? "bg-amber-600 text-white shadow-sm" : "text-amber-900 hover:bg-amber-100")}>Standard Interest</button>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 text-xs">
-                      <div><Label className="text-[11px] font-extrabold text-amber-950">Down Payment (₹)</Label><Input type="number" min="0" onKeyDown={(e) => ["-", "+", "e", "E"].includes(e.key) && e.preventDefault()} value={billingForm.downPayment} onChange={(e) => setBillingForm({ ...billingForm, downPayment: Math.max(0, Number(e.target.value)) })} className="h-8 bg-white border-amber-300 font-black text-emerald-700 mt-1 shadow-sm" /></div>
-                      <div>
-                        <Label className="text-[11px] font-bold text-amber-900">Down Payment Mode</Label>
-                        <Select value={billingForm.downPaymentMode} onValueChange={(v) => setBillingForm({ ...billingForm, downPaymentMode: v })}><SelectTrigger className="h-8 bg-white border-amber-300 mt-1 font-bold text-slate-800"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Cash">Cash</SelectItem><SelectItem value="UPI / PhonePe / GPay">UPI / PhonePe / GPay</SelectItem></SelectContent></Select>
-                      </div>
-                      <div><Label className="text-[11px] font-bold text-amber-900">Financed Amount (₹)</Label><Input readOnly value={formatCurrency(emiBreakdown.financedPrincipal)} className="h-8 bg-amber-100/60 border-amber-300 font-black text-purple-900 mt-1" /></div>
-                      {billingForm.financeSchemeType === "standard_interest" ? (
-                        <div><Label className="text-[11px] font-bold text-amber-900">Interest Rate (% p.a.)</Label><Select value={String(billingForm.financeInterestRate)} onValueChange={(v) => setBillingForm({ ...billingForm, financeInterestRate: Number(v) })}><SelectTrigger className="h-8 bg-white border-amber-300 mt-1 font-bold text-slate-800"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="10">10%</SelectItem><SelectItem value="12">12%</SelectItem><SelectItem value="14">14%</SelectItem><SelectItem value="16">16%</SelectItem><SelectItem value="18">18%</SelectItem><SelectItem value="24">24%</SelectItem></SelectContent></Select></div>
-                      ) : (
-                        <div><Label className="text-[11px] font-bold text-amber-900">Interest Rate</Label><div className="h-8 bg-emerald-100/70 border border-emerald-300 rounded-md mt-1 flex items-center px-2 font-bold text-emerald-800 text-[11px]">0% (No-Cost Offer)</div></div>
+              <div className="flex items-center justify-between border-b pb-3">
+                <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#3F63AD] flex items-center gap-2">
+                  <CreditCard className="w-4 h-4 text-[#3F63AD]" /> 3. PAYMENT MODE SPECIFICATIONS & RECONCILIATION
+                </h4>
+                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
+                  {(["Cash", "UPI", "Online", "Card", "Finance"] as const).map((modeKey) => (
+                    <button
+                      key={modeKey}
+                      type="button"
+                      onClick={() => setBillingForm({ ...billingForm, paymentMode: modeKey })}
+                      className={cn(
+                        "px-3 py-1 rounded-md text-xs font-bold transition-all",
+                        billingForm.paymentMode === modeKey 
+                          ? "bg-[#3F63AD] text-white shadow-sm" 
+                          : "text-slate-700 hover:bg-slate-200"
                       )}
-                      <div>
-                        <Label className="text-[11px] font-bold text-amber-900">EMI Tenure (Months)</Label>
-                        <Select value={String(billingForm.financeTenureMonths)} onValueChange={(v) => setBillingForm({ ...billingForm, financeTenureMonths: Number(v) })}><SelectTrigger className="h-8 bg-white border-amber-300 mt-1 font-bold text-slate-800"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="3">3 Months</SelectItem><SelectItem value="6">6 Months</SelectItem><SelectItem value="9">9 Months</SelectItem><SelectItem value="12">12 Months</SelectItem><SelectItem value="18">18 Months</SelectItem><SelectItem value="24">24 Months</SelectItem></SelectContent></Select>
-                      </div>
+                    >
+                      {modeKey}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 1. CASH PAYMENT MODE */}
+              {billingForm.paymentMode === "Cash" && (
+                <div className="p-4 bg-emerald-50/50 rounded-xl border border-emerald-200 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                  <div>
+                    <Label className="font-bold text-emerald-950">Cash Amount Payable (₹)</Label>
+                    <Input readOnly value={formatCurrency(billCalculations.grandTotal)} className="bg-white border-emerald-300 font-black text-emerald-800 text-sm mt-1" />
+                  </div>
+                  <div>
+                    <Label className="font-bold text-emerald-950">Cash Received By</Label>
+                    <Input value={billingForm.cashReceivedBy} onChange={(e) => setBillingForm({ ...billingForm, cashReceivedBy: e.target.value })} className="bg-white border-emerald-300 mt-1" />
+                  </div>
+                  <div>
+                    <Label className="font-bold text-emerald-950">Remarks / Cash Drawer Notes</Label>
+                    <Input placeholder="Counter collection" value={billingForm.cashRemarks} onChange={(e) => setBillingForm({ ...billingForm, cashRemarks: e.target.value })} className="bg-white border-emerald-300 mt-1" />
+                  </div>
+                </div>
+              )}
+
+              {/* 2. UPI PAYMENT MODE */}
+              {billingForm.paymentMode === "UPI" && (
+                <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-200 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                  <div>
+                    <Label className="font-bold text-blue-950">UPI Amount (₹)</Label>
+                    <Input readOnly value={formatCurrency(billCalculations.grandTotal)} className="bg-white border-blue-300 font-black text-blue-800 text-sm mt-1" />
+                  </div>
+                  <div>
+                    <Label className="font-bold text-blue-950">UPI Ref / UTR / Transaction ID *</Label>
+                    <Input placeholder="e.g. 423985729103" value={billingForm.upiTxnId} onChange={(e) => setBillingForm({ ...billingForm, upiTxnId: e.target.value })} className="bg-white border-blue-300 font-mono mt-1" />
+                  </div>
+                  <div>
+                    <Label className="font-bold text-blue-950">Remarks</Label>
+                    <Input placeholder="PhonePe / GPay / Paytm QR" value={billingForm.upiRemarks} onChange={(e) => setBillingForm({ ...billingForm, upiRemarks: e.target.value })} className="bg-white border-blue-300 mt-1" />
+                  </div>
+                </div>
+              )}
+
+              {/* 3. ONLINE PAYMENT MODE */}
+              {billingForm.paymentMode === "Online" && (
+                <div className="p-4 bg-indigo-50/50 rounded-xl border border-indigo-200 grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
+                  <div>
+                    <Label className="font-bold text-indigo-950">Online Amount (₹)</Label>
+                    <Input readOnly value={formatCurrency(billCalculations.grandTotal)} className="bg-white border-indigo-300 font-black text-indigo-800 text-sm mt-1" />
+                  </div>
+                  <div>
+                    <Label className="font-bold text-indigo-950">Transaction ID *</Label>
+                    <Input placeholder="TXN-9847192" value={billingForm.onlineTxnId} onChange={(e) => setBillingForm({ ...billingForm, onlineTxnId: e.target.value })} className="bg-white border-indigo-300 font-mono mt-1" />
+                  </div>
+                  <div>
+                    <Label className="font-bold text-indigo-950">Payment Gateway / Source</Label>
+                    <Select value={billingForm.onlineGateway} onValueChange={(v) => setBillingForm({ ...billingForm, onlineGateway: v })}>
+                      <SelectTrigger className="bg-white border-indigo-300 mt-1 font-semibold"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Razorpay POS">Razorpay POS</SelectItem>
+                        <SelectItem value="PineLabs Gateway">PineLabs Gateway</SelectItem>
+                        <SelectItem value="HDFC SmartHub">HDFC SmartHub</SelectItem>
+                        <SelectItem value="Direct NetBanking">Direct NetBanking</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="font-bold text-indigo-950">Reference ID</Label>
+                    <Input placeholder="Ref #" value={billingForm.onlineRefId} onChange={(e) => setBillingForm({ ...billingForm, onlineRefId: e.target.value })} className="bg-white border-indigo-300 mt-1" />
+                  </div>
+                </div>
+              )}
+
+              {/* 4. CARD PAYMENT MODE + MDR (REQ 11) */}
+              {billingForm.paymentMode === "Card" && (
+                <div className="p-4 bg-amber-50/50 rounded-xl border border-amber-200 space-y-3">
+                  <div className="flex items-center justify-between border-b border-amber-200/60 pb-2">
+                    <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                      <CreditCard className="w-3.5 h-3.5 text-amber-700" /> Credit / Debit Card Swipe & Merchant Discount Rate (MDR)
+                    </span>
+                    <span className="text-[11px] text-amber-800 font-medium">MDR does NOT alter customer selling price</span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-3 text-xs">
+                    <div>
+                      <Label className="font-bold text-amber-950">Card Swiped Amount (₹)</Label>
+                      <Input readOnly value={formatCurrency(billCalculations.grandTotal)} className="bg-white border-amber-300 font-black text-slate-900 mt-1" />
                     </div>
-                    <div className="bg-white/90 p-3 rounded-lg border border-amber-200 flex flex-wrap items-center justify-between gap-2">
-                      <div className="text-xs"><span className="text-muted-foreground font-medium">Monthly Installment: </span><span className="text-base font-black text-slate-900 ml-1">{formatCurrency(emiBreakdown.monthlyEMI)} <span className="text-xs font-normal text-slate-500">/ month</span></span></div>
-                      <div className="text-xs text-right">
-                        {billingForm.financeSchemeType === "no_cost" ? (
-                          <Badge variant="outline" className="font-bold text-emerald-700 bg-emerald-50 border-emerald-300">No-Cost EMI (0% Interest Offer)</Badge>
-                        ) : (
-                          <span className="font-bold text-amber-900">Total Interest Charge: <span className="text-red-600">{formatCurrency(emiBreakdown.totalInterest)}</span></span>
-                        )}
-                      </div>
+                    <div>
+                      <Label className="font-bold text-amber-950">POS Terminal / Card Type</Label>
+                      <Input value={billingForm.cardType} onChange={(e) => setBillingForm({ ...billingForm, cardType: e.target.value })} className="bg-white border-amber-300 mt-1" />
+                    </div>
+                    <div>
+                      <Label className="font-bold text-amber-950">Card Txn / RRN Number *</Label>
+                      <Input placeholder="RRN 38491823" value={billingForm.cardTxnId} onChange={(e) => setBillingForm({ ...billingForm, cardTxnId: e.target.value })} className="bg-white border-amber-300 font-mono mt-1" />
+                    </div>
+                    <div>
+                      <Label className="font-bold text-amber-950">MDR % (Configurable)</Label>
+                      <Input 
+                        type="number" step="0.1" min="0" max="10" 
+                        value={billingForm.cardMdrPercent} 
+                        onChange={(e) => setBillingForm({ ...billingForm, cardMdrPercent: Number(e.target.value) })} 
+                        className="bg-white border-amber-300 font-bold text-amber-900 mt-1" 
+                      />
+                    </div>
+                    <div>
+                      <Label className="font-bold text-emerald-950">Net Bank Settlement (₹)</Label>
+                      <Input readOnly value={formatCurrency(billCalculations.cardNetSettlement)} className="bg-emerald-100 border-emerald-300 font-black text-emerald-900 mt-1" />
                     </div>
                   </div>
+                  <div className="text-[11px] text-amber-900 flex items-center justify-between pt-1">
+                    <span>Card Invoice Total: <strong>{formatCurrency(billCalculations.grandTotal)}</strong></span>
+                    <span>Bank MDR Deducted: <strong className="text-red-600">-{formatCurrency(billCalculations.cardMdrAmount)} ({billingForm.cardMdrPercent}%)</strong></span>
+                    <span>Expected Settlement: <strong className="text-emerald-700">{formatCurrency(billCalculations.cardNetSettlement)}</strong></span>
+                  </div>
+                </div>
+              )}
+
+              {/* 5. FINANCE PAYMENT MODE (REQ 12 & 33) */}
+              {billingForm.paymentMode === "Finance" && (
+                <div className="p-4 bg-orange-50/60 rounded-xl border border-orange-200 space-y-4">
+                  <div className="flex items-center justify-between border-b border-orange-200 pb-2">
+                    <span className="text-xs font-black text-orange-950 flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-orange-600" /> Finance Provider & Delivery Order (DO) Details
+                    </span>
+                    <Badge className="bg-orange-600 text-white font-bold text-[10px]">FINANCE SALE WORKFLOW</Badge>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
+                    <div>
+                      <Label className="font-bold text-orange-950">Finance Provider *</Label>
+                      <Select value={billingForm.financeProvider} onValueChange={(v) => setBillingForm({ ...billingForm, financeProvider: v })}>
+                        <SelectTrigger className="bg-white border-orange-300 font-bold text-orange-900 mt-1"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Bajaj Finance Limited">Bajaj Finance Limited</SelectItem>
+                          <SelectItem value="HDB Financial Services">HDB Financial Services</SelectItem>
+                          <SelectItem value="IDFC First Bank">IDFC First Bank</SelectItem>
+                          <SelectItem value="TVS Credit">TVS Credit</SelectItem>
+                          <SelectItem value="Kotak Mahindra Prime">Kotak Mahindra Prime</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="font-bold text-orange-950">Finance DO ID *</Label>
+                      <Input placeholder="e.g. B432262868" value={billingForm.financeDoId} onChange={(e) => setBillingForm({ ...billingForm, financeDoId: e.target.value })} className="bg-white border-orange-300 font-mono font-bold mt-1" />
+                    </div>
+                    <div>
+                      <Label className="font-bold text-orange-950">Application / Deal ID</Label>
+                      <Input placeholder="e.g. CS289666676227" value={billingForm.financeAppId} onChange={(e) => setBillingForm({ ...billingForm, financeAppId: e.target.value })} className="bg-white border-orange-300 font-mono mt-1" />
+                    </div>
+                    <div>
+                      <Label className="font-bold text-orange-950">Customer Down Payment (₹)</Label>
+                      <Input 
+                        type="number" min="0" 
+                        value={billingForm.financeDownPayment} 
+                        onChange={(e) => setBillingForm({ ...billingForm, financeDownPayment: Math.max(0, Number(e.target.value)) })} 
+                        className="bg-white border-orange-300 font-bold text-emerald-800 mt-1" 
+                      />
+                    </div>
+                    <div>
+                      <Label className="font-bold text-orange-950">Gross Loan (₹)</Label>
+                      <Input readOnly value={formatCurrency(Math.max(0, billCalculations.grandTotal - Number(billingForm.financeDownPayment)))} className="bg-orange-100/70 border-orange-300 font-black text-orange-950 mt-1" />
+                    </div>
+                    <div>
+                      <Label className="font-bold text-orange-950">Approval Status</Label>
+                      <Select value={billingForm.financeApprovalStatus} onValueChange={(v: any) => setBillingForm({ ...billingForm, financeApprovalStatus: v })}>
+                        <SelectTrigger className="bg-white border-orange-300 font-bold text-slate-800 mt-1"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Pending">Pending</SelectItem>
+                          <SelectItem value="Under Review">Under Review</SelectItem>
+                          <SelectItem value="Approved">Approved</SelectItem>
+                          <SelectItem value="Disbursed">Disbursed</SelectItem>
+                          <SelectItem value="Reconciled">Reconciled</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label className="font-bold text-orange-950">Upload Finance DO / Approval PDF (URL or File Ref)</Label>
+                      <Input placeholder="Attachment link or scan reference" value={billingForm.financePdfUrl} onChange={(e) => setBillingForm({ ...billingForm, financePdfUrl: e.target.value })} className="bg-white border-orange-300 mt-1" />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* SECTION 4: PAYMENT SUMMARY & TOTALS (REQ 13) */}
+            <div className="bg-[#1B2537] text-white p-5 rounded-xl border border-slate-800 shadow-md grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+              <div className="space-y-1 text-xs">
+                <p className="text-slate-300">Total Items: <span className="font-bold text-white">{billingForm.lineItems.length} Products</span></p>
+                <p className="text-slate-300">Taxable Amount: <span className="font-bold text-white">{formatCurrency(billCalculations.totalTaxable)}</span></p>
+                <p className="text-slate-300">CGST (9%) + SGST (9%): <span className="font-bold text-[#76C043]">{formatCurrency(billCalculations.cgst)} + {formatCurrency(billCalculations.sgst)}</span></p>
+              </div>
+
+              <div className="space-y-1 text-xs">
+                {billCalculations.warrantyTotal > 0 && (
+                  <p className="text-purple-300">Extended Warranty: <span className="font-bold text-purple-200">+{formatCurrency(billCalculations.warrantyTotal)}</span></p>
+                )}
+                {billingForm.paymentMode === "Card" && (
+                  <p className="text-amber-300">MDR Deducted: <span className="font-bold text-amber-200">-{formatCurrency(billCalculations.cardMdrAmount)}</span></p>
+                )}
+                <p className="text-slate-300">Round Off: <span className="font-bold text-white">{billCalculations.roundOff > 0 ? `+₹${billCalculations.roundOff}` : `₹${billCalculations.roundOff}`}</span></p>
+                <p className="text-slate-300">Payment Mode: <span className="font-bold uppercase text-[#76C043]">{billingForm.paymentMode}</span></p>
+              </div>
+
+              <div className="text-right">
+                <p className="text-xs uppercase text-slate-400 font-semibold tracking-wider">Net Amount Payable</p>
+                <p className="text-3xl font-black text-[#76C043] tracking-tight">{formatCurrency(billCalculations.grandTotal)}</p>
+                {billingForm.paymentMode === "Finance" && (
+                  <p className="text-xs text-orange-300 font-bold mt-1">
+                    Down Pay: {formatCurrency(billingForm.financeDownPayment)} • Loan: {formatCurrency(Math.max(0, billCalculations.grandTotal - Number(billingForm.financeDownPayment)))}
+                  </p>
                 )}
               </div>
             </div>
-          )}
 
-          {/* REFUND MODE FOR CREDIT NOTES */}
-          {mode === "credit-note" && (
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-              <div className="space-y-1.5 pt-2">
-                <Label className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <CreditCard className="w-3.5 h-3.5 text-[#3F63AD]" /> Refund / Settlement Details
-                </Label>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <Select value={billingForm.paymentMode} onValueChange={(v) => setBillingForm({ ...billingForm, paymentMode: v })}>
-                    <SelectTrigger className="bg-slate-50 border-slate-300 font-semibold"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Cash Counter">Cash Counter</SelectItem>
-                      <SelectItem value="UPI / Card / NetBanking">UPI / Card / NetBanking</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  <div className="md:col-span-2 flex flex-col justify-end">
-                     <Label className="text-xs font-semibold text-slate-700 mb-1.5">Amount Refunded / Paid (₹)</Label>
-                     <Input 
-                       type="number" min="0"
-                       onKeyDown={(e) => ["-", "+", "e", "E"].includes(e.key) && e.preventDefault()}
-                       value={billingForm.advanceAmount || ""} 
-                       onChange={(e) => setBillingForm({ ...billingForm, advanceAmount: Math.max(0, Number(e.target.value)) })}
-                       className="bg-slate-50 border-slate-300 font-semibold"
-                       placeholder="e.g. 5000"
-                     />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TOTALS */}
-          <div className="bg-[#1B2537] text-white p-5 rounded-xl border border-slate-800 shadow-md flex flex-wrap items-center justify-between gap-4">
-            <div className="space-y-1 text-xs">
-              <p className="text-slate-300">Total Items Count: <span className="font-bold text-white">{billingForm.lineItems.length} Products</span></p>
-              <p className="text-slate-300">Taxable Subtotal: <span className="font-bold text-white">{formatCurrency(billCalculations.subtotal)}</span></p>
-              <p className="text-slate-300">Total GST Tax: <span className="font-bold text-[#76C043]">{formatCurrency(billCalculations.totalGst)}</span></p>
-            </div>
-            <div className="text-right">
-              <p className="text-xs uppercase text-slate-400 font-semibold">Grand Total Payable</p>
-              <p className="text-2xl font-black text-[#76C043]">{formatCurrency(billCalculations.grandTotal)}</p>
-            </div>
-          </div>
-
-          <DialogFooter className="bg-slate-100 px-6 py-4 rounded-b-2xl border-t border-slate-200 flex items-center justify-between">
-            <span className="text-xs text-slate-500 font-medium">* Generates official GST Tax Invoice with VALUEPLUS brand & printable layout</span>
-            <div className="flex justify-end gap-3">
-              <Button type="button" variant="ghost" onClick={onClose} className="text-slate-600">Cancel</Button>
-              <Button type="submit" disabled={createInvoiceMutation.isPending} className="bg-[#3F63AD] hover:bg-[#2E4F95] shadow-lg shadow-blue-900/20">
-                <Receipt className="w-4 h-4 mr-2" />
-                {mode === "estimate" ? "Generate Estimate" : mode === "credit-note" ? "Issue Credit Note" : "Generate Invoice"}
-              </Button>
-            </div>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-
-    {/* ─── OFFLINE INVOICE PRINT & PDF PREVIEW DIALOG ───────────────── */}
-    <Dialog open={!!offlineInvoiceToPrint} onOpenChange={(open) => {
-      if (!open) {
-        setOfflineInvoiceToPrint(null);
-        onSuccess?.();
-        onClose();
-      }
-    }}>
-      <DialogContent className="max-w-3xl p-0 rounded-2xl border-none shadow-2xl overflow-hidden bg-white max-h-[92vh] flex flex-col">
-        {offlineInvoiceToPrint && (
-          <div className="flex flex-col h-full">
-            {/* Offline Alert Banner */}
-            <div className="bg-amber-500 text-slate-950 px-6 py-2.5 text-xs font-bold flex items-center justify-between">
-              <span>⚡ OFFLINE MODE INVOICE — Saved locally & queued for cloud sync</span>
-              <span className="font-mono text-[11px] bg-black/10 px-2 py-0.5 rounded">
-                Ref: {offlineInvoiceToPrint.offlineId}
+            <DialogFooter className="bg-slate-100 px-6 py-4 rounded-b-2xl border-t border-slate-200 flex items-center justify-between">
+              <span className="text-xs text-slate-500 font-medium">
+                * Generates commercial Value Plus Tax Invoice matching official layout with dynamic multi-page rendering
               </span>
-            </div>
-
-            <div className="p-8 space-y-6 overflow-y-auto flex-1">
-              {/* Company Header */}
-              <div className="flex items-center justify-between border-b pb-4">
-                <div>
-                  <h2 className="text-2xl font-black text-slate-900 tracking-tight">VALUEPLUS RETAIL PVT LTD</h2>
-                  <p className="text-xs text-slate-500">Official GST Tax Invoice • Electronics & Appliances</p>
-                  <p className="text-xs text-slate-500 font-mono mt-0.5">GSTIN: 09AABCV1234F1Z8</p>
-                </div>
-                <div className="text-right">
-                  <span className="text-xs font-bold text-slate-400 uppercase">Invoice #</span>
-                  <p className="text-lg font-black font-mono text-[#3F63AD]">{offlineInvoiceToPrint.invoiceNumber || offlineInvoiceToPrint.invoiceNo}</p>
-                  <p className="text-xs text-slate-500">{offlineInvoiceToPrint.date || new Date().toISOString().split("T")[0]}</p>
-                </div>
-              </div>
-
-              {/* Customer Info */}
-              <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl text-xs">
-                <div>
-                  <span className="text-slate-400 block font-semibold uppercase text-[10px]">Billed To (Customer)</span>
-                  <p className="font-bold text-slate-900 text-sm">{offlineInvoiceToPrint.customerName}</p>
-                  <p className="text-slate-600">Phone: {offlineInvoiceToPrint.customerPhone || "N/A"}</p>
-                  <p className="text-slate-600">{offlineInvoiceToPrint.customerAddress || "Retail Counter Sale"}</p>
-                </div>
-                <div className="text-right">
-                  <span className="text-slate-400 block font-semibold uppercase text-[10px]">Payment Details</span>
-                  <p className="font-bold text-slate-800">{offlineInvoiceToPrint.paymentMode || "Cash Counter"}</p>
-                  <p className="font-bold text-emerald-600 uppercase mt-1">Status: Paid</p>
-                </div>
-              </div>
-
-              {/* Items Table */}
-              <div className="border rounded-xl overflow-hidden">
-                <table className="w-full text-xs">
-                  <thead className="bg-slate-100 border-b font-bold text-slate-700">
-                    <tr>
-                      <th className="px-3 py-2 text-left">#</th>
-                      <th className="px-3 py-2 text-left">Item Description</th>
-                      <th className="px-3 py-2 text-right">Qty</th>
-                      <th className="px-3 py-2 text-right">Rate</th>
-                      <th className="px-3 py-2 text-right">GST</th>
-                      <th className="px-3 py-2 text-right">Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {(offlineInvoiceToPrint.items || []).map((it: any, idx: number) => (
-                      <tr key={idx}>
-                        <td className="px-3 py-2 text-slate-400">{idx + 1}</td>
-                        <td className="px-3 py-2 font-bold text-slate-900">
-                          {it.itemName || it.name}
-                          {it.description && <span className="block font-mono text-[10px] text-slate-500 font-normal">{it.description}</span>}
-                        </td>
-                        <td className="px-3 py-2 text-right font-medium">{it.quantity}</td>
-                        <td className="px-3 py-2 text-right">{formatCurrency(it.rate)}</td>
-                        <td className="px-3 py-2 text-right">{it.gstRate || 18}%</td>
-                        <td className="px-3 py-2 text-right font-bold text-slate-900">{formatCurrency(it.amount || ((it.quantity * it.rate) * 1.18))}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Totals */}
-              <div className="border-t pt-4 flex flex-col items-end space-y-1 text-xs">
-                <div className="flex justify-between w-60 text-slate-600">
-                  <span>Taxable Subtotal:</span>
-                  <span className="font-mono">{formatCurrency(offlineInvoiceToPrint.taxableAmount || offlineInvoiceToPrint.subtotal)}</span>
-                </div>
-                <div className="flex justify-between w-60 text-slate-600">
-                  <span>Total GST:</span>
-                  <span className="font-mono">{formatCurrency(offlineInvoiceToPrint.totalGST || offlineInvoiceToPrint.gst)}</span>
-                </div>
-                <div className="flex justify-between w-60 text-base font-black text-slate-900 pt-2 border-t mt-2">
-                  <span>Grand Total:</span>
-                  <span className="font-mono text-[#3F63AD]">{formatCurrency(offlineInvoiceToPrint.total)}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Actions */}
-            <div className="bg-slate-100 px-6 py-4 border-t flex items-center justify-between shrink-0">
-              <span className="text-xs text-slate-500 font-medium">Customer receipt ready to print on counter.</span>
-              <div className="flex items-center gap-2">
-                <Button 
-                  variant="outline" 
-                  onClick={() => {
-                    setOfflineInvoiceToPrint(null);
-                    onSuccess?.();
-                    onClose();
-                  }}
-                >
-                  Close & Done
-                </Button>
-                <Button 
-                  onClick={() => window.print()} 
-                  className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white font-bold"
-                >
-                  <Printer className="w-4 h-4 mr-2" /> Print Tax Invoice
+              <div className="flex justify-end gap-3">
+                <Button type="button" variant="ghost" onClick={onClose} className="text-slate-600">Cancel</Button>
+                <Button type="submit" disabled={createInvoiceMutation.isPending} className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white font-bold px-6 shadow-lg shadow-blue-900/20">
+                  <Receipt className="w-4 h-4 mr-2" />
+                  {mode === "estimate" ? "Generate Estimate" : mode === "credit-note" ? "Issue Credit Note" : "Finalize & Generate Invoice"}
                 </Button>
               </div>
-            </div>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
-  </>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* AUTO-POPUP OFFICIAL TAX INVOICE PREVIEW & PRINT AFTER BILLING */}
+      {generatedInvoiceToPrint && (
+        <Dialog open={!!generatedInvoiceToPrint} onOpenChange={() => { setGeneratedInvoiceToPrint(null); onClose(); }}>
+          <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto p-2">
+            <ValueplusInvoice 
+              invoiceData={generatedInvoiceToPrint} 
+              onBack={() => { setGeneratedInvoiceToPrint(null); onClose(); }} 
+            />
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
   );
 }

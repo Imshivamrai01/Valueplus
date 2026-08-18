@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import AuthProvider from "@/components/providers/AuthProvider";
+import QueryProvider from "@/components/providers/QueryProvider";
+import { OfflineSyncProvider } from "@/components/shared/offline-sync-provider";
 
 export const metadata: Metadata = {
   title: "ValuePlus ERP — Enterprise Resource Planning",
@@ -7,9 +10,6 @@ export const metadata: Metadata = {
   keywords: ["ERP", "inventory", "accounting", "GST", "invoicing", "India", "ValuePlus"],
 };
 
-import AuthProvider from "@/components/providers/AuthProvider";
-import QueryProvider from "@/components/providers/QueryProvider";
-import { OfflineSyncProvider } from "@/components/shared/offline-sync-provider";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

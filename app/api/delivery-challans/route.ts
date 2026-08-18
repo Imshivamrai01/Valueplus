@@ -5,10 +5,11 @@ import DeliveryChallan from "@/models/DeliveryChallan";
 export async function GET() {
   try {
     await connectToDatabase();
-    const challans = await DeliveryChallan.find({}).sort({ createdAt: -1 });
-    return NextResponse.json({ success: true, data: challans });
+    const challans = await DeliveryChallan.find({}).sort({ createdAt: -1 }).lean();
+    return NextResponse.json({ success: true, data: challans || [] });
   } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    console.error("DeliveryChallan GET Error:", error);
+    return NextResponse.json({ success: false, error: error.message, data: [] }, { status: 200 });
   }
 }
 

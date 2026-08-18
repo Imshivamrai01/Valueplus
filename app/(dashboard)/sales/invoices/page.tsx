@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { 
   Plus, Search, Download, Eye, Edit, Trash2, MoreHorizontal, Receipt, CheckCircle, 
   Clock, AlertTriangle, XCircle, Printer, ShoppingCart, User, Building, CreditCard, 
-  Sparkles, CheckCircle2, FileText, Calendar, MapPin, Calculator, ShieldCheck, Ban
+  Sparkles, CheckCircle2, FileText, Calendar, MapPin, Calculator, ShieldCheck, Ban, MessageCircle
 } from "lucide-react";
 import { InvoiceCreationModal } from "@/components/InvoiceCreationModal";
 import { toast } from "sonner";
@@ -261,16 +261,28 @@ function SalesInvoicesContent() {
                     return (
                       <tr key={inv._id || inv.invoiceNumber} className="hover:bg-slate-50/70 transition-colors">
                         <td className="px-4 py-3">
-                          <button 
-                            className="font-semibold text-foreground hover:text-[#3F63AD] hover:underline flex items-center gap-1.5"
-                            onClick={() => {
-                              setActivePrintInvoice(inv);
-                              setIsPreviewOpen(true);
-                            }}
-                          >
-                            {inv.invoiceNumber}
-                            <FileText className="w-3 h-3 text-muted-foreground" />
-                          </button>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <button 
+                              className="font-semibold text-foreground hover:text-[#3F63AD] hover:underline flex items-center gap-1"
+                              onClick={() => {
+                                setActivePrintInvoice(inv);
+                                setIsPreviewOpen(true);
+                              }}
+                            >
+                              {inv.invoiceNumber}
+                              <FileText className="w-3 h-3 text-muted-foreground" />
+                            </button>
+                            {(inv.reprintCount || 0) > 0 ? (
+                              <span 
+                                className="font-mono text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-50 text-amber-800 border border-amber-300"
+                                title={`Reprinted ${inv.reprintCount} times`}
+                              >
+                                🖨️ {inv.reprintCount}x
+                              </span>
+                            ) : (
+                              <span className="text-[9px] font-mono text-slate-400">1st</span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex flex-col">
@@ -291,31 +303,61 @@ function SalesInvoicesContent() {
                           </Badge>
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-48">
-                              <DropdownMenuItem 
-                                className="gap-2 cursor-pointer text-[#3F63AD]"
-                                onClick={() => {
-                                  setActivePrintInvoice(inv);
-                                  setIsPreviewOpen(true);
-                                }}
-                              >
-                                <Eye className="h-4 w-4" /> View Details
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem 
-                                className="gap-2 cursor-pointer text-red-600 focus:text-red-600"
-                                onClick={() => setInvoiceToDelete(inv.invoiceNumber)}
-                              >
-                                <Trash2 className="h-4 w-4" /> Delete Invoice
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              className="h-7 px-2 text-[11px] font-semibold border-[#3F63AD]/40 text-[#3F63AD] hover:bg-[#3F63AD] hover:text-white"
+                              onClick={() => {
+                                setActivePrintInvoice(inv);
+                                setIsPreviewOpen(true);
+                              }}
+                              title="Print Official Invoice"
+                            >
+                              <Printer className="w-3 h-3 mr-1" /> Print
+                            </Button>
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              className="h-7 w-7 p-0 border-emerald-500 text-emerald-600 hover:bg-emerald-500 hover:text-white"
+                              onClick={() => {
+                                const cleanPhone = (inv.customerPhone || "").replace(/\D/g, "");
+                                const ph = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+                                const msg = encodeURIComponent(
+                                  `*VALUE PLUS / ASHOKA ENTERPRISES*\nTax Invoice #${inv.invoiceNumber}\nDate: ${inv.date || "Today"}\nCustomer: ${inv.customerName}\nTotal Amount: ₹${Number(inv.total || 0).toLocaleString("en-IN")}\nStatus: ${inv.status}\n\nThank you for choosing Value Plus! For support call 9140860604.`
+                                );
+                                window.open(ph ? `https://wa.me/${ph}?text=${msg}` : `https://wa.me/?text=${msg}`, '_blank');
+                              }}
+                              title="Share on WhatsApp"
+                            >
+                              <MessageCircle className="w-3.5 h-3.5" />
+                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-48">
+                                <DropdownMenuItem 
+                                  className="gap-2 cursor-pointer text-[#3F63AD]"
+                                  onClick={() => {
+                                    setActivePrintInvoice(inv);
+                                    setIsPreviewOpen(true);
+                                  }}
+                                >
+                                  <Eye className="h-4 w-4" /> Full Invoice Preview
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem 
+                                  className="gap-2 cursor-pointer text-red-600 focus:text-red-600"
+                                  onClick={() => setInvoiceToDelete(inv.invoiceNumber)}
+                                >
+                                  <Trash2 className="h-4 w-4" /> Delete Invoice
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -416,7 +458,15 @@ function SalesInvoicesContent() {
               if (!enrichedData.customerEmail) enrichedData.customerEmail = customer.email || "";
               if (!enrichedData.placeOfSupply) enrichedData.placeOfSupply = customer.billingAddress?.state || customer.state || "Uttar Pradesh (09)";
             }
-            return <ValueplusInvoice invoiceData={enrichedData} onBack={() => setIsPreviewOpen(false)} />;
+            return (
+              <ValueplusInvoice 
+                invoiceData={enrichedData} 
+                onBack={() => {
+                  setIsPreviewOpen(false);
+                  queryClient.invalidateQueries({ queryKey: ["invoices"] });
+                }} 
+              />
+            );
           })()}
         </DialogContent>
       </Dialog>
@@ -457,19 +507,19 @@ function SalesInvoicesContent() {
         <DialogContent className="max-w-4xl p-0 overflow-hidden rounded-2xl border-none shadow-2xl">
           {selectedCustomerForLedger && (() => {
             const c = selectedCustomerForLedger;
-            const custInvoices = invoices.filter((inv) => inv.customerName === c.name || inv.customerId === c._id);
+            const custInvoices = invoices.filter((inv: any) => inv.customerName === c.name || inv.customerId === c._id);
             const custPayments = payments.filter((p: any) => p.partyId === c._id || p.partyId === c.code);
             
-            const totalBilled = custInvoices.reduce((a, inv) => a + (inv.type === "credit-note" ? -(inv.total || 0) : (inv.total || 0)), 0);
-            const invoicePaidAmounts = custInvoices.reduce((a, inv) => a + (inv.paidAmount || (inv.status === 'paid' ? inv.total : 0) || 0), 0);
-            const txPaidAmounts = custPayments.reduce((a, p) => a + (p.type === "paid" ? -p.amount : p.amount), 0);
+            const totalBilled = custInvoices.reduce((a: number, inv: any) => a + (inv.type === "credit-note" ? -(inv.total || 0) : (inv.total || 0)), 0);
+            const invoicePaidAmounts = custInvoices.reduce((a: number, inv: any) => a + (inv.paidAmount || (inv.status === 'paid' ? inv.total : 0) || 0), 0);
+            const txPaidAmounts = custPayments.reduce((a: number, p: any) => a + (p.type === "paid" ? -p.amount : p.amount), 0);
             const totalPaid = invoicePaidAmounts + txPaidAmounts;
             const balance = totalBilled - totalPaid;
 
             const transactions = [
-              ...custInvoices.map((inv) => ({ ...inv, txType: "invoice", txDate: new Date(inv.date || inv.createdAt) })),
+              ...custInvoices.map((inv: any) => ({ ...inv, txType: "invoice", txDate: new Date(inv.date || inv.createdAt) })),
               ...custPayments.map((p: any) => ({ ...p, txType: "payment", txDate: new Date(p.date) }))
-            ].sort((a, b) => b.txDate.getTime() - a.txDate.getTime());
+            ].sort((a: any, b: any) => b.txDate.getTime() - a.txDate.getTime());
 
             return (
               <>

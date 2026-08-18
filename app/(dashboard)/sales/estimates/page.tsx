@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { Plus, Search, FileText, Send, CheckCircle, Clock, Trash2, AlertTriangle, Eye, User, CalendarDays, WalletCards } from "lucide-react";
+import { Plus, Search, FileText, Send, CheckCircle, Clock, Trash2, AlertTriangle, Eye, User, CalendarDays, WalletCards, Printer, MessageCircle } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -170,6 +170,7 @@ export default function EstimatesPage() {
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Estimate #</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Customer</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Salesperson</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Date</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Valid Until</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Amount</th>
@@ -180,31 +181,66 @@ export default function EstimatesPage() {
             <tbody className="divide-y">
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">Loading estimates...</td>
+                  <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">Loading estimates...</td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No estimates found</td>
+                  <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">No estimates found</td>
                 </tr>
               ) : filtered.map((e: any) => (
                 <tr key={e._id || e.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-3 font-mono font-bold text-[#3F63AD]">{e.estimateNumber || e.estimateNo}</td>
                   <td className="px-4 py-3 font-medium text-foreground">{e.customerName}</td>
+                  <td className="px-4 py-3 text-xs font-bold text-[#3F63AD] uppercase">
+                    {e.salesperson || e.salesExecutive || "AMIT SINGH"}
+                  </td>
                   <td className="px-4 py-3 text-muted-foreground text-xs">{formatDate(e.date)}</td>
                   <td className="px-4 py-3 text-muted-foreground text-xs">{formatDate(e.expiryDate)}</td>
                   <td className="px-4 py-3 text-right font-semibold">{formatCurrency(e.total || e.totalAmount)}</td>
                   <td className="px-4 py-3 text-center">
                     <Badge variant={e.status === "Accepted" ? "success" : e.status === "Sent" ? "info" : e.status === "Converted" ? "default" : "secondary"}>{e.status}</Badge>
                   </td>
-                  <td className="px-4 py-3 text-right flex items-center justify-end gap-1">
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-[#3F63AD] hover:bg-blue-50" onClick={() => setSelectedEstimate(e)}>
-                      <Eye className="w-4 h-4" />
+                  <td className="px-4 py-3 text-right flex items-center justify-end gap-1.5">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="h-7 px-2 text-[11px] font-semibold border-[#3F63AD]/40 text-[#3F63AD] hover:bg-[#3F63AD] hover:text-white"
+                      onClick={() => { 
+                        setActivePrintEstimate({
+                          ...e,
+                          type: "estimate",
+                          isEstimate: true,
+                          salesperson: e.salesperson || e.salesExecutive || "AMIT SINGH",
+                          salesExecutive: e.salesperson || e.salesExecutive || "AMIT SINGH",
+                        }); 
+                        setIsPreviewOpen(true); 
+                      }}
+                      title="Print Estimate / Quotation"
+                    >
+                      <Printer className="w-3 h-3 mr-1" /> Print
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-500 hover:text-blue-700 hover:bg-blue-50" onClick={() => { setActivePrintEstimate(e); setIsPreviewOpen(true); }}>
-                      <FileText className="w-4 h-4" />
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="h-7 w-7 p-0 border-emerald-500 text-emerald-600 hover:bg-emerald-500 hover:text-white"
+                      onClick={() => {
+                        const cleanPhone = (e.customerPhone || "").replace(/\D/g, "");
+                        const ph = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+                        const sp = e.salesperson || e.salesExecutive || "AMIT SINGH";
+                        const msg = encodeURIComponent(
+                          `*VALUE PLUS / ASHOKA ENTERPRISES*\nCommercial Estimate #${e.estimateNumber || e.estimateNo}\nDate: ${e.date || "Today"}\nCustomer: ${e.customerName}\nSalesperson: ${sp}\nEstimated Amount: ₹${Number(e.total || e.totalAmount || 0).toLocaleString("en-IN")}\nValid Until: ${e.expiryDate || "15 Days"}\n\nThank you for choosing Value Plus!`
+                        );
+                        window.open(ph ? `https://wa.me/${ph}?text=${msg}` : `https://wa.me/?text=${msg}`, '_blank');
+                      }}
+                      title="Share on WhatsApp"
+                    >
+                      <MessageCircle className="w-3.5 h-3.5" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => setEstimateToDelete(e.estimateNumber || e.estimateNo)}>
-                      <Trash2 className="w-4 h-4" />
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-[#3F63AD] hover:bg-blue-50" onClick={() => setSelectedEstimate(e)} title="View Info">
+                      <Eye className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => setEstimateToDelete(e.estimateNumber || e.estimateNo)} title="Delete">
+                      <Trash2 className="w-3.5 h-3.5" />
                     </Button>
                   </td>
                 </tr>
@@ -352,7 +388,13 @@ export default function EstimatesPage() {
         <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto p-2">
           {activePrintEstimate && (() => {
             const customer = customers.find((c: any) => c.name === activePrintEstimate.customerName);
-            const enrichedData = { ...activePrintEstimate };
+            const enrichedData = { 
+              ...activePrintEstimate,
+              type: "estimate",
+              isEstimate: true,
+              salesperson: activePrintEstimate.salesperson || activePrintEstimate.salesExecutive || "AMIT SINGH",
+              salesExecutive: activePrintEstimate.salesperson || activePrintEstimate.salesExecutive || "AMIT SINGH",
+            };
             if (customer) {
               if (!enrichedData.customerAddress) enrichedData.customerAddress = customer.billingAddress?.line1 || customer.address || "";
               if (!enrichedData.customerCity) enrichedData.customerCity = customer.billingAddress?.city || customer.city || "";
