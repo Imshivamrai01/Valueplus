@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { 
   Plus, Search, Download, Eye, Edit, Trash2, MoreHorizontal, Receipt, CheckCircle, 
@@ -40,6 +40,14 @@ const STATUS_CONFIG: Record<string, any> = {
   draft: { variant: "secondary" as const, icon: Receipt, label: "Draft" },
   offline: { variant: "warning" as const, icon: AlertTriangle, label: "Offline (Queued)" },
 };
+
+export default function SalesInvoicesPage() {
+  return (
+    <Suspense fallback={<div className="p-12 text-center text-muted-foreground">Loading Tax Invoices...</div>}>
+      <SalesInvoicesContent />
+    </Suspense>
+  );
+}
 
 function SalesInvoicesContent() {
   const router = useRouter();
@@ -676,14 +684,5 @@ function SalesInvoicesContent() {
         </DialogContent>
       </Dialog>
     </PageShell>
-  );
-}
-
-import { Suspense } from "react";
-export default function SalesInvoicesPage() {
-  return (
-    <Suspense fallback={<div className="p-12 text-center text-muted-foreground">Loading...</div>}>
-      <SalesInvoicesContent />
-    </Suspense>
   );
 }

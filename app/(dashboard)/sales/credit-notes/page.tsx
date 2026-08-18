@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { 
   Plus, Search, Download, FileMinus, MoreHorizontal, FileText, XCircle
@@ -13,8 +13,15 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { formatCurrency, formatDate, downloadCSV } from "@/lib/utils";
-
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+
+export default function CreditNotesPage() {
+  return (
+    <Suspense fallback={<div className="p-12 text-center text-muted-foreground">Loading Credit Notes...</div>}>
+      <CreditNotesContent />
+    </Suspense>
+  );
+}
 
 function CreditNotesContent() {
   const router = useRouter();
@@ -168,14 +175,5 @@ function CreditNotesContent() {
         mode="credit-note"
       />
     </PageShell>
-  );
-}
-
-import { Suspense } from "react";
-export default function CreditNotesPage() {
-  return (
-    <Suspense fallback={<div className="p-12 text-center text-muted-foreground">Loading...</div>}>
-      <CreditNotesContent />
-    </Suspense>
   );
 }
