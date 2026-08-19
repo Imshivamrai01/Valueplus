@@ -71,7 +71,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { title: "Tax Invoices", href: "/sales/invoices", icon: Receipt },
       { title: "Delivery Challan", href: "/sales/challan", icon: PackageCheck },
-      { title: "Finance DOs", href: "/sales/finance-do", icon: Sparkles },
+      { title: "Finance Ledger", href: "/sales/finance-do", icon: Sparkles },
       { title: "E-Way Bills", href: "/sales/eway-bill", icon: Truck },
       { title: "Receive Payment", href: "/sales/payments", icon: CreditCard },
       { title: "Credit Notes", href: "/sales/credit-notes", icon: FileMinus },

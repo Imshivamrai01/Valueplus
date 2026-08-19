@@ -198,8 +198,8 @@ export async function POST(req: Request) {
         await invoice.save();
       }
 
-      // 4.6 Register Finance Transaction if Payment Mode is Finance
-      if (body.paymentMode === "Finance" || body.financeProvider || body.financeDoId) {
+      // 4.6 Register Finance Transaction ONLY if Payment Mode is Finance
+      if (body.paymentMode === "Finance") {
         const FinanceTransaction = (await import("@/models/FinanceTransaction")).default;
         const doId = body.financeDoId || `DO-2026-${Math.floor(100000000 + Math.random() * 900000000)}`;
         
@@ -220,10 +220,12 @@ export async function POST(req: Request) {
             atosDealId: body.financeAppId || `CS${Date.now()}`,
             doId,
             date: invoice.date,
-            assetCategory: "LED",
+            assetCategory: body.items?.[0]?.category || "Electronics",
             oemCategory: body.items?.[0]?.itemName || "Electronics",
-            manufacturer: "HAVELLS INDIA LTD(Lloyd)",
+            manufacturer: body.items?.[0]?.brand || "Havells (Lloyd)",
+            brand: body.items?.[0]?.brand || "Havells (Lloyd)",
             model: body.items?.[0]?.itemName || "",
+            productModel: body.items?.[0]?.itemName || "",
             productPrice: invoice.total,
             grossLoanAmount: grossLoan,
             netLoanAmount: grossLoan,

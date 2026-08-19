@@ -229,23 +229,25 @@ export function FinanceDODocument({ data, onBack }: FinanceDODocumentProps) {
           </tbody>
         </table>
 
-        {/* CALCULATION FORMULAS REFERENCE BOX */}
-        <div className="grid grid-cols-4 border border-slate-400 text-[8.5px] p-2 gap-2 bg-slate-50">
-          <div>
-            <span className="font-bold block">Margin Money(D)=</span>
-            <span>A - B</span>
-          </div>
-          <div>
-            <span className="font-bold block">Down Payment (Y)=</span>
-            <span>D+E+F+G+J+AC+AD+K+M+N+V+W+AAB+CS-X-T-YY</span>
-          </div>
-          <div>
-            <span className="font-bold block">Total Deductions(Z) =</span>
-            <span>D+E+F+G+H+I+J+AC+AD+L+M+N+V+W+AE+AAC+BBB+AB+XBA+YA+BA+TDS+CS</span>
-          </div>
-          <div>
-            <span className="font-bold block">Net Disbursement(AA) =</span>
-            <span>A+X+YY-Z-TDS-CS-BB+BC</span>
+        {/* CALCULATION FORMULAS REFERENCE BOX (FIXED OVERLAPPING) */}
+        <div className="border border-slate-400 bg-slate-50 p-2.5 rounded-sm text-[8px] font-mono leading-relaxed space-y-1.5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1.5">
+            <div className="break-words">
+              <span className="font-bold text-slate-900">Margin Money (D): </span>
+              <span className="text-slate-700">A − B</span>
+            </div>
+            <div className="break-words">
+              <span className="font-bold text-slate-900">Down Payment (Y): </span>
+              <span className="text-slate-700">D + E + F + G + J + AC + AD + K + M + N + V + W + AAB + CS − X − T − YY</span>
+            </div>
+            <div className="break-words">
+              <span className="font-bold text-slate-900">Total Deductions (Z): </span>
+              <span className="text-slate-700">D + E + F + G + H + I + J + AC + AD + L + M + N + V + W + AE + AAC + BBB + AB + XBA + YA + BA + TDS + CS</span>
+            </div>
+            <div className="break-words">
+              <span className="font-bold text-slate-900">Net Disbursement (AA): </span>
+              <span className="text-slate-700 font-bold text-emerald-900">A + X + YY − Z − TDS − CS − BB + BC</span>
+            </div>
           </div>
         </div>
 

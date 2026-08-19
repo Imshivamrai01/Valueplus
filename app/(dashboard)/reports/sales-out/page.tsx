@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { PageShell } from "@/components/shared/page-shell";
 import { Input } from "@/components/ui/input";
@@ -8,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Search, Download, Printer, Filter, Receipt, FileText, ArrowUpDown } from "lucide-react";
+import { DateRangeFilter, resolveDateRange } from "@/components/shared/date-range-filter";
 import Link from "next/link";
 
 function formatCurrency(val: number) {
@@ -19,16 +21,67 @@ function formatCurrency(val: number) {
 }
 
 export default function SalesOutReportPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-slate-500">Loading Sales Out Report...</div>}>
+      <SalesOutReportContent />
+    </Suspense>
+  );
+}
+
+function SalesOutReportContent() {
+  const searchParams = useSearchParams();
+  const initialDueOnly = searchParams.get("dueOnly") === "false" ? "all" : "due";
+  const initialDateFilter = searchParams.get("dateFilter") || "This Month";
+  const initialStartDate = searchParams.get("startDate") || resolveDateRange(initialDateFilter).start;
+  const initialEndDate = searchParams.get("endDate") || resolveDateRange(initialDateFilter).end;
+
   const [searchTerm, setSearchTerm] = useState("");
-  const [paymentModeFilter, setPaymentModeFilter] = useState("all");
-  const [dueOnlyFilter, setDueOnlyFilter] = useState("all");
+  const [bankFilter, setBankFilter] = useState("all");
+  const [dueOnlyFilter, setDueOnlyFilter] = useState(initialDueOnly);
   const [staffFilter, setStaffFilter] = useState("all");
+  const [dateFilter, setDateFilter] = useState(initialDateFilter);
+  const [startDate, setStartDate] = useState(initialStartDate);
+  const [endDate, setEndDate] = useState(initialEndDate);
+
+  useEffect(() => {
+    const qDue = searchParams.get("dueOnly");
+    if (qDue === "true") setDueOnlyFilter("due");
+    else if (qDue === "false") setDueOnlyFilter("all");
+
+    const qDate = searchParams.get("dateFilter");
+    if (qDate) {
+      setDateFilter(qDate);
+      const qStart = searchParams.get("startDate");
+      const qEnd = searchParams.get("endDate");
+      if (qDate === "Custom Date" && qStart && qEnd) {
+        setStartDate(qStart);
+        setEndDate(qEnd);
+      } else {
+        const resolved = resolveDateRange(qDate);
+        setStartDate(resolved.start);
+        setEndDate(resolved.end);
+      }
+    }
+  }, [searchParams]);
+
+  const handleDateChange = (val: string, s?: string, e?: string) => {
+    setDateFilter(val);
+    if (val === "Custom Date" && s && e) {
+      setStartDate(s);
+      setEndDate(e);
+    } else {
+      const resolved = resolveDateRange(val);
+      setStartDate(resolved.start);
+      setEndDate(resolved.end);
+    }
+  };
 
   const { data: reportResponse, isLoading } = useQuery({
-    queryKey: ["salesOutReport", paymentModeFilter, dueOnlyFilter, staffFilter],
+    queryKey: ["salesOutReport", bankFilter, dueOnlyFilter, staffFilter, startDate, endDate],
     queryFn: async () => {
       let url = "/api/reports/sales-out?";
-      if (paymentModeFilter !== "all") url += `paymentMode=${paymentModeFilter}&`;
+      if (startDate && endDate) url += `startDate=${startDate}&endDate=${endDate}&`;
+      if (bankFilter !== "all") url += `bank=${encodeURIComponent(bankFilter)}&`;
       if (dueOnlyFilter === "due") url += `dueOnly=true&`;
       if (staffFilter !== "all") url += `staff=${encodeURIComponent(staffFilter)}&`;
       const res = await fetch(url);
@@ -43,12 +96,13 @@ export default function SalesOutReportPage() {
     (item.customerName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
     (item.billNumber || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
     (item.customerPhone || "").includes(searchTerm) ||
+    (item.financeProvider || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
     (item.staff || "").toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const downloadCSV = () => {
     if (filtered.length === 0) return;
-    const headers = ["Due", "Date", "Amount", "Bill Number", "Customer Name", "Mobile", "Staff", "Payment Mode", "Paid Amount", "Due Amount", "Invoice Status", "Finance Status"];
+    const headers = ["Due", "Date", "Amount", "Bill Number", "Customer Name", "Mobile", "Staff", "Payment Mode", "Finance Bank", "Paid Amount", "Due Amount", "Invoice Status", "Finance Status"];
     const rows = filtered.map((i: any) => [
       i.due,
       i.date,
@@ -58,6 +112,7 @@ export default function SalesOutReportPage() {
       i.customerPhone,
       `"${i.staff}"`,
       i.paymentMode,
+      `"${i.financeProvider || 'N/A'}"`,
       i.paidAmount,
       i.dueAmount,
       i.invoiceStatus,
@@ -104,35 +159,55 @@ export default function SalesOutReportPage() {
           <div className="relative flex-1 min-w-[260px] max-w-md">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <Input
-              placeholder="Search bill number, customer, phone or staff..."
+              placeholder="Search bill number, customer, phone, bank or staff..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-9 bg-slate-50 border-slate-300 text-xs"
             />
           </div>
 
-          <div className="flex items-center gap-2">
-            <Select value={paymentModeFilter} onValueChange={setPaymentModeFilter}>
-              <SelectTrigger className="w-[140px] text-xs bg-slate-50 border-slate-300 font-semibold">
-                <SelectValue placeholder="Payment Mode" />
+          <div className="flex flex-wrap items-center gap-2">
+            <DateRangeFilter
+              value={dateFilter}
+              onChange={handleDateChange}
+              className="w-[145px] h-9 text-xs"
+            />
+
+            {/* BANK & FINANCE PROVIDER FILTER */}
+            <Select value={bankFilter} onValueChange={setBankFilter}>
+              <SelectTrigger className="w-[180px] h-9 text-xs bg-slate-50 border-slate-300 font-semibold">
+                <SelectValue placeholder="All Banks / Modes" />
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Modes</SelectItem>
-                <SelectItem value="Cash">Cash</SelectItem>
-                <SelectItem value="UPI">UPI</SelectItem>
-                <SelectItem value="Online">Online</SelectItem>
-                <SelectItem value="Card">Card</SelectItem>
-                <SelectItem value="Finance">Finance</SelectItem>
+              <SelectContent className="max-h-72">
+                <SelectItem value="all">🏦 All Banks & Modes</SelectItem>
+                
+                <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50 mt-1 border-t border-b">
+                  Finance Banks / Providers
+                </div>
+                <SelectItem value="Bajaj Finance Limited">Bajaj Finance Limited</SelectItem>
+                <SelectItem value="HDB Financial Services">HDB Financial Services</SelectItem>
+                <SelectItem value="IDFC First Bank">IDFC First Bank</SelectItem>
+                <SelectItem value="TVS Credit">TVS Credit</SelectItem>
+                <SelectItem value="Kotak Mahindra Prime">Kotak Mahindra Prime</SelectItem>
+                <SelectItem value="Finance">All Finance DOs</SelectItem>
+
+                <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50 mt-1 border-t border-b">
+                  Direct Payment Modes
+                </div>
+                <SelectItem value="Cash">Cash Counter</SelectItem>
+                <SelectItem value="UPI">UPI / QR Code</SelectItem>
+                <SelectItem value="Online">Online NetBanking</SelectItem>
+                <SelectItem value="Card">Card (POS Swipe)</SelectItem>
               </SelectContent>
             </Select>
 
             <Select value={dueOnlyFilter} onValueChange={setDueOnlyFilter}>
-              <SelectTrigger className="w-[130px] text-xs bg-slate-50 border-slate-300 font-semibold">
+              <SelectTrigger className="w-[125px] h-9 text-xs bg-slate-50 border-slate-300 font-semibold">
                 <SelectValue placeholder="Due Filter" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Bills</SelectItem>
                 <SelectItem value="due">Due Only</SelectItem>
+                <SelectItem value="all">All Bills</SelectItem>
               </SelectContent>
             </Select>
 
@@ -145,21 +220,19 @@ export default function SalesOutReportPage() {
           </div>
         </div>
 
-        {/* PRIMARY SALES OUT TABLE (REQ 39 EXACT SPECIFICATION) */}
+        {/* PRIMARY SALES OUT TABLE */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <table className="w-full text-xs text-left">
             <thead className="bg-slate-50 border-b text-slate-700 uppercase font-bold">
               <tr>
-                {/* 5 MANDATORY COLUMNS: Due, Date, Amount, Bill Number, Customer Name */}
                 <th className="p-3 text-right">Due (₹)</th>
                 <th className="p-3">Date</th>
                 <th className="p-3 text-right">Amount (₹)</th>
                 <th className="p-3">Bill Number</th>
                 <th className="p-3">Customer Name</th>
-                {/* ENHANCED COLUMNS */}
                 <th className="p-3">Mobile</th>
                 <th className="p-3">Staff</th>
-                <th className="p-3">Payment Mode</th>
+                <th className="p-3">Payment / Bank</th>
                 <th className="p-3 text-right">Paid (₹)</th>
                 <th className="p-3 text-center">Finance Status</th>
                 <th className="p-3 text-center">Invoice Status</th>
@@ -200,11 +273,18 @@ export default function SalesOutReportPage() {
                     <td className="p-3 font-mono text-slate-600">{r.customerPhone}</td>
                     {/* Staff */}
                     <td className="p-3 text-slate-700">{r.staff}</td>
-                    {/* Payment Mode */}
+                    {/* Payment Mode / Bank */}
                     <td className="p-3">
-                      <Badge variant="outline" className="font-bold text-slate-800 uppercase text-[10px]">
-                        {r.paymentMode}
-                      </Badge>
+                      <div className="flex flex-col gap-0.5">
+                        <Badge variant="outline" className="font-bold text-slate-800 uppercase text-[10px] w-fit">
+                          {r.paymentMode}
+                        </Badge>
+                        {r.financeProvider && (
+                          <span className="text-[10.5px] text-orange-700 font-semibold truncate max-w-[140px]" title={r.financeProvider}>
+                            {r.financeProvider}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     {/* Paid Amount */}
                     <td className="p-3 text-right font-mono text-emerald-800 font-bold">

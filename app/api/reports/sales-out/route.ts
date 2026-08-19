@@ -8,6 +8,7 @@ export async function GET(req: Request) {
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
     const paymentMode = searchParams.get("paymentMode");
+    const bank = searchParams.get("bank");
     const dueOnly = searchParams.get("dueOnly");
     const staff = searchParams.get("staff");
     const customer = searchParams.get("customer");
@@ -26,7 +27,18 @@ export async function GET(req: Request) {
       filter.date = { $lte: endDate };
     }
     
-    if (paymentMode && paymentMode !== "all") {
+    if (bank && bank !== "all") {
+      if (["Cash", "UPI", "Online", "Card"].includes(bank)) {
+        filter.paymentMode = bank;
+      } else if (bank === "Finance") {
+        filter.paymentMode = "Finance";
+      } else {
+        filter.$or = [
+          { financeProvider: { $regex: bank, $options: "i" } },
+          { paymentMode: { $regex: bank, $options: "i" } }
+        ];
+      }
+    } else if (paymentMode && paymentMode !== "all") {
       filter.paymentMode = paymentMode;
     }
     
@@ -58,6 +70,7 @@ export async function GET(req: Request) {
       dueAmount: inv.balanceAmount || 0,
       invoiceStatus: inv.status,
       financeStatus: inv.financeApprovalStatus || (inv.paymentMode === "Finance" ? "Pending" : "N/A"),
+      financeProvider: inv.financeProvider || (inv.paymentMode === "Finance" ? "Bajaj Finance" : ""),
       vehicleNumber: inv.vehicleNumber || "",
       extendedWarrantyTotal: inv.extendedWarrantyTotal || 0,
     }));

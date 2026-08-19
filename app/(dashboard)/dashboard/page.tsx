@@ -1135,7 +1135,14 @@ export default function DashboardPage() {
 
                 {/* TODAY'S DUE / OUTSTANDING SECTION */}
                 <div 
-                  onClick={() => router.push("/reports/sales-out")}
+                  onClick={() => {
+                    const activeDate = widgetFilters?.pie || dateFilter || "Today";
+                    let url = `/reports/sales-out?dueOnly=true&dateFilter=${encodeURIComponent(activeDate)}`;
+                    if (startDate && endDate) {
+                      url += `&startDate=${startDate}&endDate=${endDate}`;
+                    }
+                    router.push(url);
+                  }}
                   className="bg-rose-50/80 border border-rose-200 rounded-lg p-2.5 flex flex-col justify-between hover:border-rose-400 hover:shadow-sm transition-all cursor-pointer group"
                 >
                   <div className="flex items-center justify-between">

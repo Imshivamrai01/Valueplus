@@ -15,6 +15,7 @@ export interface IFinanceTransaction extends Document {
   assetCategory?: string;
   oemCategory?: string;
   manufacturer?: string;
+  brand?: string;
   productModel?: string;
   eanNumber?: string;
   schemeCode?: string;
@@ -69,6 +70,7 @@ const FinanceTransactionSchema = new Schema<IFinanceTransaction>(
     assetCategory: { type: String, default: "LED" },
     oemCategory: { type: String, default: "LLOYD - LED" },
     manufacturer: { type: String, default: "HAVELLS INDIA LTD(Lloyd)" },
+    brand: { type: String, default: "" },
     productModel: { type: String, default: "" },
 
     eanNumber: { type: String, default: "N/A" },

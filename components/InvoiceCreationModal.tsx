@@ -451,6 +451,7 @@ export function InvoiceCreationModal({
       return {
         itemId: item.itemId || `ITEM-${Date.now()}`,
         itemName: item.name,
+        brand: item.brand || item.brandName || "Havells (Lloyd)",
         itemCode: item.itemCode || "GEN",
         vpCode: item.vpCode || item.itemCode || "",
         description: item.serialNumber ? `Serial/IMEI: ${item.serialNumber}` : (item.batchNumber ? `Batch: ${item.batchNumber}` : ""),
@@ -508,10 +509,13 @@ export function InvoiceCreationModal({
       status: balanceAmt === 0 ? "paid" : (paidAmt > 0 ? "partial" : "sent"),
       
       // Payment specifics
-      cardMdrPercent: billingForm.cardMdrPercent,
-      cardMdrAmount: billCalculations.cardMdrAmount,
-      cardNetSettlement: billCalculations.cardNetSettlement,
+      cardMdrPercent: billingForm.paymentMode === "Card" ? billingForm.cardMdrPercent : 0,
+      cardMdrAmount: billingForm.paymentMode === "Card" ? billCalculations.cardMdrAmount : 0,
+      cardNetSettlement: billingForm.paymentMode === "Card" ? billCalculations.cardNetSettlement : 0,
       
+      financeProvider: isFinance ? billingForm.financeProvider : "",
+      financeDoId: isFinance ? billingForm.financeDoId : "",
+      financeAppId: isFinance ? billingForm.financeAppId : "",
       financeGrossLoan: isFinance ? (billCalculations.grandTotal - downPay) : 0,
       financeNetLoan: isFinance ? (billCalculations.grandTotal - downPay) : 0,
     });
