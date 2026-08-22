@@ -6,7 +6,7 @@ import Item from "@/models/Item";
 export async function GET() {
   try {
     await connectToDatabase();
-    const brands = await Brand.find({}).sort({ createdAt: -1 }).lean();
+    const brands = await Brand.find({}).collation({ locale: "en", strength: 2 }).sort({ name: 1 }).lean();
     
     // Add item count to each brand
     const brandsWithItemCount = await Promise.all(

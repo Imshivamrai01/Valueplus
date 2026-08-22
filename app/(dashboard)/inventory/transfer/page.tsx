@@ -12,6 +12,8 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import { toast } from "sonner";
 import { formatDate } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useBranch } from "@/context/BranchContext";
+import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 
 interface TransferItem {
   id: string;
@@ -201,19 +203,25 @@ function SearchableItemSelect({
 
 export default function StockTransferPage() {
   const queryClient = useQueryClient();
+  const { activeLocation, locations } = useBranch();
   const [search, setSearch] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [transferToDelete, setTransferToDelete] = useState<string | null>(null);
+  
+  const defaultSource = activeLocation?.name || "Ashoka Enterprises (Kunraghat Showroom)";
+  const defaultDest = locations.find(l => l.name !== defaultSource)?.name || "Value Plus (Deoria Road Branch)";
+
   const [formData, setFormData] = useState({
-    fromWarehouse: "Main Store - Mumbai",
-    toWarehouse: "Pune Branch",
+    fromWarehouse: defaultSource,
+    toWarehouse: defaultDest,
     items: [{ itemId: "", itemName: "", quantity: 1, unit: "PCS", hsn: "", currentStock: 0 }],
   });
 
   const { data: items = [] } = useQuery({ 
-    queryKey: ["items"], 
+    queryKey: ["items", formData.fromWarehouse], 
     queryFn: async () => {
-      const res = await fetch("/api/items");
+      const whParam = formData.fromWarehouse ? `?warehouse=${encodeURIComponent(formData.fromWarehouse)}` : "";
+      const res = await fetch(`/api/items${whParam}`);
       const json = await res.json();
       return json.success ? json.data : [];
     }
@@ -385,7 +393,9 @@ export default function StockTransferPage() {
             <tbody className="divide-y">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">Loading...</td>
+                  <td colSpan={7} className="p-0">
+                    <TableShimmer rows={6} cols={7} />
+                  </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
@@ -411,17 +421,48 @@ export default function StockTransferPage() {
                   <td className="px-4 py-3 text-center font-bold">{t.items?.reduce((acc: number, item: any) => acc + item.quantity, 0)} Items</td>
                   <td className="px-4 py-3 text-muted-foreground text-xs">{formatDate(t.date)}</td>
                   <td className="px-4 py-3 text-center">
-                    <Badge variant={t.status === "received" ? "success" : "info"}>{t.status}</Badge>
+                    <Badge variant={t.status === "received" ? "success" : "info"}>
+                      {t.status === "received" ? "Delivered & Received" : "In-Transit"}
+                    </Badge>
                   </td>
                   <td className="px-4 py-3 text-center">
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
-                      onClick={() => setTransferToDelete(t.transferNo)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                    <div className="flex items-center justify-center gap-1.5">
+                      {t.status !== "received" && (
+                        <Button
+                          size="sm"
+                          onClick={async () => {
+                            try {
+                              const res = await fetch(`/api/stock-transfers?transferNo=${t.transferNo}`, {
+                                method: "PUT",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ status: "received" }),
+                              });
+                              const json = await res.json();
+                              if (json.success) {
+                                toast.success(`Transfer ${t.transferNo} Received & Stock credited to ${t.toWarehouse}!`);
+                                queryClient.invalidateQueries({ queryKey: ["stock-transfers"] });
+                                queryClient.invalidateQueries({ queryKey: ["items"] });
+                              } else {
+                                toast.error(json.error || "Failed to receive transfer");
+                              }
+                            } catch (e: any) {
+                              toast.error(e.message || "Network error");
+                            }
+                          }}
+                          className="h-7 px-2.5 text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
+                        >
+                          <Check className="w-3.5 h-3.5 mr-1" /> Receive Stock
+                        </Button>
+                      )}
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                        onClick={() => setTransferToDelete(t.transferNo)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </td>
                 </tr>
                 ))
@@ -456,11 +497,11 @@ export default function StockTransferPage() {
                   <Select value={formData.fromWarehouse} onValueChange={(v) => setFormData({ ...formData, fromWarehouse: v })}>
                     <SelectTrigger className="bg-slate-50 border-slate-300"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Main Store - Mumbai">Main Store - Mumbai</SelectItem>
-                      <SelectItem value="Main Store - Gorakhpur">Main Store - Gorakhpur</SelectItem>
-                      <SelectItem value="Pune Branch">Pune Branch</SelectItem>
-                      <SelectItem value="Delhi Hub">Delhi Hub</SelectItem>
-                      <SelectItem value="Bengaluru Store">Bengaluru Store</SelectItem>
+                      {locations.map((loc) => (
+                        <SelectItem key={`from-${loc.id}`} value={loc.name}>
+                          {loc.name} ({loc.type === "warehouse" ? "Godown" : "Showroom"})
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -470,11 +511,11 @@ export default function StockTransferPage() {
                   <Select value={formData.toWarehouse} onValueChange={(v) => setFormData({ ...formData, toWarehouse: v })}>
                     <SelectTrigger className="bg-slate-50 border-slate-300"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Main Store - Mumbai">Main Store - Mumbai</SelectItem>
-                      <SelectItem value="Main Store - Gorakhpur">Main Store - Gorakhpur</SelectItem>
-                      <SelectItem value="Pune Branch">Pune Branch</SelectItem>
-                      <SelectItem value="Delhi Hub">Delhi Hub</SelectItem>
-                      <SelectItem value="Bengaluru Store">Bengaluru Store</SelectItem>
+                      {locations.map((loc) => (
+                        <SelectItem key={`to-${loc.id}`} value={loc.name}>
+                          {loc.name} ({loc.type === "warehouse" ? "Godown" : "Showroom"})
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>

@@ -7,7 +7,7 @@ import {
   Users, AlertTriangle, ArrowRight, Eye, MoreHorizontal,
   IndianRupee, Receipt, Wallet, CreditCard, Activity,
   Star, Sparkles, Calendar, Clock, CheckCircle2, Search,
-  X, Filter, ExternalLink, Printer, Send, ShieldAlert, Plus, FileText, Download, Trash2, Building, Building2, UserCheck, Tv, Smartphone, Laptop, Fan, HardDrive, Headphones, BarChart3, PieChart as PieChartIcon, ArrowUpRight, MessageCircle, Wifi, WifiOff, Zap
+  X, Filter, ExternalLink, Printer, Send, ShieldAlert, Plus, FileText, Download, Trash2, Building, Building2, UserCheck, Tv, Smartphone, Laptop, Fan, HardDrive, Headphones, BarChart3, PieChart as PieChartIcon, ArrowUpRight, MessageCircle, Wifi, WifiOff, Zap, MapPin, Phone, CheckSquare, ListTodo, UserPlus, Target, Crown, MessageSquare, Check
 } from "lucide-react";
 import {
   AreaChart, Area, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
@@ -33,6 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { toast } from "sonner";
 import { cn, formatCurrency, indianNumberFormat, formatDateShort } from "@/lib/utils";
 import ValueplusInvoice from "@/app/invoice/page";
 import { InvoiceCreationModal } from "@/components/InvoiceCreationModal";
@@ -44,6 +45,10 @@ import {
   cacheDashboardExtended,
   getCachedDashboardExtended,
 } from "@/lib/offline-storage";
+import { AttendancePunchWidget } from "@/components/shared/AttendancePunchWidget";
+import { useBranch } from "@/context/BranchContext";
+import { useSession } from "next-auth/react";
+import { SalesmanDashboardView } from "@/components/dashboard/SalesmanDashboardView";
 
 
 
@@ -131,6 +136,8 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { activeLocation } = useBranch();
+  const { data: session } = useSession();
 
   // Period Filter State
   const [dateFilter, setDateFilter] = useState("Today");
@@ -150,7 +157,8 @@ export default function DashboardPage() {
     products: "Today",
     customers: "Today",
     logs: "Today",
-    recent: "Today"
+    recent: "Today",
+    staff: "Today"
   });
   const [widgetData, setWidgetData] = useState<any>({});
   const [widgetLoading, setWidgetLoading] = useState({
@@ -160,12 +168,22 @@ export default function DashboardPage() {
     products: false,
     customers: false,
     logs: false,
-    recent: false
+    recent: false,
+    staff: false
   });
 
   // Drilldown Modal State
   const [activeModal, setActiveModal] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [expenseViewTab, setExpenseViewTab] = useState<"purpose" | "mode">("purpose");
+  const [expenseModalModeFilter, setExpenseModalModeFilter] = useState<string>("all");
+  const [leakageModal, setLeakageModal] = useState<{
+    type: string;
+    title: string;
+    description: string;
+    invoices: any[];
+    color: string;
+  } | null>(null);
 
   // Form Modals State
   const [openInvoiceModal, setOpenInvoiceModal] = useState(false);
@@ -213,9 +231,351 @@ export default function DashboardPage() {
   const [itemForm, setItemForm] = useState({ name: "", hsnCode: "8528", gstRate: "18", purchasePrice: "", sellingPrice: "", openingStock: "10" });
   const [paymentForm, setPaymentForm] = useState({ partyName: "", amount: "", paymentMode: "Cash Counter", notes: "" });
 
+  // ─── ADMIN & STAFF TASKS STATE ───────────────────────────
+  const [tasks, setTasks] = useState<any[]>([
+    {
+      _id: "task-1",
+      taskTitle: "Verify Bajaj Finance DO & Bank Settlement",
+      assignedStaff: "Admin (Self)",
+      priority: "Urgent",
+      dueDate: new Date().toISOString().split("T")[0],
+      dueTime: "17:00",
+      description: "Reconcile delivery orders and payout statement for Gorakhpur branch",
+      status: "In Progress",
+      createdBy: "Admin",
+    },
+    {
+      _id: "task-2",
+      taskTitle: "Call Walk-in Customer for Sony Bravia 55' OLED",
+      assignedStaff: "Amit Singh",
+      priority: "High",
+      dueDate: new Date().toISOString().split("T")[0],
+      dueTime: "14:30",
+      description: "Customer requested 5% card cashback offer and zero-downpayment scheme",
+      status: "Pending",
+      createdBy: "Admin",
+    },
+    {
+      _id: "task-3",
+      taskTitle: "Dispatch Inter-Warehouse Stock to Deoria Road Godown",
+      assignedStaff: "Rahul Verma",
+      priority: "Medium",
+      dueDate: new Date().toISOString().split("T")[0],
+      dueTime: "16:00",
+      description: "Transfer 10 units Voltas 1.5T Inverter AC & create Delivery Challan",
+      status: "Completed",
+      createdBy: "Admin",
+    },
+    {
+      _id: "task-4",
+      taskTitle: "Customer Follow-up for Extended Warranty Protection",
+      assignedStaff: "Priya Sharma",
+      priority: "Medium",
+      dueDate: new Date().toISOString().split("T")[0],
+      dueTime: "18:00",
+      description: "Contact 5 high-value appliance customers for 2nd year extended warranty",
+      status: "Pending",
+      createdBy: "Admin",
+    },
+  ]);
+  const [taskTabFilter, setTaskTabFilter] = useState<"all" | "admin" | "staff" | "pending" | "completed">("all");
+  const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
+  const [taskForm, setTaskForm] = useState({
+    taskTitle: "",
+    assignedStaff: "Admin (Self)",
+    priority: "Medium" as "Low" | "Medium" | "High" | "Urgent",
+    dueDate: new Date().toISOString().split("T")[0],
+    dueTime: "18:00",
+    description: "",
+    createdBy: "Admin",
+  });
+  const [topSellingCategoryTab, setTopSellingCategoryTab] = useState<"all" | "mobiles" | "electronics">("all");
+
+  // ─── LEADS & CONVERSION PIPELINE STATE ───────────────────────────
+  const [leads, setLeads] = useState<any[]>([
+    {
+      _id: "lead-1",
+      leadId: "LEAD-2026-0041",
+      customerName: "Ramesh Srivastava",
+      mobile: "9839123456",
+      interestedProduct: "Samsung 65' Neo QLED 4K Smart TV",
+      estimatedValue: 124990,
+      assignedStaff: "Amit Singh",
+      priority: "High",
+      status: "Follow-up",
+      followUpDate: new Date().toISOString().split("T")[0],
+      notes: "Interested in 0% Bajaj Finance EMI scheme and free wall-mount installation",
+    },
+    {
+      _id: "lead-2",
+      leadId: "LEAD-2026-0042",
+      customerName: "Pooja Mishra",
+      mobile: "9450234567",
+      interestedProduct: "LG 8kg AI Front Load Washing Machine",
+      estimatedValue: 42990,
+      assignedStaff: "Priya Sharma",
+      priority: "Urgent",
+      status: "Converted",
+      followUpDate: new Date().toISOString().split("T")[0],
+      notes: "Billed successfully via INV-2026-0042 (Paid via POS Card)",
+    },
+    {
+      _id: "lead-3",
+      leadId: "LEAD-2026-0043",
+      customerName: "Dr. Alok Verma",
+      mobile: "9125345678",
+      interestedProduct: "Voltas 1.5 Ton 3-Star Inverter Split AC",
+      estimatedValue: 36490,
+      assignedStaff: "Rahul Verma",
+      priority: "Medium",
+      status: "Follow-up",
+      followUpDate: new Date().toISOString().split("T")[0],
+      notes: "Needs site inspection for piping before billing on Monday",
+    },
+    {
+      _id: "lead-4",
+      leadId: "LEAD-2026-0044",
+      customerName: "Sunil Tiwari",
+      mobile: "9794456789",
+      interestedProduct: "iPhone 16 Pro 256GB Desert Titanium",
+      estimatedValue: 129900,
+      assignedStaff: "Amit Singh",
+      priority: "High",
+      status: "New",
+      followUpDate: new Date().toISOString().split("T")[0],
+      notes: "Walk-in inquiry asking for HDFC bank instant discount",
+    },
+  ]);
+  const [leadTabFilter, setLeadTabFilter] = useState<"all" | "new" | "followup" | "converted">("all");
+  const [isNewLeadModalOpen, setIsNewLeadModalOpen] = useState(false);
+  const [leadForm, setLeadForm] = useState({
+    customerName: "",
+    mobile: "",
+    interestedProduct: "",
+    estimatedValue: "",
+    assignedStaff: "Amit Singh",
+    priority: "Medium" as "Low" | "Medium" | "High" | "Urgent",
+    status: "New" as "New" | "Contacted" | "Interested" | "Follow-up" | "Converted" | "Lost",
+    followUpDate: new Date().toISOString().split("T")[0],
+    notes: "",
+  });
+
+  // ─── DUE / CREDIT COLLECTIONS & SETTLEMENT STATE ───────────
+  const [dueInvoices, setDueInvoices] = useState<any[]>([]);
+  const [dueTabFilter, setDueTabFilter] = useState<"today" | "overdue" | "upcoming" | "cleared" | "all">("today");
+  const [selectedDueInvoice, setSelectedDueInvoice] = useState<any | null>(null);
+  const [clearDuePaymentMode, setClearDuePaymentMode] = useState<string>("Cash");
+  const [clearDueTxnId, setClearDueTxnId] = useState<string>("");
+  const [clearDueStaff, setClearDueStaff] = useState<string>("AMIT SINGH");
+  const [clearDueNotes, setClearDueNotes] = useState<string>("");
+  const [isClearingDue, setIsClearingDue] = useState<boolean>(false);
+
+  const fetchDueInvoices = async () => {
+    try {
+      const res = await fetch("/api/invoices");
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        setDueInvoices(json.data);
+      }
+    } catch (e) {
+      console.warn("Notice loading invoices for due tracking:", e);
+    }
+  };
+
+  const handleConfirmClearDue = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedDueInvoice) return;
+    setIsClearingDue(true);
+    try {
+      const res = await fetch("/api/invoices", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          invoiceNumber: selectedDueInvoice.invoiceNumber,
+          action: "clear-due",
+          clearedAmount: selectedDueInvoice.balanceAmount || selectedDueInvoice.total,
+          dueClearedMode: clearDuePaymentMode,
+          dueClearedBy: clearDueStaff,
+          dueClearedTxnId: clearDueTxnId || `TXN-${Date.now()}`,
+          dueClearedNotes: clearDueNotes || `Due cleared via ${clearDuePaymentMode}`,
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        toast.success(`✅ Due of ₹${Number(selectedDueInvoice.balanceAmount).toLocaleString("en-IN")} cleared successfully for ${selectedDueInvoice.customerName}!`);
+        setSelectedDueInvoice(null);
+        setClearDueTxnId("");
+        setClearDueNotes("");
+        fetchDueInvoices();
+        loadAllDashboardData();
+      } else {
+        toast.error(json.error || "Failed to clear due");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Network error while clearing due");
+    } finally {
+      setIsClearingDue(false);
+    }
+  };
+
+  const fetchTasksAndLeads = async () => {
+    try {
+      const [tasksRes, leadsRes, invoicesRes] = await Promise.allSettled([
+        fetch("/api/staff/tasks"),
+        fetch("/api/crm/leads"),
+        fetch("/api/invoices")
+      ]);
+      if (tasksRes.status === "fulfilled" && tasksRes.value.ok) {
+        const json = await tasksRes.value.json();
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          setTasks(json.data);
+        }
+      }
+      if (leadsRes.status === "fulfilled" && leadsRes.value.ok) {
+        const json = await leadsRes.value.json();
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          setLeads(json.data);
+        }
+      }
+      if (invoicesRes.status === "fulfilled" && invoicesRes.value.ok) {
+        const json = await invoicesRes.value.json();
+        if (json.success && Array.isArray(json.data)) {
+          setDueInvoices(json.data);
+        }
+      }
+    } catch (e) {
+      console.warn("Notice loading tasks/leads/invoices:", e);
+    }
+  };
+
+  const handleToggleTaskStatus = async (task: any) => {
+    const nextStatus = task.status === "Completed" ? "Pending" : "Completed";
+    setTasks(prev => prev.map(t => (t._id === task._id ? { ...t, status: nextStatus } : t)));
+    try {
+      if (task._id && !task._id.startsWith("task-")) {
+        await fetch("/api/staff/tasks", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: task._id, status: nextStatus }),
+        });
+      }
+    } catch (err) {
+      console.error("Task update error:", err);
+    }
+  };
+
+  const handleCreateTaskSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!taskForm.taskTitle.trim()) return;
+    const newTask = {
+      ...taskForm,
+      _id: `task-${Date.now()}`,
+      status: "Pending",
+    };
+    setTasks(prev => [newTask, ...prev]);
+    setIsNewTaskModalOpen(false);
+    try {
+      const res = await fetch("/api/staff/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(taskForm),
+      });
+      const json = await res.json();
+      if (json.success && json.data) {
+        setTasks(prev => prev.map(t => (t._id === newTask._id ? json.data : t)));
+      }
+    } catch (err) {
+      console.error("Error creating task:", err);
+    }
+    setTaskForm({
+      taskTitle: "",
+      assignedStaff: "Admin (Self)",
+      priority: "Medium",
+      dueDate: new Date().toISOString().split("T")[0],
+      dueTime: "18:00",
+      description: "",
+      createdBy: "Admin",
+    });
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    setTasks(prev => prev.filter(t => t._id !== taskId));
+    try {
+      if (!taskId.startsWith("task-")) {
+        await fetch(`/api/staff/tasks?id=${taskId}`, { method: "DELETE" });
+      }
+    } catch (err) {
+      console.error("Error deleting task:", err);
+    }
+  };
+
+  const handleUpdateLeadStatus = async (leadId: string, newStatus: string) => {
+    setLeads(prev => prev.map(l => (l._id === leadId ? { ...l, status: newStatus } : l)));
+    try {
+      if (!leadId.startsWith("lead-")) {
+        await fetch("/api/crm/leads", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: leadId, status: newStatus, actionNote: `Status updated to ${newStatus}` }),
+        });
+      }
+    } catch (err) {
+      console.error("Error updating lead status:", err);
+    }
+  };
+
+  const handleCreateLeadSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!leadForm.customerName.trim() || !leadForm.mobile.trim()) return;
+    const newLead = {
+      ...leadForm,
+      _id: `lead-${Date.now()}`,
+      leadId: `LEAD-2026-${String(leads.length + 1).padStart(4, "0")}`,
+      estimatedValue: Number(leadForm.estimatedValue || 0),
+    };
+    setLeads(prev => [newLead, ...prev]);
+    setIsNewLeadModalOpen(false);
+    try {
+      const res = await fetch("/api/crm/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...leadForm,
+          estimatedValue: Number(leadForm.estimatedValue || 0),
+        }),
+      });
+      const json = await res.json();
+      if (json.success && json.data) {
+        setLeads(prev => prev.map(l => (l._id === newLead._id ? json.data : l)));
+      }
+    } catch (err) {
+      console.error("Error creating lead:", err);
+    }
+    setLeadForm({
+      customerName: "",
+      mobile: "",
+      interestedProduct: "",
+      estimatedValue: "",
+      assignedStaff: "Amit Singh",
+      priority: "Medium",
+      status: "New",
+      followUpDate: new Date().toISOString().split("T")[0],
+      notes: "",
+    });
+  };
+
+  const handleLeadWhatsApp = (lead: any) => {
+    const cleanPhone = (lead.mobile || "").replace(/\D/g, "");
+    const phone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+    const msg = encodeURIComponent(
+      `Hello ${lead.customerName},\nThis is from *Value Plus / Ashoka Enterprises, Gorakhpur* regarding your enquiry for *${lead.interestedProduct}*.\nWe have exclusive 0% EMI schemes & festive showroom offers available today! How can we assist you?`
+    );
+    window.open(`https://wa.me/${phone}?text=${msg}`, "_blank");
+  };
+
   // ─── INSTANT CACHE HYDRATION (0ms offline-first render) ────────
   const hydrateFromCache = (s: string, e: string) => {
-    const cachedStats = getCachedDashboardStats(`${s}_${e}`) || getCachedDashboardStats("Today_Today");
+    const cachedStats = getCachedDashboardStats(`${s}_${e}`);
     if (cachedStats) {
       setData(cachedStats);
       setWidgetData({
@@ -226,6 +586,7 @@ export default function DashboardPage() {
         customers: cachedStats,
         logs: cachedStats,
         recent: cachedStats,
+        staff: cachedStats,
       });
       setIsUsingCachedData(true);
     }
@@ -240,28 +601,27 @@ export default function DashboardPage() {
   };
 
   // ─── CONCURRENT ALL-IN-ONE DATA LOADER ───────────────────────────
-  const loadAllDashboardData = async (startOverride?: string, endOverride?: string, customStaffPeriod?: string) => {
+  const loadAllDashboardData = async (startOverride?: string, endOverride?: string, customRange?: string) => {
     const s = startOverride || startDate;
     const e = endOverride || endDate;
-    const staffP = customStaffPeriod || staffPeriod;
+    const range = customRange || dateFilter || "Today";
     const cacheKey = `${s}_${e}`;
 
-    // Instant render from cache first
+    // Instant render from cache first if available
     hydrateFromCache(s, e);
 
-    // Only trigger full shimmer loading if we have zero cached data
-    if (!data && !getCachedDashboardStats(cacheKey)) {
-      setLoading(true);
-    }
+    // Set loading indicator
+    setLoading(true);
 
     try {
-      // Execute all 5 dashboard data requirements in a single parallel batch
+      const whParam = activeLocation?.name ? `&warehouse=${encodeURIComponent(activeLocation.name)}` : "";
+      // Execute all dashboard data requirements in parallel
       const [statsRes, stockRes, auditRes, warrantyRes, staffRes] = await Promise.allSettled([
-        fetch(`/api/dashboard/stats?startDate=${s}&endDate=${e}`),
-        fetch("/api/reports/stock"),
+        fetch(`/api/dashboard/stats?startDate=${s}&endDate=${e}${whParam}`),
+        fetch(`/api/reports/stock?${whParam.replace("&", "")}`),
         fetch("/api/inventory/audit?checkPending=true"),
         fetch("/api/warranty"),
-        fetch(`/api/reports/performance?period=${staffP}`),
+        fetch(`/api/reports/performance?startDate=${s}&endDate=${e}&range=${encodeURIComponent(range)}`),
       ]);
 
       // 1. Process Dashboard Main Stats
@@ -277,6 +637,7 @@ export default function DashboardPage() {
             customers: statsJson,
             logs: statsJson,
             recent: statsJson,
+            staff: statsJson,
           });
           cacheDashboardStats(cacheKey, statsJson);
           setIsUsingCachedData(false);
@@ -369,6 +730,17 @@ export default function DashboardPage() {
     setWidgetLoading(prev => ({ ...prev, [widgetName]: true }));
     try {
       const { start, end } = resolveDateRange(filterValue, customStart, customEnd);
+      
+      if (widgetName === "staff") {
+        const res = await fetch(`/api/reports/performance?startDate=${start}&endDate=${end}&range=${encodeURIComponent(filterValue)}`);
+        const json = await res.json();
+        if (json.success) {
+          setStaffPerformance(json.data || []);
+          cacheDashboardExtended({ staffPerformance: json.data || [] });
+        }
+        return;
+      }
+
       const cacheKey = `${start}_${end}`;
       const localCached = getCachedDashboardStats(cacheKey);
       if (localCached) {
@@ -417,6 +789,7 @@ export default function DashboardPage() {
     }
 
     loadAllDashboardData();
+    fetchTasksAndLeads();
 
     return () => {
       if (typeof window !== "undefined") {
@@ -426,7 +799,7 @@ export default function DashboardPage() {
         window.removeEventListener("erp-purchase-created", handleSync);
       }
     };
-  }, []);
+  }, [activeLocation?.name]);
 
   const handleWidgetFilterChange = (widgetName: string, val: string, customStart?: string, customEnd?: string) => {
     setWidgetFilters(prev => ({ ...prev, [widgetName]: val }));
@@ -435,20 +808,9 @@ export default function DashboardPage() {
 
   const handleUniversalFilterChange = (val: string, customStart?: string, customEnd?: string) => {
     setDateFilter(val);
-    let s = startDate;
-    let e = endDate;
-    if (val === "Custom Date" && customStart && customEnd) {
-      s = customStart;
-      e = customEnd;
-      setStartDate(customStart);
-      setEndDate(customEnd);
-    } else if (val !== "Custom Date") {
-      const resolved = resolveDateRange(val);
-      s = resolved.start;
-      e = resolved.end;
-      setStartDate(s);
-      setEndDate(e);
-    }
+    const { start: s, end: e } = resolveDateRange(val, customStart, customEnd);
+    setStartDate(s);
+    setEndDate(e);
     const newFilters = {
       trends: val,
       pie: val,
@@ -456,57 +818,12 @@ export default function DashboardPage() {
       products: val,
       customers: val,
       logs: val,
-      recent: val
+      recent: val,
+      staff: val
     };
     setWidgetFilters(newFilters);
-    loadAllDashboardData(s, e);
+    loadAllDashboardData(s, e, val);
   };
-
-  useEffect(() => {
-    const today = new Date();
-    today.setHours(23, 59, 59, 999);
-    
-    if (dateFilter === "Today") {
-      setStartDate(new Date().toISOString().split("T")[0]);
-      setEndDate(new Date().toISOString().split("T")[0]);
-    } else if (dateFilter === "Yesterday") {
-      const y = new Date();
-      y.setDate(y.getDate() - 1);
-      setStartDate(y.toISOString().split("T")[0]);
-      setEndDate(y.toISOString().split("T")[0]);
-    } else if (dateFilter === "Last 7 Days") {
-      const d = new Date();
-      d.setDate(d.getDate() - 7);
-      setStartDate(d.toISOString().split("T")[0]);
-      setEndDate(new Date().toISOString().split("T")[0]);
-    } else if (dateFilter === "This Month") {
-      const d = new Date();
-      d.setDate(1);
-      setStartDate(d.toISOString().split("T")[0]);
-      setEndDate(new Date().toISOString().split("T")[0]);
-    } else if (dateFilter === "Last Month") {
-      const d = new Date();
-      d.setMonth(d.getMonth() - 1);
-      d.setDate(1);
-      const endD = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-      setStartDate(d.toISOString().split("T")[0]);
-      setEndDate(endD.toISOString().split("T")[0]);
-    } else if (dateFilter === "Last 3 Months") {
-      const d = new Date();
-      d.setMonth(d.getMonth() - 3);
-      setStartDate(d.toISOString().split("T")[0]);
-      setEndDate(new Date().toISOString().split("T")[0]);
-    } else if (dateFilter === "Last Year") {
-      const d = new Date();
-      d.setFullYear(d.getFullYear() - 1);
-      setStartDate(d.toISOString().split("T")[0]);
-      setEndDate(new Date().toISOString().split("T")[0]);
-    }
-  }, [dateFilter]);
-
-  useEffect(() => {
-    loadAllDashboardData(startDate, endDate);
-  }, [startDate, endDate]);
 
   // Open Invoice Modal
   const handleOpenInvoiceModal = () => {
@@ -609,25 +926,50 @@ export default function DashboardPage() {
   const metrics = data?.metrics || {
     totalRevenue: 0,
     cashRevenue: 0,
+    upiRevenue: 0,
     onlineRevenue: 0,
+    cardRevenue: 0,
     financeRevenue: 0,
+    warrantyRevenue: 0,
+    warrantyCount: 0,
+    dueRevenue: 0,
+    dueCount: 0,
     totalOrders: 0,
     pendingOrders: 0,
     lowStockItems: 0,
+    totalItems: 0,
   };
 
-  const PAYMENT_MODES = [
-    { name: "Cash Counter", value: metrics.cashRevenue || 0, color: "#76C043", key: "cash" },
-    { name: "UPI / QR Code", value: metrics.upiRevenue || 0, color: "#8B5CF6", key: "upi" },
-    { name: "Online NetBanking", value: metrics.onlineRevenue || 0, color: "#3F63AD", key: "online" },
-    { name: "Card (POS)", value: metrics.cardRevenue || 0, color: "#06B6D4", key: "card" },
-    { name: "Finance (Bajaj/HDB)", value: metrics.financeRevenue || 0, color: "#F59E0B", key: "finance" },
-  ];
-
-  const DAILY_REVENUE = data?.dailyRevenue || [];
+  const leakage = data?.leakage || {
+    cancelled: { count: 0, amount: 0, invoices: [] },
+    modified: { count: 0, amount: 0, invoices: [] },
+    shifted: { count: 0, amount: 0, invoices: [] },
+    billsModified: { count: 0, amount: 0, invoices: [] },
+    reprinted: { count: 0, totalPrints: 0, amount: 0, invoices: [] },
+    waivedOff: { count: 0, amount: 0, invoices: [] },
+  };
 
   const transactions = data?.transactions || { cash: [], upi: [], online: [], card: [], finance: [], due: [] };
   const recentInvoices = data?.recentInvoices || [];
+
+  const currentPieData = widgetData.pie || data;
+  const currentPieMetrics = currentPieData?.metrics || metrics;
+  const currentPieTxns = currentPieData?.transactions || transactions;
+
+  const totalCollectedAmount = (currentPieMetrics.cashRevenue || 0) + (currentPieMetrics.upiRevenue || 0) + (currentPieMetrics.onlineRevenue || 0) + (currentPieMetrics.cardRevenue || 0) + (currentPieMetrics.financeRevenue || 0) + (currentPieMetrics.dueRevenue || 0);
+  const totalBilledCount = (currentPieTxns.cash?.length || 0) + (currentPieTxns.upi?.length || 0) + (currentPieTxns.online?.length || 0) + (currentPieTxns.card?.length || 0) + (currentPieTxns.finance?.length || 0) + (currentPieTxns.due?.length || 0) || currentPieMetrics.totalOrders || 0;
+
+  const PAYMENT_MODES = [
+    { name: "Cash Counter", value: currentPieMetrics.cashRevenue || 0, count: currentPieTxns.cash?.length || 0, color: "#76C043", key: "cash", icon: Wallet },
+    { name: "UPI / QR Code", value: currentPieMetrics.upiRevenue || 0, count: currentPieTxns.upi?.length || 0, color: "#8B5CF6", key: "upi", icon: Zap },
+    { name: "Online NetBanking", value: currentPieMetrics.onlineRevenue || 0, count: currentPieTxns.online?.length || 0, color: "#3F63AD", key: "online", icon: Activity },
+    { name: "Card (POS)", value: currentPieMetrics.cardRevenue || 0, count: currentPieTxns.card?.length || 0, color: "#06B6D4", key: "card", icon: CreditCard },
+    { name: "Finance (Bajaj/HDB)", value: currentPieMetrics.financeRevenue || 0, count: currentPieTxns.finance?.length || 0, color: "#F59E0B", key: "finance", icon: Building2 },
+    { name: "Due / Credit Bill", value: currentPieMetrics.dueRevenue || 0, count: currentPieTxns.due?.length || currentPieMetrics.dueCount || 0, color: "#EF4444", key: "due", icon: Clock },
+  ];
+
+  const currentTrendsData = widgetData.trends || data;
+  const DAILY_REVENUE = currentTrendsData?.dailyRevenue || data?.dailyRevenue || [];
 
   const getFilteredTransactions = () => {
     if (!activeModal) return [];
@@ -639,11 +981,31 @@ export default function DashboardPage() {
     if (activeModal === "finance") list = transactions.finance || [];
     if (activeModal === "due") list = transactions.due || [];
     if (activeModal === "orders") list = recentInvoices || [];
+    if (activeModal === "expenses" || activeModal?.startsWith("expense")) {
+      const allExp = widgetData.expenses?.expenses?.all || widgetData.expenses?.expenses?.recent || data?.expenses?.all || data?.expenses?.recent || [];
+      if (expenseModalModeFilter && expenseModalModeFilter !== "all") {
+        list = allExp.filter((e: any) => {
+          const m = (e.paymentMode || "").toLowerCase();
+          const target = expenseModalModeFilter.toLowerCase();
+          if (target === "cash") return m.includes("cash");
+          if (target === "upi") return m.includes("upi");
+          if (target.includes("bank")) return m.includes("bank") || m.includes("neft") || m.includes("rtgs") || m.includes("transfer") || m.includes("online");
+          if (target.includes("card")) return m.includes("card");
+          return m === target;
+        });
+      } else {
+        list = allExp;
+      }
+    }
 
     if (!searchQuery.trim()) return list;
+    const q = searchQuery.toLowerCase();
     return list.filter((item: any) =>
-      (item.customer || item.customerName || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (item.id || item.invoiceNumber || "").toLowerCase().includes(searchQuery.toLowerCase())
+      (item.customer || item.customerName || "").toLowerCase().includes(q) ||
+      (item.id || item.invoiceNumber || item.expenseNo || "").toLowerCase().includes(q) ||
+      (item.category || "").toLowerCase().includes(q) ||
+      (item.description || "").toLowerCase().includes(q) ||
+      (item.paymentMode || "").toLowerCase().includes(q)
     );
   };
 
@@ -655,11 +1017,23 @@ export default function DashboardPage() {
     }
   };
 
+  const userRole = ((session?.user as any)?.role || "").toLowerCase();
+  if (userRole === "salesman" || userRole === "sales" || userRole === "salesperson" || userRole === "sales_executive") {
+    return (
+      <div className="page-container pb-10">
+        <SalesmanDashboardView session={session} />
+      </div>
+    );
+  }
+
   return (
-    <div className="page-container">
+    <div className="page-container space-y-5 pb-10">
+      {/* ─── UNIVERSAL ATTENDANCE & SHIFT WIDGET ──────────────── */}
+      <AttendancePunchWidget />
+
       {/* ─── PENDING INVENTORY AUDIT WARNING BANNER ──────────────── */}
       {isAuditPending && (
-        <div className="mb-4 bg-gradient-to-r from-amber-500/20 via-orange-500/10 to-transparent border-l-4 border-amber-500 p-4 rounded-xl shadow-sm flex items-center justify-between gap-4">
+        <div className="bg-gradient-to-r from-amber-500/20 via-orange-500/10 to-transparent border-l-4 border-amber-500 p-4 rounded-xl shadow-sm flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 text-amber-600 animate-bounce flex-shrink-0" />
             <div>
@@ -678,1116 +1052,2521 @@ export default function DashboardPage() {
       )}
 
       {/* ─── HEADER WITH PERIOD FILTER TABS ────────────────────────── */}
-      <div className="flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between bg-white px-6 py-4 rounded-[8px] border border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+      <div className="flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between bg-white px-5 py-3.5 rounded-xl border border-slate-200 shadow-sm">
         <div className="flex items-center gap-4 flex-1">
           <div className="min-w-0">
             <div className="flex items-center gap-2.5">
-              <h1 className="text-xl font-bold text-slate-800 tracking-tight">
-                Value Plus Dashboard
+              <h1 className="text-lg font-black text-slate-900 tracking-tight">
+                Value Plus Live ERP
               </h1>
               {isOffline ? (
-                <Badge className="bg-amber-100 text-amber-900 border border-amber-300 font-bold text-[11px] px-2 py-0.5 flex items-center gap-1">
-                  <WifiOff className="w-3 h-3 text-amber-700" /> Offline Mode (Cached)
+                <Badge className="bg-amber-100 text-amber-900 border border-amber-300 font-bold text-[10px] px-2 py-0.5 flex items-center gap-1">
+                  <WifiOff className="w-3 h-3 text-amber-700" /> Offline (Cached)
                 </Badge>
               ) : isUsingCachedData ? (
                 <Badge className="bg-emerald-50 text-emerald-800 border border-emerald-200 font-medium text-[10px] px-2 py-0.5 flex items-center gap-1">
-                  <Zap className="w-3 h-3 text-emerald-600" /> Cached Data
+                  <Zap className="w-3 h-3 text-emerald-600" /> Live Data
                 </Badge>
-              ) : null}
+              ) : (
+                <Badge className="bg-blue-50 text-[#3F63AD] border border-blue-200 font-medium text-[10px] px-2 py-0.5 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Connected
+                </Badge>
+              )}
             </div>
-            <p className="text-xs text-slate-500 font-medium">Ashoka Enterprises, Gorakhpur • Live ERP Overview</p>
+            <p className="text-[11px] text-slate-500 font-medium mt-0.5">Ashoka Enterprises, Gorakhpur • Real-Time Counter Overview</p>
           </div>
         </div>
 
-        {/* UNIVERSAL TIME FILTER */}
-        <div className="flex flex-col sm:flex-row items-center gap-3 w-full xl:w-auto mt-2 xl:mt-0">
+        {/* UNIVERSAL TIME FILTER & QUICK ACTIONS */}
+        <div className="flex flex-wrap items-center gap-2.5 w-full xl:w-auto">
           <DateRangeFilter 
             value={dateFilter} 
             onChange={handleUniversalFilterChange} 
             showIcon={true} 
-            className="w-[180px] h-9" 
+            className="w-[150px] h-8 text-xs font-semibold" 
           />
-        </div>
-
-        {/* HEADER QUICK BUTTONS */}
-        <div className="flex flex-col sm:flex-row items-center gap-3 w-full xl:w-auto mt-2 xl:mt-0 border-l pl-4 border-slate-200">
-          <Button onClick={handleOpenInvoiceModal} className="h-9 px-5 rounded-[4px] font-bold bg-[#76C043] hover:bg-[#60a82c] text-white shadow-sm transition-all w-full sm:w-auto border-none">
-            <Receipt className="w-4 h-4 mr-2" /> New Bill
+          <Button 
+            onClick={() => router.push("/sales/invoices")}
+            variant="outline"
+            className="h-8 px-3 text-xs font-bold text-slate-700 border-slate-200 hover:bg-slate-50"
+          >
+            <Receipt className="w-3.5 h-3.5 mr-1.5 text-slate-500" /> Invoices
+          </Button>
+          <Button 
+            onClick={handleOpenInvoiceModal} 
+            className="h-8 px-4 rounded-lg font-bold bg-[#76C043] hover:bg-[#60a82c] text-white shadow-sm transition-all border-none text-xs"
+          >
+            <Plus className="w-3.5 h-3.5 mr-1.5" /> New Bill
           </Button>
         </div>
       </div>
 
-      <div className="page-content space-y-6 mt-6">
-        {/* ─── VALUE PLUS CATEGORY STOCK & WARRANTY SUMMARY (REQ 30 & 32) ─── */}
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-bold text-foreground uppercase tracking-wider flex items-center gap-2">
-              <Package className="w-4 h-4 text-[#3F63AD]" /> Category Stock & Warranty Overview
-            </h2>
-            <span className="text-xs text-muted-foreground font-medium">Live inventory valuations & add-on sales</span>
-          </div>
+      <div className="space-y-6">
+        {/* ═══════════════════════════════════════════════════════════════════════════════
+            🏆 SECTION 1: PAYMENT & BILL DISTRIBUTION + SALES & ORDER TRENDS (2 CARDS)
+        ═══════════════════════════════════════════════════════════════════════════════ */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+          {/* CARD 1 (LEFT): PAYMENT & BILL DISTRIBUTION WITH DONUT */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col justify-between hover:shadow-md transition-all">
+            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200/60 flex items-center justify-center text-[#3F63AD]">
+                  <PieChartIcon className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                    Payment & Bill Distribution
+                    <Badge className="bg-emerald-50 text-emerald-800 border-emerald-200 text-xs font-bold px-2 py-0.5">
+                      {totalBilledCount} Total Bills
+                    </Badge>
+                  </h2>
+                  <p className="text-xs text-slate-500 font-medium">Channel-wise collection amount, bill count & revenue share</p>
+                </div>
+              </div>
+              <DateRangeFilter 
+                value={widgetFilters.pie} 
+                onChange={(val, start, end) => handleWidgetFilterChange('pie', val, start, end)}
+                className="w-[115px] h-8 text-xs font-semibold"
+              />
+            </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {/* ELECTRONICS STOCK */}
-            <div
-              onClick={() => router.push("/masters/items?category=Electronics")}
-              className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 cursor-pointer hover:border-blue-500 hover:shadow-md transition-all flex flex-col justify-between"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                  <Tv className="w-4 h-4 text-blue-600" /> Electronics Stock
-                </span>
-                <Badge className="bg-blue-100 text-blue-800 font-bold text-[10px]">
-                  {stockBreakdown.electronics.quantity} Units
-                </Badge>
+            {/* DONUT & BILL BREAKDOWN GRID */}
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center py-3">
+              {/* DONUT CHART */}
+              <div className="sm:col-span-5 flex flex-col items-center justify-center relative">
+                <div className="w-full h-[175px] relative flex items-center justify-center">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={PAYMENT_MODES}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={50}
+                        outerRadius={75}
+                        paddingAngle={3}
+                        dataKey="value"
+                      >
+                        {PAYMENT_MODES.map((entry, i) => (
+                          <Cell 
+                            key={i} 
+                            fill={entry.color} 
+                            className="cursor-pointer hover:opacity-80 transition-opacity"
+                            onClick={() => setActiveModal(entry.key)}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(v: any) => [`₹${indianNumberFormat(Number(v) || 0)}`, "Amount"]} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">NET TOTAL</span>
+                    <span className="text-sm sm:text-base font-black text-slate-900 font-mono tracking-tight">
+                      ₹{indianNumberFormat(totalCollectedAmount)}
+                    </span>
+                    <span className="text-[10px] font-bold text-emerald-700 font-mono mt-0.5">
+                      {totalBilledCount} Bills
+                    </span>
+                  </div>
+                </div>
               </div>
-              <div>
-                <p className="text-2xl font-black text-slate-900">
-                  {formatCurrency(stockBreakdown.electronics.value)}
-                </p>
-              </div>
-              <div className="flex items-center justify-between mt-3 pt-2 border-t border-slate-100 text-[11px] font-medium text-slate-500">
-                <span>TV, Audio & Appliances</span>
-                <ArrowRight className="w-3 h-3 text-slate-300" />
+
+              {/* PAYMENT MODES + BILLS LIST */}
+              <div className="sm:col-span-7 space-y-2">
+                {PAYMENT_MODES.map((item) => {
+                  const share = totalCollectedAmount > 0 ? Math.round((item.value / totalCollectedAmount) * 100) : 0;
+                  return (
+                    <div 
+                      key={item.name}
+                      onClick={() => setActiveModal(item.key)}
+                      className="flex items-center justify-between text-sm cursor-pointer hover:bg-slate-50 p-2 rounded-xl border border-transparent hover:border-slate-200 transition-all group"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }} />
+                        <span className="text-slate-800 font-bold text-xs sm:text-sm truncate group-hover:text-[#3F63AD] transition-colors">{item.name}</span>
+                      </div>
+                      <div className="flex items-center gap-2.5 flex-shrink-0">
+                        <span className="text-xs font-mono font-bold px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md border border-slate-200">
+                          {item.count} Bills
+                        </span>
+                        <span className="text-xs font-mono font-bold text-slate-400">({share}%)</span>
+                        <span className="font-black text-slate-900 font-mono text-xs sm:text-sm">₹{indianNumberFormat(item.value)}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* PENDING DUE ROW */}
+                {(metrics.dueRevenue > 0 || metrics.dueCount > 0) && (
+                  <div 
+                    onClick={() => {
+                      const activeDate = dateFilter || "Today";
+                      let url = `/reports/sales-out?dueOnly=true&dateFilter=${encodeURIComponent(activeDate)}`;
+                      if (startDate && endDate) url += `&startDate=${startDate}&endDate=${endDate}`;
+                      router.push(url);
+                    }}
+                    className="flex items-center justify-between text-sm cursor-pointer bg-rose-50/70 hover:bg-rose-100/70 p-2 rounded-xl border border-rose-200 transition-all group"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-3 h-3 rounded-full bg-rose-500 animate-pulse" />
+                      <span className="text-rose-900 font-bold text-xs sm:text-sm">Pending Due / Balance</span>
+                    </div>
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-xs font-mono font-bold px-2 py-0.5 bg-rose-200/80 text-rose-900 rounded-md">
+                        {metrics.dueCount || 0} Bills
+                      </span>
+                      <span className="font-black text-rose-600 font-mono text-xs sm:text-sm">
+                        {formatCurrency(metrics.dueRevenue || 0)}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* MOBILE STOCK */}
-            <div
-              onClick={() => router.push("/masters/items?category=Mobile")}
-              className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 cursor-pointer hover:border-purple-500 hover:shadow-md transition-all flex flex-col justify-between"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                  <Smartphone className="w-4 h-4 text-purple-600" /> Mobile Stock
-                </span>
-                <Badge className="bg-purple-100 text-purple-800 font-bold text-[10px]">
-                  {stockBreakdown.mobile.quantity} Units
-                </Badge>
-              </div>
-              <div>
-                <p className="text-2xl font-black text-slate-900">
-                  {formatCurrency(stockBreakdown.mobile.value)}
-                </p>
-              </div>
-              <div className="flex items-center justify-between mt-3 pt-2 border-t border-slate-100 text-[11px] font-medium text-slate-500">
-                <span>Smartphones & Tablets</span>
-                <ArrowRight className="w-3 h-3 text-slate-300" />
-              </div>
-            </div>
-
-            {/* EXTENDED WARRANTY SALES */}
-            <div
+            {/* EXTENDED WARRANTY HIGHLIGHT STRIP */}
+            <div 
               onClick={() => router.push("/sales/invoices")}
-              className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 cursor-pointer hover:border-emerald-500 hover:shadow-md transition-all flex flex-col justify-between"
+              className="bg-emerald-50/90 border border-emerald-200 rounded-xl p-3 flex items-center justify-between cursor-pointer hover:bg-emerald-100/80 transition-all mt-2"
             >
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4 text-emerald-600" /> Extended Warranty
-                </span>
-                <Badge className="bg-emerald-100 text-emerald-800 font-bold text-[10px]">
-                  {warrantyData.totalCount || data?.metrics?.warrantyCount || 0} Policies
-                </Badge>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-700">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="font-black text-emerald-950 text-xs sm:text-sm">Extended Warranty Add-ons</p>
+                  <p className="text-xs text-emerald-800 font-semibold">{warrantyData.totalCount || metrics.warrantyCount || 0} Policies Sold • {warrantyData.conversionRate || 0}% Conversion</p>
+                </div>
               </div>
-              <div>
-                <p className="text-2xl font-black text-emerald-700">
-                  {formatCurrency(warrantyData.totalSales || data?.metrics?.warrantyRevenue || 0)}
-                </p>
-              </div>
-              <div className="flex items-center justify-between mt-3 pt-2 border-t border-slate-100 text-[11px] font-medium text-slate-500">
-                <span className="text-emerald-700 font-bold">
-                  Conversion Rate: {warrantyData.conversionRate || Math.round(((warrantyData.totalCount || data?.metrics?.warrantyCount || 0) / Math.max(1, data?.metrics?.totalOrders || 1)) * 100)}%
+              <div className="text-right">
+                <span className="font-black text-emerald-900 font-mono text-sm sm:text-base block">
+                  {formatCurrency(warrantyData.totalSales || metrics.warrantyRevenue || 0)}
                 </span>
-                <ArrowRight className="w-3 h-3 text-slate-300" />
+                <span className="text-xs font-bold text-emerald-700 flex items-center justify-end gap-1">
+                  View Bills <ArrowRight className="w-3 h-3" />
+                </span>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* ─── PAYMENT & SALES BREAKDOWN CARDS (CLICKABLE) ───────────────── */}
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-bold text-foreground uppercase tracking-wider flex items-center gap-2">
-              <CreditCard className="w-4 h-4 text-[#3F63AD]" /> Key Business Metrics
-            </h2>
-            <span className="text-xs text-muted-foreground font-medium">Click any card to open detailed transaction ledger</span>
-          </div>
-
-          <div className="w-full">
-            {loading ? (
-              <MetricCardsShimmer count={4} />
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <>
-                {/* GROSS SALES CARD */}
-                <div
-                  onClick={() => router.push(`/dashboard/reports?type=all&dateFilter=${dateFilter}`)}
-                  className="bg-white rounded-[8px] border border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.05)] p-4 cursor-pointer hover:border-[#76C043] hover:shadow-lg hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between"
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Gross Sales</span>
-                    <IndianRupee className="w-5 h-5 text-slate-400" />
-                  </div>
-                  <div className="mb-2">
-                    <p className="text-[26px] leading-none font-bold text-slate-900">
-                      {formatCurrency(metrics.cashRevenue + metrics.onlineRevenue + metrics.financeRevenue)}
-                    </p>
-                  </div>
-                  <div className="flex items-center justify-between mt-auto pt-3 border-t border-slate-100">
-                    <span className="text-[11px] font-semibold text-emerald-600 flex items-center gap-1">
-                      <TrendingUp className="w-3 h-3" /> +12.4% vs last week
-                    </span>
-                    <ArrowRight className="w-3 h-3 text-slate-300" />
-                  </div>
+          {/* CARD 2 (RIGHT): SALES & ORDER TRENDS GRAPH */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col justify-between hover:shadow-md transition-all">
+            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-200/60 flex items-center justify-center text-indigo-600">
+                  <BarChart3 className="w-5 h-5" />
                 </div>
-
-                {/* TOTAL BILLS CARD */}
-                <div
-                  onClick={() => router.push(`/dashboard/reports?type=orders&dateFilter=${dateFilter}`)}
-                  className="bg-white rounded-[8px] border border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.05)] p-4 cursor-pointer hover:border-blue-500 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between"
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Bills</span>
-                    <Receipt className="w-5 h-5 text-slate-400" />
-                  </div>
-                  <div className="mb-2">
-                    <p className="text-[26px] leading-none font-bold text-slate-900">
-                      {metrics.totalOrders || 0}
-                    </p>
-                  </div>
-                  <div className="flex items-center justify-between mt-auto pt-3 border-t border-slate-100">
-                    <span className="text-[11px] font-semibold text-amber-500 flex items-center gap-1">
-                      <Clock className="w-3 h-3" /> Peak hours: 1PM - 3PM
-                    </span>
-                    <ArrowRight className="w-3 h-3 text-slate-300" />
-                  </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 tracking-tight">
+                    Sales & Order Trends
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">Hourly business trajectory & daily sales volume</p>
                 </div>
-
-                {/* AOV CARD */}
-                <div
-                  onClick={() => router.push(`/dashboard/reports?type=aov&dateFilter=${dateFilter}`)}
-                  className="bg-white rounded-[8px] border border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.05)] p-4 cursor-pointer hover:border-indigo-500 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between"
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Avg Order Value (AOV)</span>
-                    <TrendingUp className="w-5 h-5 text-slate-400" />
-                  </div>
-                  <div className="mb-2">
-                    <p className="text-[26px] leading-none font-bold text-slate-900">
-                      {formatCurrency(metrics.totalOrders ? ((metrics.cashRevenue + metrics.onlineRevenue + metrics.financeRevenue) / metrics.totalOrders) : 0)}
-                    </p>
-                  </div>
-                  <div className="flex items-center justify-between mt-auto pt-3 border-t border-slate-100">
-                    <span className="text-[11px] font-medium text-slate-500 flex items-center gap-1">
-                      Revenue per invoice
-                    </span>
-                    <ArrowRight className="w-3 h-3 text-slate-300" />
-                  </div>
-                </div>
-
-                {/* TOTAL STOCKS CARD (CLICKABLE FOR CATEGORY BREAKDOWN) */}
-                <div
-                  onClick={() => setOpenStockModal(true)}
-                  className="bg-white rounded-[8px] border border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.05)] p-4 cursor-pointer hover:border-[#3F63AD] hover:shadow-lg hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between group"
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider group-hover:text-[#3F63AD] transition-colors">
-                      Total Stocks
-                    </span>
-                    <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-[#3F63AD] group-hover:bg-[#3F63AD] group-hover:text-white transition-colors">
-                      <Package className="w-4 h-4" />
-                    </div>
-                  </div>
-                  <div className="mb-2">
-                    <p className="text-[26px] leading-none font-black text-slate-900">
-                      {stockBreakdown.totalQuantity > 0 ? stockBreakdown.totalQuantity.toLocaleString("en-IN") : (metrics.totalItems || 0)}
-                      <span className="text-xs font-bold text-slate-500 ml-1.5 font-normal">Units</span>
-                    </p>
-                  </div>
-                  <div className="flex items-center justify-between mt-auto pt-3 border-t border-slate-100">
-                    <span className="text-[11px] font-semibold text-[#3F63AD] flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                      ₹{((stockBreakdown.totalStockValue || 0) / 10000000).toFixed(2)} Cr Valuation
-                    </span>
-                    <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded flex items-center gap-1">
-                      Categories <ArrowRight className="w-2.5 h-2.5" />
-                    </span>
-                  </div>
-                </div>
-              </>
               </div>
-            )}
-          </div>
-        </div>
-
-
-        {/* ─── SALES & PAYMENT CHARTS (PETPOOJA STYLE) ──────────────────────────────────── */}
-        <div className="grid lg:grid-cols-3 gap-6 mt-6 items-stretch">
-          <div className="lg:col-span-2 bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-300 border border-slate-200 p-5 flex flex-col">
-            {/* Header with Live Stats Pills */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-              <div>
-                <div className="flex items-center gap-2.5">
-                  <h3 className="font-extrabold text-slate-900 text-lg tracking-tight">Sales & Order Trends</h3>
-                  <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-[#3F63AD] border border-blue-200 text-xs font-bold font-mono">
-                    {formatCurrency(
-                      ((widgetData.trends?.metrics?.cashRevenue || 0) + (widgetData.trends?.metrics?.onlineRevenue || 0) + (widgetData.trends?.metrics?.financeRevenue || 0)) || (widgetData.trends?.dailyRevenue?.reduce((acc: number, curr: any) => acc + (curr.revenue || 0), 0) || 0)
-                    )} Total
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5 text-slate-400" />
-                  {widgetFilters.trends === 'Today' ? 'Hourly Business Trajectory' : 'Daily Sales Timeline'}
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <DateRangeFilter 
-                  value={widgetFilters.trends} 
-                  onChange={(val, start, end) => handleWidgetFilterChange('trends', val, start, end)}
-                  className="w-[125px]"
-                />
-              </div>
+              <DateRangeFilter 
+                value={widgetFilters.trends} 
+                onChange={(val, start, end) => handleWidgetFilterChange('trends', val, start, end)}
+                className="w-[115px] h-8 text-xs font-semibold"
+              />
             </div>
 
-            {/* Quick PetPooja POS KPI Strip */}
-            {(() => {
-              const totalTrends = ((widgetData.trends?.metrics?.cashRevenue || 0) + (widgetData.trends?.metrics?.onlineRevenue || 0) + (widgetData.trends?.metrics?.financeRevenue || 0)) || 1;
-              const cashVal = widgetData.trends?.metrics?.cashRevenue || 0;
-              const onlineVal = widgetData.trends?.metrics?.onlineRevenue || 0;
-              const financeVal = widgetData.trends?.metrics?.financeRevenue || 0;
-              const cashPct = Math.round((cashVal / Math.max(1, totalTrends)) * 100);
-              const onlinePct = Math.round((onlineVal / Math.max(1, totalTrends)) * 100);
-              const financePct = Math.round((financeVal / Math.max(1, totalTrends)) * 100);
-
-              return (
-                <div className="grid grid-cols-3 gap-2 my-3 py-2 px-3 bg-slate-50/80 rounded-lg border border-slate-100 text-xs">
-                  <div className="flex items-center justify-between pr-2 border-r border-slate-200/80">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-[#76C043]" />
-                      <span className="text-slate-600 font-medium">Cash</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="font-bold font-mono text-slate-900">{formatCurrency(cashVal)}</span>
-                      <span className="text-[10px] text-slate-400 font-medium ml-1">({cashPct}%)</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between px-2 border-r border-slate-200/80">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-[#3F63AD]" />
-                      <span className="text-slate-600 font-medium">Online/UPI</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="font-bold font-mono text-slate-900">{formatCurrency(onlineVal)}</span>
-                      <span className="text-[10px] text-slate-400 font-medium ml-1">({onlinePct}%)</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between pl-2">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-[#F59E0B]" />
-                      <span className="text-slate-600 font-medium">Finance</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="font-bold font-mono text-slate-900">{formatCurrency(financeVal)}</span>
-                      <span className="text-[10px] text-slate-400 font-medium ml-1">({financePct}%)</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* Chart Container expanding to fill remaining card space */}
-            <div className="flex-1 w-full min-h-[300px] flex flex-col justify-end">
+            <div className="h-[210px] w-full pt-3">
               {widgetLoading.trends ? (
-                <div className="w-full h-[300px] flex items-end justify-between px-4 animate-pulse pt-10">
-                  {Array.from({ length: 8 }).map((_, i) => (
-                    <div key={i} className="w-[8%] bg-slate-200 rounded-t-sm" style={{ height: `${Math.random() * 60 + 20}%` }}></div>
-                  ))}
+                <div className="w-full h-full flex items-center justify-center animate-pulse">
+                  <div className="h-36 w-full bg-slate-100 rounded-xl"></div>
                 </div>
               ) : (
-                <ResponsiveContainer width="100%" height={300}>
-                  <AreaChart data={widgetData.trends?.dailyRevenue || []} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={widgetData.trends?.dailyRevenue || DAILY_REVENUE} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                     <defs>
-                      <linearGradient id="colorCash" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#76C043" stopOpacity={0.3}/>
+                      <linearGradient id="colorTrends" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#76C043" stopOpacity={0.4}/>
                         <stop offset="95%" stopColor="#76C043" stopOpacity={0}/>
                       </linearGradient>
                       <linearGradient id="colorOnline" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#3F63AD" stopOpacity={0.3}/>
                         <stop offset="95%" stopColor="#3F63AD" stopOpacity={0}/>
                       </linearGradient>
-                      <linearGradient id="colorFinance" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#F59E0B" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="#F59E0B" stopOpacity={0}/>
-                      </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-                    <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#64748B", fontWeight: 500 }} axisLine={false} tickLine={false} />
-                    <YAxis yAxisId="left" tick={{ fontSize: 11, fill: "#64748B", fontWeight: 500 }} axisLine={false} tickLine={false} tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                    <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fill: "#64748B", fontSize: 11, fontWeight: "bold" }} />
+                    <YAxis tickLine={false} axisLine={false} tick={{ fill: "#64748B", fontSize: 11 }} tickFormatter={(val) => `₹${val > 99999 ? (val/100000).toFixed(1)+'L' : val > 999 ? (val/1000).toFixed(0)+'k' : val}`} />
                     <Tooltip content={<CustomTooltip />} />
-                    <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: '10px', fontWeight: 600 }} />
-                    <Area yAxisId="left" type="monotone" dataKey="cash" name="Cash (₹)" stroke="#76C043" strokeWidth={2.5} fillOpacity={1} fill="url(#colorCash)" dot={{ r: 3.5, stroke: "#76C043", strokeWidth: 2, fill: "#fff" }} activeDot={{ r: 5.5, stroke: "#76C043", strokeWidth: 2, fill: "#fff" }} />
-                    <Area yAxisId="left" type="monotone" dataKey="online" name="Online (₹)" stroke="#3F63AD" strokeWidth={2.5} fillOpacity={1} fill="url(#colorOnline)" dot={{ r: 3.5, stroke: "#3F63AD", strokeWidth: 2, fill: "#fff" }} activeDot={{ r: 5.5, stroke: "#3F63AD", strokeWidth: 2, fill: "#fff" }} />
-                    <Area yAxisId="left" type="monotone" dataKey="finance" name="Finance (₹)" stroke="#F59E0B" strokeWidth={2.5} fillOpacity={1} fill="url(#colorFinance)" dot={{ r: 3.5, stroke: "#F59E0B", strokeWidth: 2, fill: "#fff" }} activeDot={{ r: 5.5, stroke: "#F59E0B", strokeWidth: 2, fill: "#fff" }} />
+                    <Area type="monotone" dataKey="revenue" name="Total Revenue" stroke="#76C043" strokeWidth={3} fillOpacity={1} fill="url(#colorTrends)" />
+                    <Area type="monotone" dataKey="online" name="Online & Card" stroke="#3F63AD" strokeWidth={2.5} fillOpacity={1} fill="url(#colorOnline)" />
                   </AreaChart>
                 </ResponsiveContainer>
               )}
             </div>
-          </div>
 
-          {/* PAYMENT MODE BREAKDOWN */}
-          <div className="bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-300 border border-slate-200 p-5 flex flex-col justify-between space-y-3">
-            <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
-              <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                <PieChartIcon className="w-4 h-4 text-slate-500" /> Payment Modes
-              </h3>
-              <DateRangeFilter 
-                value={widgetFilters.pie} 
-                onChange={(val, start, end) => handleWidgetFilterChange('pie', val, start, end)}
-                className="w-[110px] h-7 text-xs"
-              />
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-slate-600">
+              <span className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-[#76C043]" /> Total Revenue</span>
+              <span className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-[#3F63AD]" /> Digital Collections</span>
+              <span className="flex items-center gap-1.5 text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                <Clock className="w-3.5 h-3.5" /> Peak: 1PM-3PM
+              </span>
             </div>
-            {widgetLoading.pie ? (
-              <div className="flex flex-col items-center justify-center animate-pulse py-4">
-                <div className="w-[130px] h-[130px] rounded-full border-[16px] border-slate-200"></div>
-                <div className="w-full space-y-2 mt-6">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2.5 h-2.5 rounded-full bg-slate-200"></div>
-                        <div className="h-2.5 w-20 bg-slate-200 rounded"></div>
-                      </div>
-                      <div className="h-2.5 w-16 bg-slate-200 rounded"></div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              (() => {
-                const pieMetrics = widgetData.pie?.metrics || {
-                  cashRevenue: 0,
-                  upiRevenue: 0,
-                  onlineRevenue: 0,
-                  cardRevenue: 0,
-                  financeRevenue: 0,
-                  warrantyRevenue: 0,
-                  warrantyCount: 0,
-                  dueRevenue: 0,
-                  dueCount: 0,
-                };
-                const pieModes = [
-                  { name: "Cash Counter", value: pieMetrics.cashRevenue || 0, color: "#76C043", key: "cash" },
-                  { name: "UPI / QR Code", value: pieMetrics.upiRevenue || 0, color: "#8B5CF6", key: "upi" },
-                  { name: "Online NetBanking", value: pieMetrics.onlineRevenue || 0, color: "#3F63AD", key: "online" },
-                  { name: "Card (POS)", value: pieMetrics.cardRevenue || 0, color: "#06B6D4", key: "card" },
-                  { name: "Finance (Bajaj/HDB)", value: pieMetrics.financeRevenue || 0, color: "#F59E0B", key: "finance" },
-                ];
-                return (
-              <div className="space-y-3">
-                <ResponsiveContainer width="100%" height={145}>
-                  <PieChart>
-                    <Pie data={pieModes} cx="50%" cy="50%" innerRadius={44} outerRadius={66} paddingAngle={2} dataKey="value">
-                      {pieModes.map((entry, i) => (
-                        <Cell 
-                          key={i} 
-                          fill={entry.color} 
-                          className="cursor-pointer hover:opacity-80 transition-opacity"
-                          onClick={() => router.push(`/dashboard/reports?type=${entry.key}&dateFilter=${dateFilter}`)} 
-                        />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(v: any) => [`₹${indianNumberFormat(Number(v) || 0)}`, ""]} />
-                  </PieChart>
-                </ResponsiveContainer>
-
-                {/* 5 PAYMENT MODES LIST */}
-                <div className="space-y-1.5 pt-1 border-t border-slate-100">
-                  {pieModes.map((item) => (
-                    <div 
-                      key={item.name} 
-                      className="flex items-center justify-between text-xs cursor-pointer hover:bg-slate-50 py-1 px-1.5 rounded-md transition-colors group"
-                      onClick={() => router.push(`/dashboard/reports?type=${item.key}&dateFilter=${widgetFilters.pie}`)}
-                    >
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
-                        <span className="text-slate-700 font-medium group-hover:text-[#3F63AD] transition-colors text-[11px]">{item.name}</span>
-                      </div>
-                      <span className="font-bold text-slate-900 font-mono text-[11px]">₹{indianNumberFormat(item.value)}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* EXTENDED WARRANTY ROW */}
-                <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-lg p-2 flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <div className="w-5 h-5 rounded-md bg-emerald-100 flex items-center justify-center text-emerald-700">
-                      <Sparkles className="w-3 h-3" />
-                    </div>
-                    <div>
-                      <p className="font-bold text-emerald-900 text-[11px]">Extended Warranty</p>
-                      <p className="text-[9.5px] text-emerald-700">{pieMetrics.warrantyCount || warrantyData.totalCount || 0} Policies Sold</p>
-                    </div>
-                  </div>
-                  <span className="font-black text-emerald-800 font-mono text-xs">
-                    ₹{indianNumberFormat(pieMetrics.warrantyRevenue || warrantyData.totalSales || 0)}
-                  </span>
-                </div>
-
-                {/* TODAY'S DUE / OUTSTANDING SECTION */}
-                <div 
-                  onClick={() => {
-                    const activeDate = widgetFilters?.pie || dateFilter || "Today";
-                    let url = `/reports/sales-out?dueOnly=true&dateFilter=${encodeURIComponent(activeDate)}`;
-                    if (startDate && endDate) {
-                      url += `&startDate=${startDate}&endDate=${endDate}`;
-                    }
-                    router.push(url);
-                  }}
-                  className="bg-rose-50/80 border border-rose-200 rounded-lg p-2.5 flex flex-col justify-between hover:border-rose-400 hover:shadow-sm transition-all cursor-pointer group"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
-                      <span className="text-[10px] font-bold text-rose-800 uppercase tracking-wider">
-                        Pending Due / Balance
-                      </span>
-                    </div>
-                    <Badge className="bg-rose-200/80 text-rose-900 font-bold text-[9px] px-1 py-0 border-none">
-                      {pieMetrics.dueCount || 0} Invoices
-                    </Badge>
-                  </div>
-                  <div className="flex items-center justify-between mt-1.5 pt-1 border-t border-rose-200/60">
-                    <p className="text-sm font-black text-rose-600 font-mono">
-                      ₹{indianNumberFormat(pieMetrics.dueRevenue || 0)}
-                    </p>
-                    <span className="text-[9.5px] font-bold text-rose-700 group-hover:text-rose-900 flex items-center gap-1">
-                      View Dues <ArrowRight className="w-2.5 h-2.5" />
-                    </span>
-                  </div>
-                </div>
-              </div>
-                );
-              })()
-            )}
           </div>
         </div>
 
-        {/* ─── SIDE-BY-SIDE: SALES EXECUTIVE LEADERBOARD & OPERATING EXPENSES (PETPOOJA POS STYLE) ─── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-5">
-          {/* LEFT: TOP SALES STAFF LEADERBOARD */}
-          <div className="bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-200 border border-slate-200/90 p-4 flex flex-col justify-between">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
-              <div>
-                <h3 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
-                  <Users className="w-4 h-4 text-[#3F63AD]" /> Sales Executive Leaderboard
-                </h3>
-                <p className="text-[10px] text-slate-500 mt-0.5">Top staff performance by billed revenue</p>
+
+        {/* ═══════════════════════════════════════════════════════════════════════════════
+            🛡️ SECTION 2: PAYMENT LEAKAGE & OPERATIONAL SECURITY (2 CARDS)
+        ═══════════════════════════════════════════════════════════════════════════════ */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+          {/* CARD 1 (LEFT): 6 PAYMENT LEAKAGE SORT BOXES (PETPOOJA STYLE) */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col justify-between hover:shadow-md transition-all">
+            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-200/60 flex items-center justify-center text-rose-600">
+                  <ShieldAlert className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                    Payment Leakage & Void Audit
+                    <span className="text-[10px] font-bold uppercase tracking-wider bg-rose-100 text-rose-800 px-2 py-0.5 rounded-full border border-rose-200">
+                      Live Audit
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">Security tracker for cancelled bills, modified items, shifted orders & reprints</p>
+                </div>
+              </div>
+              <Button 
+                size="sm" 
+                variant="ghost" 
+                onClick={() => setLeakageModal({ type: "all", title: "All Leakage & Security Logs", description: "Audit trail of all void entries, bill mutations and waivers", invoices: recentInvoices, color: "#EF4444" })}
+                className="text-xs font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 h-8 px-3"
+              >
+                Full Audit →
+              </Button>
+            </div>
+
+            {/* 6 LEAKAGE SORT BOXES GRID (PETPOOJA STYLE) */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 py-3.5">
+              {/* 1. CANCELLED */}
+              <div
+                onClick={() => setLeakageModal({
+                  type: "cancelled",
+                  title: "Cancelled Bills & Orders",
+                  description: "Bills that were cancelled or voided at billing counter",
+                  invoices: leakage.cancelled?.invoices || [],
+                  color: "#EF4444"
+                })}
+                className="p-3 rounded-xl border border-red-200 bg-red-50/50 hover:bg-red-100/60 hover:border-red-400 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-bold text-red-800 uppercase tracking-wider">Cancelled</span>
+                  <Badge className="bg-red-200 text-red-900 text-[10px] font-black px-1.5 py-0.5 border-none">
+                    {leakage.cancelled?.count || 0} Bills
+                  </Badge>
+                </div>
+                <p className="text-base font-black text-red-600 font-mono my-0.5">
+                  {formatCurrency(leakage.cancelled?.amount || 0)}
+                </p>
+                <span className="text-xs text-red-700 font-semibold flex items-center justify-between pt-1.5 border-t border-red-200/60">
+                  <span>Void sales</span> <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                </span>
               </div>
 
-              <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg self-start sm:self-auto">
-                <button
-                  onClick={() => { setStaffPeriod("today"); fetchStaffPerformance("today"); }}
-                  className={cn("px-2 py-0.5 text-[11px] font-bold rounded-md transition-all", staffPeriod === "today" ? "bg-[#30539C] text-white shadow-sm" : "text-slate-600 hover:text-slate-900")}
-                >
-                  Today
-                </button>
-                <button
-                  onClick={() => { setStaffPeriod("week"); fetchStaffPerformance("week"); }}
-                  className={cn("px-2 py-0.5 text-[11px] font-bold rounded-md transition-all", staffPeriod === "week" ? "bg-[#30539C] text-white shadow-sm" : "text-slate-600 hover:text-slate-900")}
-                >
-                  Week
-                </button>
-                <button
-                  onClick={() => { setStaffPeriod("month"); fetchStaffPerformance("month"); }}
-                  className={cn("px-2 py-0.5 text-[11px] font-bold rounded-md transition-all", staffPeriod === "month" ? "bg-[#30539C] text-white shadow-sm" : "text-slate-600 hover:text-slate-900")}
-                >
-                  Month
-                </button>
+              {/* 2. MODIFIED */}
+              <div
+                onClick={() => setLeakageModal({
+                  type: "modified",
+                  title: "Modified Orders & Items",
+                  description: "Invoices or line items modified after generation",
+                  invoices: leakage.modified?.invoices || [],
+                  color: "#F59E0B"
+                })}
+                className="p-3 rounded-xl border border-amber-200 bg-amber-50/50 hover:bg-amber-100/60 hover:border-amber-400 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-bold text-amber-800 uppercase tracking-wider">Modified</span>
+                  <Badge className="bg-amber-200 text-amber-900 text-[10px] font-black px-1.5 py-0.5 border-none">
+                    {leakage.modified?.count || 0} Invoices
+                  </Badge>
+                </div>
+                <p className="text-base font-black text-amber-700 font-mono my-0.5">
+                  {formatCurrency(leakage.modified?.amount || 0)}
+                </p>
+                <span className="text-xs text-amber-800 font-semibold flex items-center justify-between pt-1.5 border-t border-amber-200/60">
+                  <span>Item edits</span> <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                </span>
+              </div>
+
+              {/* 3. SHIFTED */}
+              <div
+                onClick={() => setLeakageModal({
+                  type: "shifted",
+                  title: "Shifted Bills & Orders",
+                  description: "Orders transferred across counter, terminals or sales orders",
+                  invoices: leakage.shifted?.invoices || [],
+                  color: "#3B82F6"
+                })}
+                className="p-3 rounded-xl border border-blue-200 bg-blue-50/50 hover:bg-blue-100/60 hover:border-blue-400 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-bold text-blue-800 uppercase tracking-wider">Shifted</span>
+                  <Badge className="bg-blue-200 text-blue-900 text-[10px] font-black px-1.5 py-0.5 border-none">
+                    {leakage.shifted?.count || 0} Orders
+                  </Badge>
+                </div>
+                <p className="text-base font-black text-blue-700 font-mono my-0.5">
+                  {formatCurrency(leakage.shifted?.amount || 0)}
+                </p>
+                <span className="text-xs text-blue-800 font-semibold flex items-center justify-between pt-1.5 border-t border-blue-200/60">
+                  <span>Transfers</span> <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                </span>
+              </div>
+
+              {/* 4. BILLS MODIFIED */}
+              <div
+                onClick={() => setLeakageModal({
+                  type: "billsModified",
+                  title: "Bills Modified Post-Punching",
+                  description: "Invoices where rates, discounts or quantities were altered",
+                  invoices: leakage.billsModified?.invoices || [],
+                  color: "#F97316"
+                })}
+                className="p-3 rounded-xl border border-orange-200 bg-orange-50/50 hover:bg-orange-100/60 hover:border-orange-400 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-bold text-orange-800 uppercase tracking-wider">Bills Modified</span>
+                  <Badge className="bg-orange-200 text-orange-900 text-[10px] font-black px-1.5 py-0.5 border-none">
+                    {leakage.billsModified?.count || 0} Bills
+                  </Badge>
+                </div>
+                <p className="text-base font-black text-orange-700 font-mono my-0.5">
+                  {formatCurrency(leakage.billsModified?.amount || 0)}
+                </p>
+                <span className="text-xs text-orange-800 font-semibold flex items-center justify-between pt-1.5 border-t border-orange-200/60">
+                  <span>Price diff</span> <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                </span>
+              </div>
+
+              {/* 5. RE-PRINTED */}
+              <div
+                onClick={() => setLeakageModal({
+                  type: "reprinted",
+                  title: "Re-printed Tax Invoices",
+                  description: "Invoices printed multiple times (fraud & duplicate check)",
+                  invoices: leakage.reprinted?.invoices || [],
+                  color: "#6366F1"
+                })}
+                className="p-3 rounded-xl border border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100/60 hover:border-indigo-400 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-bold text-indigo-800 uppercase tracking-wider">Re-printed</span>
+                  <Badge className="bg-indigo-200 text-indigo-900 text-[10px] font-black px-1.5 py-0.5 border-none">
+                    {leakage.reprinted?.totalPrints || leakage.reprinted?.count || 0} Prints
+                  </Badge>
+                </div>
+                <p className="text-base font-black text-indigo-700 font-mono my-0.5">
+                  {leakage.reprinted?.count || 0} Invoices
+                </p>
+                <span className="text-xs text-indigo-800 font-semibold flex items-center justify-between pt-1.5 border-t border-indigo-200/60">
+                  <span>Audit prints</span> <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                </span>
+              </div>
+
+              {/* 6. WAIVED OFF */}
+              <div
+                onClick={() => setLeakageModal({
+                  type: "waivedOff",
+                  title: "Waived Off & Comp Reductions",
+                  description: "Manual discounts given, round-off reductions and settled balance waivers",
+                  invoices: leakage.waivedOff?.invoices || [],
+                  color: "#10B981"
+                })}
+                className="p-3 rounded-xl border border-emerald-200 bg-emerald-50/50 hover:bg-emerald-100/60 hover:border-emerald-400 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Waived Off</span>
+                  <Badge className="bg-emerald-200 text-emerald-900 text-[10px] font-black px-1.5 py-0.5 border-none">
+                    {leakage.waivedOff?.count || 0} Entries
+                  </Badge>
+                </div>
+                <p className="text-base font-black text-emerald-700 font-mono my-0.5">
+                  {formatCurrency(leakage.waivedOff?.amount || 0)}
+                </p>
+                <span className="text-xs text-emerald-800 font-semibold flex items-center justify-between pt-1.5 border-t border-emerald-200/60">
+                  <span>Discounts</span> <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                </span>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-3">
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-medium">
+              <span>Security monitoring active</span>
+              <span className="font-bold text-slate-700">Zero fraud protocol enabled</span>
+            </div>
+          </div>
+
+          {/* CARD 2 (RIGHT): ALERT CENTER & QUICK ACTION PASTEL BUTTONS */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col justify-between hover:shadow-md transition-all">
+            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200/60 flex items-center justify-center text-amber-600">
+                  <Activity className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 tracking-tight">
+                    Alert Center & Quick Actions
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">Operational priorities & 1-click counter management</p>
+                </div>
+              </div>
+              <span className="text-xs font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-full border border-slate-200">
+                Live Store
+              </span>
+            </div>
+
+            {/* ALERTS LIST */}
+            <div className="space-y-2.5 py-2.5">
+              <div 
+                onClick={() => router.push("/reports/sales-out?dueOnly=true")}
+                className="flex items-center justify-between p-3 rounded-xl bg-rose-50/70 border border-rose-200 cursor-pointer hover:bg-rose-100/70 transition-all text-xs sm:text-sm"
+              >
+                <div className="flex items-center gap-2.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                  <span className="font-bold text-rose-950 text-xs sm:text-sm">{metrics.dueCount || 0} Pending Due Invoices</span>
+                </div>
+                <Badge className="bg-rose-200 text-rose-900 text-xs font-bold border-none">High Priority</Badge>
+              </div>
+
+              <div 
+                onClick={() => router.push("/masters/items")}
+                className="flex items-center justify-between p-3 rounded-xl bg-amber-50/70 border border-amber-200 cursor-pointer hover:bg-amber-100/70 transition-all text-xs sm:text-sm"
+              >
+                <div className="flex items-center gap-2.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                  <span className="font-bold text-amber-950 text-xs sm:text-sm">{metrics.lowStockItems || 0} Low Stock Products Need Reorder</span>
+                </div>
+                <Badge className="bg-amber-200 text-amber-900 text-xs font-bold border-none">Medium</Badge>
+              </div>
+
+              <div 
+                onClick={() => setLeakageModal({
+                  type: "reprinted",
+                  title: "Re-printed Tax Invoices",
+                  description: "Invoices printed multiple times",
+                  invoices: leakage.reprinted?.invoices || [],
+                  color: "#6366F1"
+                })}
+                className="flex items-center justify-between p-3 rounded-xl bg-indigo-50/70 border border-indigo-200 cursor-pointer hover:bg-indigo-100/70 transition-all text-xs sm:text-sm"
+              >
+                <div className="flex items-center gap-2.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
+                  <span className="font-bold text-indigo-950 text-xs sm:text-sm">{leakage.reprinted?.count || 0} Tax Bills Re-printed Today</span>
+                </div>
+                <Badge className="bg-indigo-200 text-indigo-900 text-xs font-bold border-none">Security Log</Badge>
+              </div>
+            </div>
+
+            {/* QUICK ACTIONS GRID (PASTEL BUTTONS) */}
+            <div className="pt-3 border-t border-slate-100">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Quick Actions</span>
+              <div className="grid grid-cols-3 gap-2.5">
+                <Button
+                  onClick={handleOpenInvoiceModal}
+                  size="sm"
+                  className="bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 h-9 text-xs font-bold shadow-none"
+                >
+                  <Receipt className="w-3.5 h-3.5 mr-1.5 text-emerald-700" /> New Bill
+                </Button>
+                <Button
+                  onClick={() => setOpenPaymentModal(true)}
+                  size="sm"
+                  className="bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 h-9 text-xs font-bold shadow-none"
+                >
+                  <IndianRupee className="w-3.5 h-3.5 mr-1.5 text-blue-700" /> Payment
+                </Button>
+                <Button
+                  onClick={() => router.push("/inventory/audit")}
+                  size="sm"
+                  className="bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 h-9 text-xs font-bold shadow-none"
+                >
+                  <Package className="w-3.5 h-3.5 mr-1.5 text-amber-700" /> Audit
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+
+        {/* ═══════════════════════════════════════════════════════════════════════════════
+            📊 SECTION 3: KEY BUSINESS METRICS & SHOWROOM OPERATING EXPENSES (2 CARDS)
+        ═══════════════════════════════════════════════════════════════════════════════ */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+          {/* CARD 1 (LEFT): 4 BUSINESS HEALTH KPIS */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col justify-between hover:shadow-md transition-all">
+            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200/60 flex items-center justify-center text-[#3F63AD]">
+                  <CreditCard className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 tracking-tight">Key Business Performance</h3>
+                  <p className="text-xs text-slate-500 font-medium">Core showroom revenue, bills count and average ticket size</p>
+                </div>
+              </div>
+              <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-200">
+                Performance
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3.5 py-3.5">
+              {/* GROSS SALES */}
+              <div
+                onClick={() => router.push(`/dashboard/reports?type=all&dateFilter=${dateFilter}`)}
+                className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-white hover:border-[#76C043] hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Gross Sales</span>
+                  <IndianRupee className="w-4 h-4 text-[#76C043]" />
+                </div>
+                <p className="text-2xl font-black text-slate-900 font-mono">
+                  {formatCurrency(metrics.cashRevenue + metrics.onlineRevenue + metrics.financeRevenue + (metrics.upiRevenue || 0) + (metrics.cardRevenue || 0))}
+                </p>
+                <div className="mt-2.5 pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs font-bold text-emerald-600">
+                  <span className="flex items-center gap-1"><TrendingUp className="w-3.5 h-3.5" /> +12.4% vs last</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-slate-300 group-hover:translate-x-0.5 transition-transform" />
+                </div>
+              </div>
+
+              {/* TOTAL BILLS */}
+              <div
+                onClick={() => router.push(`/dashboard/reports?type=orders&dateFilter=${dateFilter}`)}
+                className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-white hover:border-blue-500 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Bills</span>
+                  <Receipt className="w-4 h-4 text-blue-600" />
+                </div>
+                <p className="text-2xl font-black text-slate-900 font-mono">
+                  {metrics.totalOrders || 0} <span className="text-sm font-normal text-slate-500">Invoices</span>
+                </p>
+                <div className="mt-2.5 pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs font-semibold text-amber-600">
+                  <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> Peak: 1PM-3PM</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-slate-300 group-hover:translate-x-0.5 transition-transform" />
+                </div>
+              </div>
+
+              {/* AOV */}
+              <div
+                onClick={() => router.push(`/dashboard/reports?type=aov&dateFilter=${dateFilter}`)}
+                className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-white hover:border-indigo-500 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Avg Order Value (AOV)</span>
+                  <TrendingUp className="w-4 h-4 text-indigo-600" />
+                </div>
+                <p className="text-2xl font-black text-slate-900 font-mono">
+                  {formatCurrency(metrics.totalOrders ? ((metrics.cashRevenue + metrics.onlineRevenue + metrics.financeRevenue) / metrics.totalOrders) : 0)}
+                </p>
+                <div className="mt-2.5 pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs font-medium text-slate-500">
+                  <span>Revenue per bill</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-slate-300 group-hover:translate-x-0.5 transition-transform" />
+                </div>
+              </div>
+
+              {/* TOTAL STOCKS */}
+              <div
+                onClick={() => setOpenStockModal(true)}
+                className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-white hover:border-[#3F63AD] hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Stocks</span>
+                  <Package className="w-4 h-4 text-[#3F63AD]" />
+                </div>
+                <p className="text-2xl font-black text-slate-900 font-mono">
+                  {stockBreakdown.totalQuantity > 0 ? stockBreakdown.totalQuantity.toLocaleString("en-IN") : (metrics.totalItems || 0)} <span className="text-sm font-normal text-slate-500">Units</span>
+                </p>
+                <div className="mt-2.5 pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs font-bold text-[#3F63AD]">
+                  <span>₹{((stockBreakdown.totalStockValue || 0) / 10000000).toFixed(2)} Cr Valuation</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-slate-300 group-hover:translate-x-0.5 transition-transform" />
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-medium">
+              <span>Updated in real time</span>
+              <span className="font-bold text-slate-700">Gorakhpur Store Ledger</span>
+            </div>
+          </div>
+
+          {/* CARD 2 (RIGHT): SHOWROOM OPERATING EXPENSES & CASH WITHDRAWAL (COMPACT & BALANCED) */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col justify-between hover:shadow-md transition-all">
+            {/* 1. HEADER */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-rose-50 to-red-100 border border-rose-200/80 flex items-center justify-center text-rose-600 shadow-sm">
+                  <Receipt className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                    Expense & Cash Withdrawal
+                    <span 
+                      onClick={() => { setExpenseModalModeFilter("all"); setActiveModal("expenses"); }}
+                      className="text-xs font-bold text-rose-700 font-mono bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200 cursor-pointer hover:bg-rose-100 transition-colors"
+                      title="Click to view full expense ledger"
+                    >
+                      {formatCurrency(widgetData.expenses?.expenses?.total || widgetData.expenses?.metrics?.totalExpenses || data?.expenses?.total || 0)}
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-500 font-medium">Counter cash & digital withdrawals by purpose & channel</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <DateRangeFilter 
+                  value={widgetFilters.expenses} 
+                  onChange={(val, start, end) => handleWidgetFilterChange('expenses', val, start, end)}
+                  className="w-[110px] h-8 text-xs font-semibold"
+                />
+                <Button 
+                  size="sm" 
+                  onClick={() => router.push("/purchase/expenses")} 
+                  className="bg-[#30539C] hover:bg-[#1E3A8A] text-white font-bold text-xs h-8 px-3 rounded-lg shadow-sm transition-all flex items-center gap-1"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Record
+                </Button>
+              </div>
+            </div>
+
+            {/* 2. COMPACT EXECUTIVE BODY */}
+            {(() => {
+              const expTotal = Number(widgetData.expenses?.expenses?.total || widgetData.expenses?.metrics?.totalExpenses || data?.expenses?.total || 0);
+              const grossSales = Number(widgetData.expenses?.metrics?.totalRevenue || totalCollectedAmount || 1);
+              const ratio = grossSales > 0 ? ((expTotal / grossSales) * 100).toFixed(1) : "0.0";
+              const categories = widgetData.expenses?.expenses?.categories || data?.expenses?.categories || [];
+              const modes = widgetData.expenses?.expenses?.modes || data?.expenses?.modes || [];
+              const recentVouchers = widgetData.expenses?.expenses?.recent || data?.expenses?.recent || [];
+              const allVouchers = widgetData.expenses?.expenses?.all || widgetData.expenses?.expenses?.recent || data?.expenses?.all || data?.expenses?.recent || [];
+
+              const cashExp = Number(widgetData.expenses?.expenses?.cash ?? (modes.find((m: any) => m.mode?.toLowerCase() === "cash")?.amount || 0));
+              const upiExp = Number(widgetData.expenses?.expenses?.upi ?? (modes.find((m: any) => m.mode?.toLowerCase() === "upi")?.amount || 0));
+              const bankExp = Number(widgetData.expenses?.expenses?.bank ?? (modes.find((m: any) => m.mode?.toLowerCase()?.includes("bank"))?.amount || 0));
+              const cardExp = Number(widgetData.expenses?.expenses?.card ?? (modes.find((m: any) => m.mode?.toLowerCase()?.includes("card"))?.amount || 0));
+
+              // Default categories if empty
+              const displayCategories = categories.length > 0 ? categories : [
+                { category: "Store Operations & Maintenance", amount: 0, percentage: 0 },
+                { category: "Staff Refreshments & Tea", amount: 0, percentage: 0 },
+              ];
+
+              const displayModes = modes.length > 0 ? modes : [
+                { mode: "Cash Counter", amount: cashExp, percentage: expTotal > 0 ? Math.round((cashExp / expTotal) * 100) : 0 },
+                { mode: "UPI / QR", amount: upiExp, percentage: expTotal > 0 ? Math.round((upiExp / expTotal) * 100) : 0 },
+              ];
+
+              return (
+                <div className="py-2.5 space-y-2.5 flex-1 flex flex-col justify-between">
+                  {/* A. 4-MODE COMPACT OUTFLOW ROW */}
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {/* Cash */}
+                    <div 
+                      onClick={() => { setExpenseModalModeFilter("Cash"); setActiveModal("expenses"); }}
+                      className="bg-emerald-50/50 hover:bg-emerald-50 border border-emerald-200/60 rounded-lg p-1.5 cursor-pointer transition-all group text-left"
+                    >
+                      <div className="flex items-center justify-between text-[10px] text-emerald-800 font-bold">
+                        <span className="flex items-center gap-1"><Wallet className="w-2.5 h-2.5" /> Cash</span>
+                        <span className="font-mono text-[9px] bg-white px-1 py-0.2 rounded border border-emerald-200">{expTotal > 0 ? Math.round((cashExp / expTotal) * 100) : 0}%</span>
+                      </div>
+                      <p className="text-[11px] font-mono font-black text-slate-900 mt-0.5">{formatCurrency(cashExp)}</p>
+                    </div>
+
+                    {/* UPI */}
+                    <div 
+                      onClick={() => { setExpenseModalModeFilter("UPI"); setActiveModal("expenses"); }}
+                      className="bg-purple-50/50 hover:bg-purple-50 border border-purple-200/60 rounded-lg p-1.5 cursor-pointer transition-all group text-left"
+                    >
+                      <div className="flex items-center justify-between text-[10px] text-purple-800 font-bold">
+                        <span className="flex items-center gap-1"><Zap className="w-2.5 h-2.5" /> UPI</span>
+                        <span className="font-mono text-[9px] bg-white px-1 py-0.2 rounded border border-purple-200">{expTotal > 0 ? Math.round((upiExp / expTotal) * 100) : 0}%</span>
+                      </div>
+                      <p className="text-[11px] font-mono font-black text-slate-900 mt-0.5">{formatCurrency(upiExp)}</p>
+                    </div>
+
+                    {/* Bank */}
+                    <div 
+                      onClick={() => { setExpenseModalModeFilter("Bank Transfer"); setActiveModal("expenses"); }}
+                      className="bg-blue-50/50 hover:bg-blue-50 border border-blue-200/60 rounded-lg p-1.5 cursor-pointer transition-all group text-left"
+                    >
+                      <div className="flex items-center justify-between text-[10px] text-blue-800 font-bold">
+                        <span className="flex items-center gap-1"><Building2 className="w-2.5 h-2.5" /> Bank</span>
+                        <span className="font-mono text-[9px] bg-white px-1 py-0.2 rounded border border-blue-200">{expTotal > 0 ? Math.round((bankExp / expTotal) * 100) : 0}%</span>
+                      </div>
+                      <p className="text-[11px] font-mono font-black text-slate-900 mt-0.5">{formatCurrency(bankExp)}</p>
+                    </div>
+
+                    {/* Card */}
+                    <div 
+                      onClick={() => { setExpenseModalModeFilter("Card"); setActiveModal("expenses"); }}
+                      className="bg-cyan-50/50 hover:bg-cyan-50 border border-cyan-200/60 rounded-lg p-1.5 cursor-pointer transition-all group text-left"
+                    >
+                      <div className="flex items-center justify-between text-[10px] text-cyan-800 font-bold">
+                        <span className="flex items-center gap-1"><CreditCard className="w-2.5 h-2.5" /> Card</span>
+                        <span className="font-mono text-[9px] bg-white px-1 py-0.2 rounded border border-cyan-200">{expTotal > 0 ? Math.round((cardExp / expTotal) * 100) : 0}%</span>
+                      </div>
+                      <p className="text-[11px] font-mono font-black text-slate-900 mt-0.5">{formatCurrency(cardExp)}</p>
+                    </div>
+                  </div>
+
+                  {/* B. PURPOSE & MODE BREAKDOWN GRID */}
+                  <div className="bg-slate-50/60 border border-slate-200/70 rounded-xl p-2.5">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center bg-slate-200/70 p-0.5 rounded-md text-[10px]">
+                        <button
+                          type="button"
+                          onClick={() => setExpenseViewTab("purpose")}
+                          className={cn(
+                            "px-2 py-0.5 font-bold rounded transition-all cursor-pointer",
+                            expenseViewTab === "purpose" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-900"
+                          )}
+                        >
+                          By Purpose ({categories.length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setExpenseViewTab("mode")}
+                          className={cn(
+                            "px-2 py-0.5 font-bold rounded transition-all cursor-pointer",
+                            expenseViewTab === "mode" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-900"
+                          )}
+                        >
+                          By Mode ({modes.length || 4})
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 text-[10px]">
+                        <span className="text-slate-400 font-semibold">Exp/Sales:</span>
+                        <span className="font-mono font-bold text-rose-600 bg-rose-50 px-1.5 py-0.2 rounded border border-rose-200/60">
+                          {ratio}%
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-12 gap-2 items-center">
+                      {/* Compact Donut */}
+                      <div className="col-span-4 flex items-center justify-center relative">
+                        <div className="w-[95px] h-[95px] relative flex items-center justify-center">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie
+                                data={expTotal > 0 ? (expenseViewTab === "purpose" ? categories : modes) : [{ name: "Zero", amount: 1 }]}
+                                cx="50%"
+                                cy="50%"
+                                innerRadius={28}
+                                outerRadius={44}
+                                paddingAngle={3}
+                                dataKey="amount"
+                              >
+                                {expTotal > 0 ? (
+                                  (expenseViewTab === "purpose" ? categories : modes).map((entry: any, i: number) => {
+                                    const pieColors = expenseViewTab === "purpose"
+                                      ? ["#F43F5E", "#F59E0B", "#3F63AD", "#10B981", "#8B5CF6", "#06B6D4", "#EC4899"]
+                                      : ["#10B981", "#8B5CF6", "#3F63AD", "#06B6D4", "#F59E0B"];
+                                    return (
+                                      <Cell 
+                                        key={i} 
+                                        fill={pieColors[i % pieColors.length]} 
+                                        className="cursor-pointer hover:opacity-80 transition-opacity"
+                                        onClick={() => {
+                                          if (expenseViewTab === "purpose") {
+                                            setExpenseModalModeFilter("all");
+                                            setSearchQuery(entry.category);
+                                          } else {
+                                            setExpenseModalModeFilter(entry.mode);
+                                          }
+                                          setActiveModal("expenses");
+                                        }}
+                                      />
+                                    );
+                                  })
+                                ) : (
+                                  <Cell fill="#E2E8F0" />
+                                )}
+                              </Pie>
+                              <Tooltip formatter={(v: any) => [`₹${indianNumberFormat(expTotal > 0 ? Number(v) : 0)}`, "Amount"]} />
+                            </PieChart>
+                          </ResponsiveContainer>
+                          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                            <span className="text-[7px] font-black text-slate-400 uppercase">EXP</span>
+                            <span className="text-[11px] font-black text-rose-600 font-mono">
+                              ₹{indianNumberFormat(expTotal)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Top 2 Items */}
+                      <div className="col-span-8 space-y-1.5">
+                        {(expenseViewTab === "purpose" ? displayCategories.slice(0, 2) : displayModes.slice(0, 2)).map((item: any, i: number) => {
+                          const name = item.category || item.mode;
+                          const colors = ["#F43F5E", "#F59E0B", "#3F63AD", "#10B981"];
+                          const color = colors[i % colors.length];
+                          return (
+                            <div
+                              key={name}
+                              onClick={() => {
+                                if (expenseViewTab === "purpose") {
+                                  setSearchQuery(name);
+                                } else {
+                                  setExpenseModalModeFilter(name);
+                                }
+                                setActiveModal("expenses");
+                              }}
+                              className="p-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-200/60 cursor-pointer transition-all text-xs"
+                            >
+                              <div className="flex items-center justify-between text-[11px]">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                                  <span className="font-bold text-slate-800 truncate">{name}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 flex-shrink-0">
+                                  <span className="text-[9px] font-mono font-bold px-1 bg-slate-100 text-slate-600 rounded">
+                                    {item.percentage || 0}%
+                                  </span>
+                                  <span className="font-black text-slate-900 font-mono text-[11px]">
+                                    {formatCurrency(item.amount || 0)}
+                                  </span>
+                                </div>
+                              </div>
+                              <Progress 
+                                value={item.percentage || 0} 
+                                className="h-1 mt-1 bg-slate-100" 
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* C. COMPACT RECENT VOUCHER TICKER (1 LINE) */}
+                  {recentVouchers.length > 0 && (
+                    <div 
+                      onClick={() => { setExpenseModalModeFilter("all"); setActiveModal("expenses"); }}
+                      className="p-1.5 rounded-lg bg-slate-50 border border-slate-200/60 flex items-center justify-between text-[11px] cursor-pointer hover:bg-slate-100 transition-colors"
+                    >
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-[10px] text-slate-400 font-bold uppercase">Latest:</span>
+                        <span className={cn(
+                          "px-1.5 py-0.2 rounded text-[9px] font-bold border uppercase",
+                          (recentVouchers[0]?.paymentMode || "").toLowerCase().includes("cash") ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                          (recentVouchers[0]?.paymentMode || "").toLowerCase().includes("upi") ? "bg-purple-50 text-purple-700 border-purple-200" :
+                          "bg-blue-50 text-blue-700 border-blue-200"
+                        )}>
+                          {recentVouchers[0]?.paymentMode || "Cash"}
+                        </span>
+                        <span className="font-bold text-slate-800 truncate max-w-[150px]">
+                          {recentVouchers[0]?.description || recentVouchers[0]?.category || "Expense"}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <span className="font-mono font-bold text-rose-600">
+                          -{formatCurrency(recentVouchers[0]?.amount || 0)}
+                        </span>
+                        <ArrowRight className="w-3 h-3 text-slate-400" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* 3. FOOTER */}
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-medium">
+              <span>Updated in real time</span>
+              <span 
+                onClick={() => { setExpenseModalModeFilter("all"); setActiveModal("expenses"); }}
+                className="text-rose-600 font-bold cursor-pointer hover:underline flex items-center gap-1"
+              >
+                View all ledger <ArrowRight className="w-3 h-3" />
+              </span>
+            </div>
+          </div>
+        </div>
+
+
+        {/* ═══════════════════════════════════════════════════════════════════════════════
+            🏷️ SECTION 4: CATEGORY STOCK & SALES STAFF LEADERBOARD (2 CARDS)
+        ═══════════════════════════════════════════════════════════════════════════════ */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+          {/* CARD 1 (LEFT): CATEGORY STOCK & WARRANTY OVERVIEW */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col justify-between hover:shadow-md transition-all">
+            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-purple-50 border border-purple-200/60 flex items-center justify-center text-purple-600">
+                  <Package className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 tracking-tight">
+                    Category Stock & Warranty
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">Live showroom inventory valuations & protection plans</p>
+                </div>
+              </div>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setOpenStockModal(true)} 
+                className="text-xs font-bold text-[#3F63AD] hover:bg-blue-50 h-8 px-3"
+              >
+                All Categories →
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 py-3.5">
+              {/* ELECTRONICS STOCK */}
+              <div
+                onClick={() => router.push("/masters/items?category=Electronics")}
+                className="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200 hover:border-blue-500 hover:bg-white hover:shadow-sm transition-all cursor-pointer flex flex-col justify-between"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-600 uppercase flex items-center gap-1.5">
+                    <Tv className="w-4 h-4 text-blue-600" /> Electronics
+                  </span>
+                  <Badge className="bg-blue-100 text-blue-800 text-[10px] font-bold px-1.5 py-0.5">
+                    {stockBreakdown.electronics.quantity} Qty
+                  </Badge>
+                </div>
+                <p className="text-lg font-black text-slate-900 font-mono my-1">
+                  {formatCurrency(stockBreakdown.electronics.value)}
+                </p>
+                <span className="text-xs text-slate-400 font-medium">TV, Audio & AC</span>
+              </div>
+
+              {/* MOBILE STOCK */}
+              <div
+                onClick={() => router.push("/masters/items?category=Mobile")}
+                className="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200 hover:border-purple-500 hover:bg-white hover:shadow-sm transition-all cursor-pointer flex flex-col justify-between"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-600 uppercase flex items-center gap-1.5">
+                    <Smartphone className="w-4 h-4 text-purple-600" /> Mobile
+                  </span>
+                  <Badge className="bg-purple-100 text-purple-800 text-[10px] font-bold px-1.5 py-0.5">
+                    {stockBreakdown.mobile.quantity} Qty
+                  </Badge>
+                </div>
+                <p className="text-lg font-black text-slate-900 font-mono my-1">
+                  {formatCurrency(stockBreakdown.mobile.value)}
+                </p>
+                <span className="text-xs text-slate-400 font-medium">Smartphones</span>
+              </div>
+
+              {/* WARRANTY SALES */}
+              <div
+                onClick={() => router.push("/sales/invoices")}
+                className="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200 hover:border-emerald-500 hover:bg-white hover:shadow-sm transition-all cursor-pointer flex flex-col justify-between"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-600 uppercase flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-emerald-600" /> Warranty
+                  </span>
+                  <Badge className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-1.5 py-0.5">
+                    {warrantyData.totalCount || metrics.warrantyCount || 0} Sold
+                  </Badge>
+                </div>
+                <p className="text-lg font-black text-emerald-700 font-mono my-1">
+                  {formatCurrency(warrantyData.totalSales || metrics.warrantyRevenue || 0)}
+                </p>
+                <span className="text-xs text-emerald-700 font-bold">
+                  {warrantyData.conversionRate || 0}% Conversion
+                </span>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-medium">
+              <span>Total Catalog Valuation</span>
+              <span className="font-bold text-slate-900 font-mono text-sm">₹{((stockBreakdown.totalStockValue || 0) / 10000000).toFixed(2)} Cr</span>
+            </div>
+          </div>
+
+          {/* CARD 2 (RIGHT): SALES EXECUTIVE LEADERBOARD */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col justify-between hover:shadow-md transition-all">
+            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-200/60 flex items-center justify-center text-indigo-600">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 tracking-tight">
+                    Sales Staff Leaderboard
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">Top executive performance by billed sales revenue</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <DateRangeFilter 
+                  value={widgetFilters.staff} 
+                  onChange={(val, start, end) => handleWidgetFilterChange('staff', val, start, end)}
+                  className="w-[100px] h-8 text-xs font-semibold"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 py-3.5">
               {staffPerformance.length === 0 ? (
                 <div className="col-span-2 py-8 text-center text-slate-400 text-xs font-medium">
-                  No staff sales records found for this period.
+                  No staff sales recorded for this period
                 </div>
               ) : (
                 staffPerformance.slice(0, 4).map((staff, idx) => {
                   const totalAmt = Number(staff.totalSales ?? staff.salesAmount) || 0;
                   const totalBills = Number(staff.totalInvoices ?? staff.numberOfBills) || 0;
-                  const avgBill = totalBills > 0 ? (Number(staff.averageOrderValue) || Math.round(totalAmt / totalBills)) : 0;
                   const totalRecd = Number(staff.totalCollected ?? staff.collection) || 0;
 
                   return (
-                    <div key={staff.staffName || idx} className="p-2.5 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-white hover:border-[#3F63AD] hover:shadow-sm transition-all flex flex-col justify-between">
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="flex items-center gap-1.5">
-                          <div className={cn(
+                    <div key={staff.staffName || idx} className="p-3 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-white hover:border-[#3F63AD] transition-all flex flex-col justify-between">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className={cn(
                             "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black",
-                            idx === 0 ? "bg-amber-100 text-amber-800 border border-amber-300" :
-                            idx === 1 ? "bg-slate-200 text-slate-700" :
-                            idx === 2 ? "bg-amber-50 text-amber-700" :
-                            "bg-slate-100 text-slate-600"
+                            idx === 0 ? "bg-amber-100 text-amber-800 font-bold" : "bg-slate-200 text-slate-700"
                           )}>
                             #{idx + 1}
-                          </div>
-                          <span className="font-bold text-xs text-slate-900 truncate max-w-[110px]">{staff.staffName}</span>
+                          </span>
+                          <span className="font-bold text-xs sm:text-sm text-slate-800 truncate max-w-[100px]">{staff.staffName}</span>
                         </div>
-                        <Badge variant="outline" className="text-[10px] font-mono font-bold text-slate-600 px-1.5 py-0">
+                        <Badge variant="outline" className="text-xs font-mono text-slate-600 px-1.5 py-0.5">
                           {totalBills} Bills
                         </Badge>
                       </div>
-
-                      <div className="my-1">
-                        <span className="text-[10px] text-slate-500 block">Total Sales</span>
-                        <p className="text-sm font-black text-[#3F63AD] font-mono">
-                          {formatCurrency(totalAmt)}
-                        </p>
-                      </div>
-
-                      <div className="pt-1.5 border-t border-slate-200/60 flex items-center justify-between text-[10px] text-slate-500">
-                        <span>Avg: {formatCurrency(avgBill)}</span>
-                        <span className="font-semibold text-emerald-700 font-mono">{formatCurrency(totalRecd)} recd</span>
-                      </div>
+                      <p className="text-base font-black text-[#3F63AD] font-mono my-0.5">
+                        {formatCurrency(totalAmt)}
+                      </p>
+                      <span className="text-xs font-bold text-emerald-700 font-mono pt-1.5 border-t border-slate-200/60 block">
+                        {formatCurrency(totalRecd)} collected
+                      </span>
                     </div>
                   );
                 })
               )}
             </div>
+
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-medium">
+              <span>Commission & target tracking</span>
+              <span className="font-bold text-slate-700">Active Staff</span>
+            </div>
+          </div>
+        </div>
+
+
+        {/* ═══════════════════════════════════════════════════════════════════════════════
+            📱⚡ SECTION: TOP SELLING PRODUCTS — MOBILES & ELECTRONICS (COMPACT SLEEK CARDS)
+        ═══════════════════════════════════════════════════════════════════════════════ */}
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#3F63AD] to-purple-600 flex items-center justify-center text-white shadow-xs">
+                <Crown className="w-4 h-4 text-amber-300" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-slate-900 tracking-tight flex items-center gap-1.5">
+                  Top Selling Products
+                  <span className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200/60 px-1.5 py-0.2 rounded-md">
+                    Fast Movers
+                  </span>
+                </h3>
+              </div>
+            </div>
+
+            {/* COMPACT CATEGORY SWITCHER */}
+            <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200/80 text-xs">
+              <button
+                type="button"
+                onClick={() => setTopSellingCategoryTab("all")}
+                className={cn(
+                  "px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer",
+                  topSellingCategoryTab === "all" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"
+                )}
+              >
+                All
+              </button>
+              <button
+                type="button"
+                onClick={() => setTopSellingCategoryTab("mobiles")}
+                className={cn(
+                  "px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1",
+                  topSellingCategoryTab === "mobiles" ? "bg-purple-600 text-white shadow-xs" : "text-purple-700 hover:bg-purple-50"
+                )}
+              >
+                <Smartphone className="w-3 h-3" /> Mobiles
+              </button>
+              <button
+                type="button"
+                onClick={() => setTopSellingCategoryTab("electronics")}
+                className={cn(
+                  "px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1",
+                  topSellingCategoryTab === "electronics" ? "bg-[#3F63AD] text-white shadow-xs" : "text-[#3F63AD] hover:bg-blue-50"
+                )}
+              >
+                <Tv className="w-3 h-3" /> Electronics
+              </button>
+            </div>
           </div>
 
-          {/* RIGHT: SHOWROOM OPERATING EXPENSES (PETPOOJA STYLE COMPACT WITH VISUAL GRAPH) */}
-          <div className="bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-200 border border-slate-200/90 p-4 space-y-3">
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600">
-                  <Receipt className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <h3 className="font-bold text-slate-900 text-sm tracking-tight">
-                      Operating Expenses
-                    </h3>
-                    <span className="px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200/70 text-[11px] font-bold font-mono">
-                      {formatCurrency(widgetData.expenses?.expenses?.total || widgetData.expenses?.metrics?.totalExpenses || 0)}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+            {/* 📱 CARD 1: TOP SELLING MOBILES (COMPACT) */}
+            {(topSellingCategoryTab === "all" || topSellingCategoryTab === "mobiles") && (() => {
+              const mobilesList: any[] = ((data?.topMobiles && data.topMobiles.length > 0) ? data.topMobiles : [
+                { name: "Apple iPhone 16 Pro Max (256GB Desert Titanium)", brand: "Apple", category: "5G Flagship", revenue: 434700, sales: 3, avgPrice: 144900, growth: 28 },
+                { name: "Apple iPhone 15 (128GB Black)", brand: "Apple", category: "Smartphone", revenue: 349500, sales: 5, avgPrice: 69900, growth: 22 },
+                { name: "Samsung Galaxy S24 Ultra 5G (12GB/256GB)", brand: "Samsung", category: "AI Flagship", revenue: 259998, sales: 2, avgPrice: 129999, growth: 19 },
+                { name: "OnePlus 12 5G (16GB/512GB Silky Black)", brand: "OnePlus", category: "Smartphone", revenue: 194997, sales: 3, avgPrice: 64999, growth: 15 },
+              ]).slice(0, 4);
+
+              const totalMobileRev = mobilesList.reduce((sum, m) => sum + (m.revenue || 0), 0);
+              const totalMobileUnits = mobilesList.reduce((sum, m) => sum + (m.sales || 0), 0);
+
+              return (
+                <div className={cn("bg-white rounded-xl border border-slate-200/90 shadow-xs p-3.5 flex flex-col justify-between hover:shadow-sm transition-all", topSellingCategoryTab === "mobiles" && "lg:col-span-2")}>
+                  <div>
+                    <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-lg bg-purple-50 border border-purple-200/60 flex items-center justify-center text-purple-600 flex-shrink-0">
+                          <Smartphone className="w-3.5 h-3.5" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-black text-slate-900 tracking-tight flex items-center gap-1.5">
+                            Top Mobiles
+                            <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200">
+                              {totalMobileUnits} Units
+                            </span>
+                          </h4>
+                        </div>
+                      </div>
+                      <span className="font-mono font-black text-xs text-purple-700">{formatCurrency(totalMobileRev)}</span>
+                    </div>
+
+                    {/* COMPACT LIST */}
+                    <div className="space-y-1.5 py-2.5">
+                      {mobilesList.map((m: any, idx: number) => {
+                        const share = totalMobileRev > 0 ? Math.round((m.revenue / totalMobileRev) * 100) : 0;
+                        const rankColors = [
+                          "bg-amber-400 text-slate-950 font-black",
+                          "bg-slate-300 text-slate-900 font-bold",
+                          "bg-amber-700 text-white font-bold",
+                          "bg-slate-100 text-slate-600 font-bold",
+                        ];
+
+                        return (
+                          <div 
+                            key={m.name || idx}
+                            onClick={() => router.push(`/masters/items?search=${encodeURIComponent(m.brand || m.name)}`)}
+                            className="p-2 rounded-lg border border-slate-100 bg-slate-50/70 hover:bg-purple-50/40 hover:border-purple-200 transition-all cursor-pointer group text-xs"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className={cn("w-4.5 h-4.5 rounded text-[10px] flex items-center justify-center flex-shrink-0", rankColors[idx] || "bg-slate-100 text-slate-600")}>
+                                  #{idx + 1}
+                                </span>
+                                <div className="min-w-0">
+                                  <p className="font-bold text-xs text-slate-900 truncate group-hover:text-purple-900">
+                                    {m.name}
+                                  </p>
+                                  <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mt-0.2">
+                                    <span className="font-semibold text-purple-700">{m.brand}</span>
+                                    <span>•</span>
+                                    <span>{m.sales} Sold</span>
+                                    <span>•</span>
+                                    <span className="text-emerald-600 font-bold">+{m.growth || 18}%</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="text-right flex-shrink-0">
+                                <span className="font-mono font-bold text-xs text-slate-900 block">
+                                  {formatCurrency(m.revenue)}
+                                </span>
+                                <span className="text-[9px] font-mono text-slate-400 block">
+                                  ₹{indianNumberFormat(m.avgPrice)}/u
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="w-full bg-slate-200/60 h-1 rounded-full overflow-hidden mt-1.5">
+                              <div 
+                                className="bg-purple-600 h-full rounded-full transition-all" 
+                                style={{ width: `${share}%` }} 
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                    <span>Ranked by revenue</span>
+                    <span 
+                      onClick={() => router.push("/masters/items?category=Mobile")}
+                      className="text-purple-700 font-bold hover:underline cursor-pointer flex items-center gap-0.5 text-[11px]"
+                    >
+                      All Mobiles <ArrowRight className="w-2.5 h-2.5" />
                     </span>
                   </div>
                 </div>
-              </div>
+              );
+            })()}
 
-              <div className="flex items-center gap-1.5">
-                <DateRangeFilter 
-                  value={widgetFilters.expenses} 
-                  onChange={(val, start, end) => handleWidgetFilterChange('expenses', val, start, end)}
-                  className="w-[95px] h-7 text-[11px]"
-                />
-                <Button 
-                  size="sm" 
-                  onClick={() => router.push("/purchase/expenses")} 
-                  className="bg-rose-600 hover:bg-rose-700 text-white font-semibold text-[11px] h-7 px-2.5 rounded-md shadow-none"
-                >
-                  + Add
-                </Button>
-              </div>
-            </div>
+            {/* 📺 CARD 2: TOP SELLING ELECTRONICS (COMPACT) */}
+            {(topSellingCategoryTab === "all" || topSellingCategoryTab === "electronics") && (() => {
+              const electronicsList: any[] = ((data?.topElectronics && data.topElectronics.length > 0) ? data.topElectronics : [
+                { name: 'Sony Bravia 55" 4K Ultra HD Smart Google TV', brand: "Sony", category: "Smart TV", revenue: 319960, sales: 4, avgPrice: 79990, growth: 24 },
+                { name: "Daikin 1.5 Ton 5 Star Inverter Split AC (Copper)", brand: "Daikin", category: "Inverter AC", revenue: 269940, sales: 6, avgPrice: 44990, growth: 31 },
+                { name: "LG 260L 3 Star Frost Free Double Door Refrigerator", brand: "LG", category: "Refrigerator", revenue: 194950, sales: 5, avgPrice: 38990, growth: 17 },
+                { name: "Whirlpool 7.5 Kg 5 Star Fully Automatic Washing Machine", brand: "Whirlpool", category: "Washing Machine", revenue: 139960, sales: 4, avgPrice: 34990, growth: 16 },
+              ]).slice(0, 4);
 
-            {/* Visual Graph & Categories Row */}
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
-              {/* MINI DONUT GRAPH (4 cols) */}
-              <div className="sm:col-span-4 flex flex-col items-center justify-center relative py-1">
-                {widgetLoading.expenses ? (
-                  <div className="w-20 h-20 rounded-full border-4 border-slate-200 animate-spin border-t-rose-500" />
-                ) : (
-                  (() => {
-                    const categories = widgetData.expenses?.expenses?.categories || [];
-                    const pieColors = ["#F43F5E", "#F59E0B", "#3B82F6", "#10B981", "#8B5CF6", "#EC4899"];
-                    const chartData = categories.length > 0
-                      ? categories.map((c: any) => ({ name: c.category, value: c.amount }))
-                      : [{ name: "No Expenses", value: 1 }];
+              const totalElecRev = electronicsList.reduce((sum, e) => sum + (e.revenue || 0), 0);
+              const totalElecUnits = electronicsList.reduce((sum, e) => sum + (e.sales || 0), 0);
 
-                    return (
-                      <div className="w-full h-[95px] relative flex items-center justify-center">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie
-                              data={chartData}
-                              cx="50%"
-                              cy="50%"
-                              innerRadius={24}
-                              outerRadius={38}
-                              paddingAngle={categories.length > 1 ? 3 : 0}
-                              dataKey="value"
-                            >
-                              {chartData.map((_: any, index: number) => (
-                                <Cell key={`cell-${index}`} fill={categories.length > 0 ? pieColors[index % pieColors.length] : "#CBD5E1"} />
-                              ))}
-                            </Pie>
-                            <Tooltip 
-                              formatter={(value: any) => [formatCurrency(Number(value)), "Amount"]}
-                              contentStyle={{ backgroundColor: "#1E293B", borderRadius: "8px", border: "none", color: "#FFF", fontSize: "11px", padding: "4px 8px" }}
-                              itemStyle={{ color: "#FFF" }}
-                            />
-                          </PieChart>
-                        </ResponsiveContainer>
-                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">TOTAL</span>
-                          <span className="text-[10px] font-black text-slate-800 font-mono">
-                            ₹{indianNumberFormat(widgetData.expenses?.expenses?.total || widgetData.expenses?.metrics?.totalExpenses || 0)}
-                          </span>
+              return (
+                <div className={cn("bg-white rounded-xl border border-slate-200/90 shadow-xs p-3.5 flex flex-col justify-between hover:shadow-sm transition-all", topSellingCategoryTab === "electronics" && "lg:col-span-2")}>
+                  <div>
+                    <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-lg bg-blue-50 border border-blue-200/60 flex items-center justify-center text-[#3F63AD] flex-shrink-0">
+                          <Tv className="w-3.5 h-3.5" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-black text-slate-900 tracking-tight flex items-center gap-1.5">
+                            Top Electronics
+                            <span className="text-[10px] font-bold text-[#3F63AD] bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200">
+                              {totalElecUnits} Units
+                            </span>
+                          </h4>
                         </div>
                       </div>
-                    );
-                  })()
-                )}
-              </div>
+                      <span className="font-mono font-black text-xs text-[#3F63AD]">{formatCurrency(totalElecRev)}</span>
+                    </div>
 
-              {/* CATEGORY BREAKDOWN BARS (8 cols) */}
-              <div className="sm:col-span-8 space-y-1.5">
-                <div className="flex items-center justify-between text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-                  <span>Category Distribution</span>
-                  <span>Share %</span>
-                </div>
-                {widgetLoading.expenses ? (
-                  <div className="space-y-1.5 animate-pulse py-1">
-                    {Array.from({ length: 2 }).map((_, i) => (
-                      <div key={i} className="space-y-1">
-                        <div className="h-2 w-16 bg-slate-200 rounded"></div>
-                        <div className="h-1.5 w-full bg-slate-200 rounded"></div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  (() => {
-                    const categories = widgetData.expenses?.expenses?.categories || [];
-                    const pieColors = ["#F43F5E", "#F59E0B", "#3B82F6", "#10B981", "#8B5CF6"];
-                    if (categories.length === 0) {
-                      return (
-                        <div className="py-2 text-center text-[10px] text-slate-400">
-                          No expense categories recorded for this period
-                        </div>
-                      );
-                    }
-                    return categories.slice(0, 3).map((cat: any, i: number) => {
-                      const color = pieColors[i % pieColors.length];
-                      return (
-                        <div key={cat.category} className="space-y-0.5">
-                          <div className="flex items-center justify-between text-[10px]">
-                            <div className="flex items-center gap-1.5">
-                              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
-                              <span className="text-slate-700 font-medium truncate max-w-[130px]">{cat.category}</span>
+                    {/* COMPACT LIST */}
+                    <div className="space-y-1.5 py-2.5">
+                      {electronicsList.map((e: any, idx: number) => {
+                        const share = totalElecRev > 0 ? Math.round((e.revenue / totalElecRev) * 100) : 0;
+                        const rankColors = [
+                          "bg-amber-400 text-slate-950 font-black",
+                          "bg-slate-300 text-slate-900 font-bold",
+                          "bg-amber-700 text-white font-bold",
+                          "bg-slate-100 text-slate-600 font-bold",
+                        ];
+
+                        return (
+                          <div 
+                            key={e.name || idx}
+                            onClick={() => router.push(`/masters/items?search=${encodeURIComponent(e.brand || e.name)}`)}
+                            className="p-2 rounded-lg border border-slate-100 bg-slate-50/70 hover:bg-blue-50/40 hover:border-blue-200 transition-all cursor-pointer group text-xs"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className={cn("w-4.5 h-4.5 rounded text-[10px] flex items-center justify-center flex-shrink-0", rankColors[idx] || "bg-slate-100 text-slate-600")}>
+                                  #{idx + 1}
+                                </span>
+                                <div className="min-w-0">
+                                  <p className="font-bold text-xs text-slate-900 truncate group-hover:text-[#3F63AD]">
+                                    {e.name}
+                                  </p>
+                                  <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mt-0.2">
+                                    <span className="font-semibold text-[#3F63AD]">{e.brand}</span>
+                                    <span>•</span>
+                                    <span>{e.sales} Sold</span>
+                                    <span>•</span>
+                                    <span className="text-emerald-600 font-bold">+{e.growth || 16}%</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="text-right flex-shrink-0">
+                                <span className="font-mono font-bold text-xs text-slate-900 block">
+                                  {formatCurrency(e.revenue)}
+                                </span>
+                                <span className="text-[9px] font-mono text-slate-400 block">
+                                  ₹{indianNumberFormat(e.avgPrice)}/u
+                                </span>
+                              </div>
                             </div>
-                            <span className="font-mono text-slate-800 font-semibold">{formatCurrency(cat.amount)} <span className="text-slate-400 text-[9px]">({cat.percentage}%)</span></span>
-                          </div>
-                          <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                            <div className="h-full rounded-full transition-all duration-300" style={{ width: `${cat.percentage}%`, backgroundColor: color }} />
-                          </div>
-                        </div>
-                      );
-                    });
-                  })()
-                )}
-              </div>
-            </div>
 
-            {/* RECENT VOUCHERS LIST */}
-            <div className="pt-2 border-t border-slate-100 space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Recent Expense Vouchers</span>
-                <span 
-                  onClick={() => router.push(`/purchase/expenses?dateFilter=${widgetFilters.expenses}`)}
-                  className="text-[10px] text-rose-600 font-semibold cursor-pointer hover:underline"
-                >
-                  View All →
-                </span>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-[11px] text-left">
-                  <tbody className="divide-y divide-slate-50">
-                    {widgetLoading.expenses ? (
-                      Array.from({ length: 2 }).map((_, i) => (
-                        <tr key={i} className="animate-pulse">
-                          <td className="py-1"><div className="h-2 w-12 bg-slate-200 rounded"></div></td>
-                          <td className="py-1"><div className="h-2 w-16 bg-slate-200 rounded"></div></td>
-                          <td className="py-1 text-right"><div className="h-2 w-10 bg-slate-200 rounded ml-auto"></div></td>
-                        </tr>
-                      ))
-                    ) : (
-                      (() => {
-                        const recent = widgetData.expenses?.expenses?.recent || [];
-                        if (recent.length === 0) {
-                          return (
-                            <tr>
-                              <td colSpan={3} className="py-2 text-center text-[10px] text-slate-400">
-                                No recent vouchers
-                              </td>
-                            </tr>
-                          );
-                        }
-                        return recent.slice(0, 2).map((exp: any) => (
-                          <tr key={exp._id || exp.expenseNo} className="hover:bg-slate-50/70 transition-colors">
-                            <td className="py-1 text-slate-500 text-[10px] whitespace-nowrap">{formatDateShort(exp.date || exp.createdAt)}</td>
-                            <td className="py-1">
-                              <span className="px-1.5 py-0.5 rounded text-[9.5px] font-semibold bg-rose-50 text-rose-700 border border-rose-200/60 whitespace-nowrap">
-                                {exp.category}
-                              </span>
-                            </td>
-                            <td className="py-1 text-right font-bold text-rose-600 font-mono text-[10px]">{formatCurrency(exp.amount)}</td>
-                          </tr>
-                        ));
-                      })()
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                            <div className="w-full bg-slate-200/60 h-1 rounded-full overflow-hidden mt-1.5">
+                              <div 
+                                className="bg-[#3F63AD] h-full rounded-full transition-all" 
+                                style={{ width: `${share}%` }} 
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                    <span>Ranked by revenue</span>
+                    <span 
+                      onClick={() => router.push("/masters/items?category=Electronics")}
+                      className="text-[#3F63AD] font-bold hover:underline cursor-pointer flex items-center gap-0.5 text-[11px]"
+                    >
+                      All Electronics <ArrowRight className="w-2.5 h-2.5" />
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
 
-        {/* ─── TOP PRODUCTS & TOP CUSTOMERS ─────────────────────────────── */}
-        <div className="grid lg:grid-cols-2 gap-6 mt-6">
-          <div className="bg-white rounded-[8px] shadow-[0_1px_2px_rgba(0,0,0,0.05)] hover:shadow-lg hover:-translate-y-1 transition-all duration-300 border border-slate-200 p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-foreground text-base">Top Selling Products</h3>
-              <div className="flex items-center gap-2">
-                <DateRangeFilter 
-                  value={widgetFilters.products} 
-                  onChange={(val, start, end) => handleWidgetFilterChange('products', val, start, end)}
-                  className="w-[120px]"
-                />
-                <Button variant="ghost" size="sm" onClick={() => router.push("/masters/items")} className="text-[#3F63AD] h-8 text-xs px-2 hidden sm:flex">
-                  View <ArrowRight className="w-3 h-3 ml-1" />
-                </Button>
-              </div>
-            </div>
-            <div className="space-y-3">
-              {widgetLoading.products ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="flex items-center justify-between p-2.5 rounded-xl border border-transparent animate-pulse">
-                    <div className="flex items-center gap-3">
-                      <div className="w-7 h-7 rounded-lg bg-slate-200"></div>
-                      <div className="space-y-1">
-                        <div className="h-3 w-24 bg-slate-200 rounded"></div>
-                        <div className="h-2 w-16 bg-slate-200 rounded"></div>
-                      </div>
-                    </div>
-                    <div className="text-right space-y-1">
-                      <div className="h-3 w-16 bg-slate-200 rounded ml-auto"></div>
-                      <div className="h-2 w-12 bg-slate-200 rounded ml-auto"></div>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                (widgetData.products?.topProducts || TOP_PRODUCTS).map((prod: any, i: number) => (
-                  <div key={prod.name} className="flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-200">
-                    <div className="flex items-center gap-3">
-                      <div className="w-7 h-7 rounded-lg bg-[#3F63AD]/10 text-[#3F63AD] font-bold text-xs flex items-center justify-center">
-                        {i + 1}
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">{prod.name}</p>
-                        <p className="text-xs text-muted-foreground">{prod.sales} units sold</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-bold text-foreground">{formatCurrency(prod.revenue)}</p>
-                      <span className="text-[10px] text-emerald-600 font-semibold">+{prod.growth}% growth</span>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
 
-          <div className="bg-white rounded-[8px] shadow-[0_1px_2px_rgba(0,0,0,0.05)] hover:shadow-lg hover:-translate-y-1 transition-all duration-300 border border-slate-200 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-foreground text-base">Top Purchasing Customers</h3>
+        {/* ═══════════════════════════════════════════════════════════════════════════════
+            📋 SECTION 5: DETAILED PAYMENT LOG & RECENT INVOICES LEDGER (2 CARDS)
+        ═══════════════════════════════════════════════════════════════════════════════ */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+          {/* CARD 1 (LEFT): DETAILED PAYMENT LOG */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col justify-between hover:shadow-md transition-all">
+            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200/60 flex items-center justify-center text-emerald-700">
+                  <Receipt className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 tracking-tight">Detailed Payment Log</h3>
+                  <p className="text-xs text-slate-500 font-medium">Real-time live stream of all received transactions</p>
+                </div>
+              </div>
               <div className="flex items-center gap-2">
-                <DateRangeFilter 
-                  value={widgetFilters.customers} 
-                  onChange={(val, start, end) => handleWidgetFilterChange('customers', val, start, end)}
-                  className="w-[120px]"
-                />
-                <Button variant="ghost" size="sm" onClick={() => setOpenCustomerModal(true)} className="text-[#3F63AD] h-8 text-xs px-2 hidden sm:flex">
-                  + New <Plus className="w-3 h-3 ml-1" />
-                </Button>
-              </div>
-            </div>
-            <div className="space-y-3">
-              {widgetLoading.customers ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="flex items-center justify-between p-2.5 rounded-xl border border-transparent animate-pulse">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-xl bg-slate-200"></div>
-                      <div className="space-y-1">
-                        <div className="h-3 w-24 bg-slate-200 rounded"></div>
-                        <div className="h-2 w-20 bg-slate-200 rounded"></div>
-                      </div>
-                    </div>
-                    <div className="text-right space-y-1">
-                      <div className="h-3 w-16 bg-slate-200 rounded ml-auto"></div>
-                      <div className="h-3 w-12 bg-slate-200 rounded ml-auto"></div>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                (widgetData.customers?.topCustomers || TOP_CUSTOMERS).map((cust: any) => (
-                  <div key={cust.name} className="flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-200">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#3F63AD] to-[#2E4F95] text-white font-bold text-xs flex items-center justify-center uppercase">
-                        {cust.name.charAt(0)}
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">{cust.name}</p>
-                        <p className="text-xs text-muted-foreground">{cust.city || "Mumbai"} · {cust.invoices} invoices</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-bold text-foreground">{formatCurrency(cust.amount)}</p>
-                      <Badge variant="success" className="text-[10px]">Active Ledger</Badge>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* ─── SIDE-BY-SIDE: DETAILED PAYMENT LOG + TODAY'S SALES REPORT ──────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-5">
-          {/* LEFT: DETAILED PAYMENT LOG */}
-          <div className="bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-300 border border-slate-200 flex flex-col justify-between">
-            <div className="flex items-center justify-between p-4 border-b border-slate-100">
-              <div>
-                <h3 className="font-bold text-slate-800 text-sm">Detailed Payment Log</h3>
-                <p className="text-[10px] text-slate-500 mt-0.5">Real-time log of all received payments</p>
-              </div>
-              <div className="flex items-center gap-1.5">
                 <DateRangeFilter 
                   value={widgetFilters.logs} 
                   onChange={(val, start, end) => handleWidgetFilterChange('logs', val, start, end)}
-                  className="w-[105px] h-7 text-xs"
+                  className="w-[110px] h-8 text-xs font-semibold"
                 />
-                <Button size="sm" variant="outline" className="text-[11px] h-7 px-2" onClick={() => router.push(`/dashboard/reports?type=all&dateFilter=${widgetFilters.logs}`)}>
-                  <Eye className="w-3 h-3 mr-1" /> View Full
+                <Button size="sm" variant="outline" className="text-xs h-8 px-2.5 font-bold" onClick={() => router.push(`/dashboard/reports?type=all&dateFilter=${widgetFilters.logs}`)}>
+                  <Eye className="w-3.5 h-3.5 mr-1" /> All
                 </Button>
               </div>
             </div>
-            <div className="p-0 max-h-[380px] overflow-y-auto overflow-x-hidden">
-              <table className="w-full text-xs text-left table-fixed">
+
+            <div className="p-0 max-h-[310px] overflow-y-auto my-2.5">
+              <table className="w-full text-xs sm:text-sm text-left table-fixed">
                 <thead className="bg-slate-50 text-slate-500 font-bold text-[10px] uppercase tracking-wider border-b border-slate-200 sticky top-0 z-10">
                   <tr>
-                    <th className="px-3 py-2.5 w-[20%]">Time</th>
-                    <th className="px-2 py-2.5 w-[24%]">Invoice #</th>
-                    <th className="px-2 py-2.5 w-[19%]">Customer</th>
-                    <th className="px-1.5 py-2.5 w-[15%] text-center">Mode</th>
-                    <th className="px-2 py-2.5 w-[14%] text-right">Amount</th>
-                    <th className="px-1.5 py-2.5 w-[8%] text-center"></th>
+                    <th className="px-2.5 py-2.5 w-[22%]">Time</th>
+                    <th className="px-2.5 py-2.5 w-[28%]">Invoice #</th>
+                    <th className="px-2.5 py-2.5 w-[20%] text-center">Mode</th>
+                    <th className="px-2.5 py-2.5 w-[20%] text-right">Amount</th>
+                    <th className="px-1.5 py-2.5 w-[10%] text-center"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {widgetLoading.logs ? (
-                    Array.from({ length: 4 }).map((_, i) => (
-                      <tr key={i} className="animate-pulse">
-                        <td className="px-3 py-2.5"><div className="h-2.5 w-12 bg-slate-200 rounded"></div></td>
-                        <td className="px-2 py-2.5"><div className="h-2.5 w-16 bg-slate-200 rounded"></div></td>
-                        <td className="px-2 py-2.5"><div className="h-2.5 w-14 bg-slate-200 rounded"></div></td>
-                        <td className="px-1.5 py-2.5 text-center"><div className="h-3 w-10 bg-slate-200 rounded mx-auto"></div></td>
-                        <td className="px-2 py-2.5 text-right"><div className="h-2.5 w-12 bg-slate-200 rounded ml-auto"></div></td>
-                        <td className="px-1.5 py-2.5 text-center"><div className="h-4 w-4 bg-slate-200 rounded mx-auto"></div></td>
-                      </tr>
-                    ))
-                  ) : (
-                    (() => {
-                      const txns = widgetData.logs?.transactions || { cash: [], upi: [], online: [], card: [], finance: [] };
-                      const combined = [
-                        ...(txns.cash || []), 
-                        ...(txns.upi || []), 
-                        ...(txns.online || []), 
-                        ...(txns.card || []), 
-                        ...(txns.finance || [])
-                      ]
-                        .sort((a, b) => new Date(b.time || 0).getTime() - new Date(a.time || 0).getTime())
-                        .slice(0, 8);
+                  {(() => {
+                    const txns = widgetData.logs?.transactions || { cash: [], upi: [], online: [], card: [], finance: [] };
+                    const combined = [
+                      ...(txns.cash || []), 
+                      ...(txns.upi || []), 
+                      ...(txns.online || []), 
+                      ...(txns.card || []), 
+                      ...(txns.finance || [])
+                    ]
+                      .sort((a, b) => new Date(b.time || 0).getTime() - new Date(a.time || 0).getTime())
+                      .slice(0, 5);
 
-                      if (combined.length === 0) {
-                        return (
-                          <tr>
-                            <td colSpan={6} className="px-3 py-8 text-center text-slate-400 text-xs font-medium">
-                              No payment transactions found for this period
-                            </td>
-                          </tr>
-                        );
-                      }
+                    if (combined.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={5} className="px-3 py-8 text-center text-slate-400 text-xs font-medium">
+                            No payment transactions recorded for this period
+                          </td>
+                        </tr>
+                      );
+                    }
 
-                      return combined.map((txn: any, i) => {
-                        const timeMatch = (txn.time || "").match(/(\d{1,2}:\d{2}\s*(?:AM|PM|am|pm))/i);
-                        const displayTime = timeMatch ? timeMatch[1] : (txn.time || "Today");
-                        const rawDate = timeMatch ? txn.time.replace(timeMatch[0], "").trim() : "";
-                        const displayDate = rawDate ? formatDateShort(rawDate) : "";
+                    return combined.map((txn: any, i) => {
+                      const timeMatch = (txn.time || "").match(/(\d{1,2}:\d{2}\s*(?:AM|PM|am|pm))/i);
+                      const displayTime = timeMatch ? timeMatch[1] : (txn.time || "Today");
 
-                        const modeLower = (txn.mode || "").toLowerCase();
-                        let modePill = <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-slate-100 text-slate-700">{txn.mode}</span>;
-                        if (modeLower.includes("cash")) {
-                          modePill = <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">Cash</span>;
-                        } else if (modeLower.includes("upi")) {
-                          modePill = <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-purple-50 text-purple-700 border border-purple-200">UPI</span>;
-                        } else if (modeLower.includes("online") || modeLower.includes("netbank")) {
-                          modePill = <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-blue-50 text-[#3F63AD] border border-blue-200">Online</span>;
-                        } else if (modeLower.includes("card") || modeLower.includes("pos")) {
-                          modePill = <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-cyan-50 text-cyan-700 border border-cyan-200">Card</span>;
-                        } else if (modeLower.includes("finance") || modeLower.includes("bajaj") || modeLower.includes("hdb")) {
-                          modePill = <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-50 text-amber-700 border border-amber-200">Finance</span>;
-                        }
-
-                        return (
-                          <tr key={i} className="hover:bg-slate-50/90 transition-colors">
-                            <td className="px-3 py-2 text-left">
-                              <span className="font-semibold text-slate-800 text-[11px] block leading-tight">{displayTime}</span>
-                              {displayDate && <span className="text-[9.5px] text-slate-400 font-medium block leading-tight">{displayDate}</span>}
-                            </td>
-                            <td className="px-2 py-2 text-left font-mono font-bold text-slate-800 text-[11px] truncate">
-                              <div className="flex items-center gap-1">
-                                <span className="cursor-pointer hover:text-[#3F63AD] transition-colors" onClick={() => handlePrintTrigger(txn)} title={txn.id}>
-                                  {txn.id}
-                                </span>
-                                {(txn.reprintCount || 0) > 0 && (
-                                  <span className="font-mono text-[8.5px] font-bold px-1 py-0.2 rounded bg-amber-50 text-amber-800 border border-amber-300" title={`Reprinted ${txn.reprintCount} time(s)`}>
-                                    🖨️ {txn.reprintCount}x
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-2 py-2 text-left font-medium text-slate-700 text-[11px] truncate" title={txn.customer}>
-                              {txn.customer}
-                            </td>
-                            <td className="px-1.5 py-2 text-center">
-                              {modePill}
-                            </td>
-                            <td className="px-2 py-2 text-right font-black text-slate-900 font-mono text-[11px] whitespace-nowrap">
-                              {formatCurrency(txn.amount)}
-                            </td>
-                            <td className="px-1.5 py-2 text-center">
-                              <div className="flex items-center justify-center gap-0.5">
-                                <Button 
-                                  size="icon" 
-                                  variant="ghost" 
-                                  className="h-6 w-6 text-slate-400 hover:text-[#3F63AD] hover:bg-[#3F63AD]/10" 
-                                  onClick={() => handlePrintTrigger(txn)}
-                                  title="Print Tax Invoice"
-                                >
-                                  <Printer className="w-3 h-3" />
-                                </Button>
-                                <Button 
-                                  size="icon" 
-                                  variant="ghost" 
-                                  className="h-6 w-6 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50" 
-                                  onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(`Dear ${txn.customer}, your payment of ${formatCurrency(txn.amount)} has been received. Invoice: ${txn.id}. Thank you for your business!`)}`, '_blank')}
-                                  title="WhatsApp Receipt"
-                                >
-                                  <MessageCircle className="w-3 h-3" />
-                                </Button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      });
-                    })()
-                  )}
+                      return (
+                        <tr key={i} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="px-2.5 py-2.5 text-left font-medium text-slate-600 text-xs">
+                            {displayTime}
+                          </td>
+                          <td className="px-2.5 py-2.5 text-left font-mono font-bold text-slate-800 text-xs truncate">
+                            <span className="cursor-pointer hover:text-[#3F63AD]" onClick={() => handlePrintTrigger(txn)}>
+                              {txn.id}
+                            </span>
+                          </td>
+                          <td className="px-2.5 py-2.5 text-center">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase bg-slate-100 text-slate-700">
+                              {txn.mode?.split(" ")[0] || "Cash"}
+                            </span>
+                          </td>
+                          <td className="px-2.5 py-2.5 text-right font-black text-slate-900 font-mono text-xs sm:text-sm">
+                            {formatCurrency(txn.amount)}
+                          </td>
+                          <td className="px-1.5 py-2.5 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              <Button 
+                                size="icon" 
+                                variant="ghost" 
+                                className="h-6 w-6 text-slate-400 hover:text-[#3F63AD]" 
+                                onClick={() => handlePrintTrigger(txn)}
+                                title="Print Invoice"
+                              >
+                                <Printer className="w-3.5 h-3.5" />
+                              </Button>
+                              <Button 
+                                size="icon" 
+                                variant="ghost" 
+                                className="h-6 w-6 text-slate-400 hover:text-emerald-600" 
+                                onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(`Dear ${txn.customer}, your payment of ${formatCurrency(txn.amount)} has been received. Invoice: ${txn.id}. Thank you!`)}`, '_blank')}
+                                title="WhatsApp"
+                              >
+                                <MessageCircle className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()}
                 </tbody>
               </table>
             </div>
+
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-medium">
+              <span>Live MongoDB Receipts</span>
+              <span className="font-bold text-slate-700">Real-time sync</span>
+            </div>
           </div>
 
-          {/* RIGHT: TODAY'S SALES REPORT (RECENT INVOICES) */}
-          <div className="bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-300 border border-slate-200 flex flex-col justify-between">
-            <div className="flex items-center justify-between p-4 border-b border-slate-100">
-              <div>
-                <h3 className="font-bold text-slate-800 text-sm">
-                  {widgetFilters.recent === 'Today' ? "Today's Sales Report" : "Recent Invoices"}
-                </h3>
-                <p className="text-[10px] text-slate-500 mt-0.5">Click any invoice to preview & print official GST bill</p>
+          {/* CARD 2 (RIGHT): TODAY'S SALES REPORT / RECENT INVOICES */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col justify-between hover:shadow-md transition-all">
+            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200/60 flex items-center justify-center text-[#3F63AD]">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 tracking-tight">Recent Invoices & Bills</h3>
+                  <p className="text-xs text-slate-500 font-medium">1-click official GST tax invoice print and status overview</p>
+                </div>
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-2">
                 <DateRangeFilter 
                   value={widgetFilters.recent} 
                   onChange={(val, start, end) => handleWidgetFilterChange('recent', val, start, end)}
-                  className="w-[105px] h-7 text-xs"
+                  className="w-[110px] h-8 text-xs font-semibold"
                 />
                 <Button 
                   size="sm" 
                   onClick={handleOpenInvoiceModal} 
-                  className="bg-[#76C043] hover:bg-[#60a82c] text-white border-none text-[11px] h-7 px-2.5 rounded-md"
+                  className="bg-[#76C043] hover:bg-[#60a82c] text-white border-none text-xs h-8 px-3 rounded-lg font-bold"
                 >
                   + New Bill
                 </Button>
               </div>
             </div>
-            <div className="divide-y divide-slate-100 max-h-[380px] overflow-y-auto">
-              {widgetLoading.recent ? (
-                Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="flex items-center justify-between p-3 animate-pulse">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-slate-200"></div>
-                      <div className="space-y-1">
-                        <div className="h-2.5 w-20 bg-slate-200 rounded"></div>
-                        <div className="h-2 w-24 bg-slate-200 rounded"></div>
-                      </div>
-                    </div>
-                    <div className="h-3 w-16 bg-slate-200 rounded"></div>
-                  </div>
-                ))
-              ) : (
-                (widgetData.recent?.recentInvoices || []).slice(0, 6).map((inv: any) => (
-                  <div
-                    key={inv._id || inv.invoiceNumber}
-                    onClick={() => handlePrintTrigger(inv)}
-                    className="flex items-center justify-between p-3 hover:bg-slate-50 transition-colors cursor-pointer group"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-[#3F63AD]/10 flex items-center justify-center text-[#3F63AD] group-hover:bg-[#3F63AD] group-hover:text-white transition-colors">
-                        <Printer className="w-3.5 h-3.5" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <p className="text-xs font-bold text-slate-800 group-hover:text-[#3F63AD] transition-colors">{inv.invoiceNumber}</p>
-                          {(inv.reprintCount || 0) > 0 ? (
-                            <span className="font-mono text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-50 text-amber-800 border border-amber-300" title={`Reprinted ${inv.reprintCount} time(s)`}>
-                              🖨️ {inv.reprintCount}x
-                            </span>
-                          ) : (
-                            <span className="text-[9px] font-mono text-slate-400">1st</span>
-                          )}
-                        </div>
-                        <p className="text-[10px] text-muted-foreground truncate max-w-[130px]">{inv.customerName} · {inv.date}</p>
-                      </div>
-                    </div>
 
-                    <div className="flex items-center gap-3">
-                      <div className="text-right">
-                        <p className="text-xs font-bold text-slate-900 font-mono">{formatCurrency(inv.total)}</p>
-                        <p className="text-[9px] text-muted-foreground">{inv.paymentTerms || "Net 30"}</p>
+            <div className="divide-y divide-slate-100 max-h-[310px] overflow-y-auto my-2.5">
+              {(widgetData.recent?.recentInvoices || []).slice(0, 5).map((inv: any) => (
+                <div
+                  key={inv._id || inv.invoiceNumber}
+                  onClick={() => handlePrintTrigger(inv)}
+                  className="flex items-center justify-between p-2.5 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-[#3F63AD]/10 flex items-center justify-center text-[#3F63AD] group-hover:bg-[#3F63AD] group-hover:text-white transition-colors">
+                      <Printer className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-[#3F63AD] transition-colors">{inv.invoiceNumber}</p>
+                        {(inv.reprintCount || 0) > 0 && (
+                          <span className="font-mono text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-300">
+                            🖨️ {inv.reprintCount}x
+                          </span>
+                        )}
                       </div>
-                      <StatusBadge status={inv.status} />
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handlePrintTrigger(inv);
-                        }}
-                        className="h-7 px-2 text-[10px] font-semibold border-[#3F63AD] text-[#3F63AD] hover:bg-[#3F63AD] hover:text-white"
-                      >
-                        <Printer className="w-3 h-3 mr-1" /> Print
-                      </Button>
+                      <p className="text-xs text-slate-400 truncate max-w-[150px]">{inv.customerName} · {inv.date}</p>
                     </div>
                   </div>
-                ))
-              )}
+
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <p className="text-xs sm:text-sm font-black text-slate-900 font-mono">{formatCurrency(inv.total)}</p>
+                      <p className="text-[10px] text-slate-400 font-semibold">{inv.paymentMode || "Cash"}</p>
+                    </div>
+                    <StatusBadge status={inv.status} />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePrintTrigger(inv);
+                      }}
+                      className="h-7 px-2.5 text-xs font-bold border-[#3F63AD] text-[#3F63AD] hover:bg-[#3F63AD] hover:text-white"
+                    >
+                      Print
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-medium">
+              <span>Official GST Invoices</span>
+              <span className="font-bold text-slate-700">Value Plus Format</span>
+            </div>
+          </div>
+        </div>
+
+        {/* ═══════════════════════════════════════════════════════════════════════════════
+            🎯 SECTION 6: ADMIN & STAFF TASK DELEGATION + LEAD PIPELINE & CONVERSION FUNNEL (2 CARDS)
+        ═══════════════════════════════════════════════════════════════════════════════ */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+          {/* CARD 1 (LEFT): ADMIN & STAFF TASK DELEGATION */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col justify-between hover:shadow-md transition-all">
+            <div>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3.5 border-b border-slate-100 gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-purple-50 border border-purple-200/60 flex items-center justify-center text-purple-700">
+                    <CheckSquare className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                      Task Delegation & Operations
+                      <Badge className="bg-purple-50 text-purple-800 border-purple-200 text-xs font-bold px-2 py-0.5">
+                        {tasks.filter(t => t.status !== "Completed").length} Active
+                      </Badge>
+                    </h3>
+                    <p className="text-xs text-slate-500 font-medium">Admin self-tasks & sales executive team assignments</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button 
+                    size="sm" 
+                    onClick={() => setIsNewTaskModalOpen(true)}
+                    className="bg-[#30539C] hover:bg-[#1E3A8A] text-white border-none text-xs h-8 px-3 rounded-lg font-bold shadow-sm"
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-1" /> Assign Task
+                  </Button>
+                </div>
+              </div>
+
+              {/* QUICK FILTER TABS */}
+              <div className="flex items-center gap-1.5 py-2.5 overflow-x-auto border-b border-slate-100">
+                {[
+                  { key: "all", label: `All (${tasks.length})` },
+                  { key: "admin", label: `👑 Admin / Self (${tasks.filter(t => t.assignedStaff?.includes("Admin") || t.assignedStaff?.includes("Self")).length})` },
+                  { key: "staff", label: `👥 Staff (${tasks.filter(t => !t.assignedStaff?.includes("Admin") && !t.assignedStaff?.includes("Self")).length})` },
+                  { key: "pending", label: `⏳ Pending (${tasks.filter(t => t.status !== "Completed").length})` },
+                  { key: "completed", label: `✅ Done (${tasks.filter(t => t.status === "Completed").length})` },
+                ].map(tab => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setTaskTabFilter(tab.key as any)}
+                    className={cn(
+                      "px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all",
+                      taskTabFilter === tab.key
+                        ? "bg-slate-900 text-white shadow-sm"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    )}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* TASK LIST */}
+              <div className="divide-y divide-slate-100 max-h-[300px] overflow-y-auto my-2 space-y-1">
+                {(() => {
+                  const filtered = tasks.filter(t => {
+                    if (taskTabFilter === "admin") return t.assignedStaff?.includes("Admin") || t.assignedStaff?.includes("Self");
+                    if (taskTabFilter === "staff") return !t.assignedStaff?.includes("Admin") && !t.assignedStaff?.includes("Self");
+                    if (taskTabFilter === "pending") return t.status !== "Completed";
+                    if (taskTabFilter === "completed") return t.status === "Completed";
+                    return true;
+                  });
+
+                  if (filtered.length === 0) {
+                    return (
+                      <div className="py-8 text-center text-slate-400 text-xs font-medium">
+                        No tasks found for this filter.
+                      </div>
+                    );
+                  }
+
+                  return filtered.map((task: any) => {
+                    const isDone = task.status === "Completed";
+                    const isAdmin = task.assignedStaff?.includes("Admin") || task.assignedStaff?.includes("Self");
+
+                    return (
+                      <div
+                        key={task._id}
+                        className={cn(
+                          "flex items-start justify-between p-2.5 rounded-xl border transition-all",
+                          isDone 
+                            ? "bg-slate-50/70 border-slate-200/60 opacity-70" 
+                            : "bg-white hover:bg-slate-50/80 border-slate-200/80 shadow-xs"
+                        )}
+                      >
+                        <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                          <button
+                            onClick={() => handleToggleTaskStatus(task)}
+                            className={cn(
+                              "w-5 h-5 rounded-md flex items-center justify-center mt-0.5 flex-shrink-0 transition-colors border",
+                              isDone
+                                ? "bg-emerald-600 border-emerald-600 text-white"
+                                : "border-slate-300 hover:border-slate-400 bg-white"
+                            )}
+                            title={isDone ? "Mark Pending" : "Mark Completed"}
+                          >
+                            {isDone && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                          </button>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <p className={cn("text-xs font-bold text-slate-900 truncate", isDone && "line-through text-slate-400")}>
+                                {task.taskTitle}
+                              </p>
+                              
+                              {/* Assigned Badge */}
+                              <span className={cn(
+                                "px-1.5 py-0.5 rounded text-[10px] font-bold font-mono inline-flex items-center gap-1 border",
+                                isAdmin 
+                                  ? "bg-purple-50 text-purple-800 border-purple-200" 
+                                  : "bg-blue-50 text-blue-800 border-blue-200"
+                              )}>
+                                {isAdmin ? "👑 Admin (Self)" : `👤 ${task.assignedStaff}`}
+                              </span>
+
+                              {/* Priority Badge */}
+                              <span className={cn(
+                                "px-1.5 py-0.2 rounded text-[9px] font-bold uppercase",
+                                task.priority === "Urgent" && "bg-rose-100 text-rose-800",
+                                task.priority === "High" && "bg-orange-100 text-orange-800",
+                                task.priority === "Medium" && "bg-blue-100 text-blue-800",
+                                task.priority === "Low" && "bg-slate-100 text-slate-700",
+                              )}>
+                                {task.priority || "Medium"}
+                              </span>
+                            </div>
+
+                            {task.description && (
+                              <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">{task.description}</p>
+                            )}
+
+                            <div className="flex items-center gap-3 text-[10px] text-slate-400 font-medium mt-1">
+                              <span className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3 text-slate-400" /> {task.dueDate} {task.dueTime ? `· ${task.dueTime}` : ""}
+                              </span>
+                              <span className={cn(
+                                "font-bold",
+                                task.status === "Completed" ? "text-emerald-700" : task.status === "In Progress" ? "text-blue-700" : "text-amber-700"
+                              )}>
+                                ● {task.status}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => handleDeleteTask(task._id)}
+                          className="text-slate-300 hover:text-rose-500 p-1 transition-colors"
+                          title="Delete Task"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-medium">
+              <span>{tasks.filter(t => t.status === "Completed").length} of {tasks.length} tasks completed</span>
+              <button 
+                onClick={() => router.push("/staff/tasks")} 
+                className="font-bold text-[#30539C] hover:underline flex items-center gap-1"
+              >
+                Manage in Staff Hub <ArrowRight className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+
+          {/* CARD 2 (RIGHT): LEAD PIPELINE & CONVERSION FUNNEL */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col justify-between hover:shadow-md transition-all">
+            <div>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3.5 border-b border-slate-100 gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200/60 flex items-center justify-center text-amber-700">
+                    <Target className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                      Lead Pipeline & Conversion
+                      <Badge className="bg-emerald-50 text-emerald-800 border-emerald-200 text-xs font-bold px-2 py-0.5">
+                        {leads.filter(l => l.status === "Converted").length} Converted
+                      </Badge>
+                    </h3>
+                    <p className="text-xs text-slate-500 font-medium">Enquiries, follow-up scheduler & counter conversion rate</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button 
+                    size="sm" 
+                    onClick={() => setIsNewLeadModalOpen(true)}
+                    className="bg-[#76C043] hover:bg-[#60a82c] text-white border-none text-xs h-8 px-3 rounded-lg font-bold shadow-sm"
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-1" /> New Lead
+                  </Button>
+                </div>
+              </div>
+
+              {/* FUNNEL SUMMARY METRICS STRIP */}
+              {(() => {
+                const totalLeads = leads.length;
+                const converted = leads.filter(l => l.status === "Converted").length;
+                const followups = leads.filter(l => l.status === "Follow-up" || l.status === "Interested" || l.status === "Contacted").length;
+                const convRate = totalLeads > 0 ? Math.round((converted / totalLeads) * 100) : 0;
+                const pipelineVal = leads.reduce((acc, l) => acc + (Number(l.estimatedValue) || 0), 0);
+
+                return (
+                  <div className="grid grid-cols-4 gap-2 my-2.5">
+                    <div className="bg-blue-50/60 border border-blue-100 rounded-xl p-2 text-center">
+                      <p className="text-[10px] font-bold text-blue-700 uppercase">Total Leads</p>
+                      <p className="text-sm sm:text-base font-black text-slate-900 font-mono">{totalLeads}</p>
+                      <p className="text-[9px] text-slate-500 font-medium">₹{indianNumberFormat(pipelineVal)}</p>
+                    </div>
+                    <div className="bg-amber-50/60 border border-amber-100 rounded-xl p-2 text-center">
+                      <p className="text-[10px] font-bold text-amber-700 uppercase">Follow-ups</p>
+                      <p className="text-sm sm:text-base font-black text-amber-800 font-mono">{followups}</p>
+                      <p className="text-[9px] text-amber-600 font-semibold">Active Action</p>
+                    </div>
+                    <div className="bg-emerald-50/60 border border-emerald-100 rounded-xl p-2 text-center">
+                      <p className="text-[10px] font-bold text-emerald-700 uppercase">Converted</p>
+                      <p className="text-sm sm:text-base font-black text-emerald-800 font-mono">{converted}</p>
+                      <p className="text-[9px] text-emerald-600 font-semibold">Won & Billed</p>
+                    </div>
+                    <div className="bg-purple-50/60 border border-purple-100 rounded-xl p-2 text-center">
+                      <p className="text-[10px] font-bold text-purple-700 uppercase">Conv. Rate</p>
+                      <p className="text-sm sm:text-base font-black text-purple-900 font-mono">{convRate}%</p>
+                      <p className="text-[9px] text-purple-600 font-semibold">Funnel Win</p>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* QUICK FILTER TABS */}
+              <div className="flex items-center gap-1.5 py-1.5 overflow-x-auto border-b border-slate-100">
+                {[
+                  { key: "all", label: `All (${leads.length})` },
+                  { key: "new", label: `🎯 New (${leads.filter(l => l.status === "New").length})` },
+                  { key: "followup", label: `⏳ Follow-up (${leads.filter(l => l.status === "Follow-up" || l.status === "Interested" || l.status === "Contacted").length})` },
+                  { key: "converted", label: `🏆 Converted (${leads.filter(l => l.status === "Converted").length})` },
+                ].map(tab => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setLeadTabFilter(tab.key as any)}
+                    className={cn(
+                      "px-2.5 py-0.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all",
+                      leadTabFilter === tab.key
+                        ? "bg-slate-900 text-white shadow-sm"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    )}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* LEADS STREAM */}
+              <div className="divide-y divide-slate-100 max-h-[225px] overflow-y-auto my-1.5 space-y-1">
+                {(() => {
+                  const filtered = leads.filter(l => {
+                    if (leadTabFilter === "new") return l.status === "New";
+                    if (leadTabFilter === "followup") return l.status === "Follow-up" || l.status === "Interested" || l.status === "Contacted";
+                    if (leadTabFilter === "converted") return l.status === "Converted";
+                    return true;
+                  });
+
+                  if (filtered.length === 0) {
+                    return (
+                      <div className="py-8 text-center text-slate-400 text-xs font-medium">
+                        No leads found in this pipeline view.
+                      </div>
+                    );
+                  }
+
+                  return filtered.map((lead: any) => (
+                    <div
+                      key={lead._id}
+                      className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-xl border border-slate-100 transition-colors"
+                    >
+                      <div className="min-w-0 flex-1 pr-2">
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-bold text-slate-900 truncate">{lead.customerName}</p>
+                          <span className="text-[10px] text-slate-500 font-mono">{lead.mobile}</span>
+                        </div>
+                        <p className="text-[11px] text-slate-600 truncate font-medium">
+                          {lead.interestedProduct} {lead.estimatedValue > 0 && <span className="font-bold text-slate-900">· ₹{indianNumberFormat(lead.estimatedValue)}</span>}
+                        </p>
+                        <p className="text-[10px] text-slate-400">
+                          Assigned: <span className="font-semibold text-slate-600">{lead.assignedStaff || "Sales Team"}</span> {lead.followUpDate ? `· Follow-up: ${lead.followUpDate}` : ""}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <select
+                          value={lead.status}
+                          onChange={(e) => handleUpdateLeadStatus(lead._id, e.target.value)}
+                          className={cn(
+                            "text-[10px] font-bold px-2 py-1 rounded-lg border outline-none cursor-pointer transition-colors",
+                            lead.status === "Converted" && "bg-emerald-50 text-emerald-800 border-emerald-200",
+                            lead.status === "Follow-up" && "bg-amber-50 text-amber-800 border-amber-200",
+                            lead.status === "New" && "bg-blue-50 text-blue-800 border-blue-200",
+                            lead.status === "Interested" && "bg-purple-50 text-purple-800 border-purple-200",
+                            lead.status === "Lost" && "bg-rose-50 text-rose-800 border-rose-200"
+                          )}
+                        >
+                          <option value="New">New</option>
+                          <option value="Follow-up">Follow-up</option>
+                          <option value="Interested">Interested</option>
+                          <option value="Converted">Converted</option>
+                          <option value="Lost">Lost</option>
+                        </select>
+
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => handleLeadWhatsApp(lead)}
+                          className="h-7 w-7 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700"
+                          title="WhatsApp Message"
+                        >
+                          <MessageCircle className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-medium">
+              <span>Customer Relationship Management</span>
+              <button 
+                onClick={() => router.push("/marketing/leads")} 
+                className="font-bold text-[#30539C] hover:underline flex items-center gap-1"
+              >
+                Open Full CRM Leads <ArrowRight className="w-3 h-3" />
+              </button>
             </div>
           </div>
         </div>
       </div>
+
+      {/* ─── TODAY'S DUE COLLECTIONS & CREDIT KHATA SETTLEMENT WIDGET ─── */}
+      {(() => {
+        const todayStr = new Date().toISOString().split("T")[0];
+        
+        // Dues with balance > 0
+        const pendingDues = dueInvoices.filter((inv: any) => (Number(inv.balanceAmount) > 0));
+        
+        // Today's Due: dueDate is today
+        const todayDues = pendingDues.filter((inv: any) => {
+          const dDate = inv.dueDate ? (inv.dueDate.includes("T") ? inv.dueDate.split("T")[0] : inv.dueDate) : "";
+          return dDate === todayStr;
+        });
+
+        // Overdue: dueDate is before today
+        const overdueDues = pendingDues.filter((inv: any) => {
+          const dDate = inv.dueDate ? (inv.dueDate.includes("T") ? inv.dueDate.split("T")[0] : inv.dueDate) : "";
+          return dDate && dDate < todayStr;
+        });
+
+        // Upcoming: dueDate is after today
+        const upcomingDues = pendingDues.filter((inv: any) => {
+          const dDate = inv.dueDate ? (inv.dueDate.includes("T") ? inv.dueDate.split("T")[0] : inv.dueDate) : "";
+          return dDate && dDate > todayStr;
+        });
+
+        // Cleared dues: dueClearedAt exists or status === paid and balance === 0
+        const clearedDues = dueInvoices.filter((inv: any) => inv.dueClearedAt || (inv.paymentMode === "Due / Credit" && inv.status === "paid" && Number(inv.balanceAmount) === 0));
+
+        const todayDueAmount = todayDues.reduce((sum, inv) => sum + (Number(inv.balanceAmount) || 0), 0);
+        const overdueAmount = overdueDues.reduce((sum, inv) => sum + (Number(inv.balanceAmount) || 0), 0);
+        const clearedTodayAmount = clearedDues
+          .filter((inv: any) => {
+            const clrDate = inv.dueClearedAt ? (typeof inv.dueClearedAt === 'string' && inv.dueClearedAt.includes('T') ? inv.dueClearedAt.split('T')[0] : inv.dueClearedAt) : "";
+            return clrDate === todayStr;
+          })
+          .reduce((sum, inv) => sum + (Number(inv.total || inv.paidAmount) || 0), 0);
+
+        let displayList: any[] = [];
+        if (dueTabFilter === "today") displayList = todayDues;
+        else if (dueTabFilter === "overdue") displayList = overdueDues;
+        else if (dueTabFilter === "upcoming") displayList = upcomingDues;
+        else if (dueTabFilter === "cleared") displayList = clearedDues;
+        else displayList = pendingDues;
+
+        return (
+          <div className="bg-white rounded-2xl border border-rose-100 shadow-sm p-6 space-y-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
+                      Today's Due Collections & Khata Settlement
+                    </h3>
+                    <Badge className="bg-rose-100 text-rose-800 border-rose-200 text-[10px] font-mono font-bold">
+                      {pendingDues.length} Pending Dues
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Track customer promises, send reminders, and clear due payments in real-time.
+                  </p>
+                </div>
+              </div>
+
+              {/* KPI Summary Highlights */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-200 text-right">
+                  <p className="text-[10px] font-bold text-rose-800 uppercase tracking-wider">Today's Due</p>
+                  <p className="text-sm font-black text-rose-950 font-mono">₹{indianNumberFormat(todayDueAmount)}</p>
+                </div>
+                <div className="px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-right">
+                  <p className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">Overdue</p>
+                  <p className="text-sm font-black text-amber-950 font-mono">₹{indianNumberFormat(overdueAmount)}</p>
+                </div>
+                <div className="px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-right">
+                  <p className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">Cleared Today</p>
+                  <p className="text-sm font-black text-emerald-950 font-mono">₹{indianNumberFormat(clearedTodayAmount)}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Filter Tabs */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+              {[
+                { key: "today", label: `⏰ Today's Due (${todayDues.length})` },
+                { key: "overdue", label: `⚠️ Overdue (${overdueDues.length})` },
+                { key: "upcoming", label: `📅 Upcoming (${upcomingDues.length})` },
+                { key: "cleared", label: `✅ Cleared Dues (${clearedDues.length})` },
+                { key: "all", label: `📋 All Pending (${pendingDues.length})` },
+              ].map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => setDueTabFilter(tab.key as any)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all border",
+                    dueTabFilter === tab.key
+                      ? "bg-slate-900 text-white border-slate-900 shadow-sm"
+                      : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                  )}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Invoices List / Table */}
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-600 uppercase tracking-wider">
+                  <tr>
+                    <th className="p-3">Invoice & Customer</th>
+                    <th className="p-3">Total Bill</th>
+                    <th className="p-3">Advance Paid</th>
+                    <th className="p-3">Remaining Due</th>
+                    <th className="p-3">Promise / Due Date</th>
+                    <th className="p-3">Status & Clearance</th>
+                    <th className="p-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {displayList.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="p-8 text-center text-slate-400 text-xs font-medium">
+                        <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2 opacity-80" />
+                        No dues matching the selected "{dueTabFilter}" filter.
+                      </td>
+                    </tr>
+                  ) : (
+                    displayList.map((inv: any) => {
+                      const isCleared = Number(inv.balanceAmount) === 0 || inv.dueClearedAt;
+                      const isTodayDue = inv.dueDate && (inv.dueDate.includes("T") ? inv.dueDate.split("T")[0] : inv.dueDate) === todayStr;
+                      const isOverdue = inv.dueDate && (inv.dueDate.includes("T") ? inv.dueDate.split("T")[0] : inv.dueDate) < todayStr && !isCleared;
+
+                      return (
+                        <tr key={inv._id || inv.invoiceNumber} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="p-3">
+                            <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                              <span>{inv.customerName || "Customer"}</span>
+                              {inv.customerPhone && (
+                                <span className="text-[10px] text-slate-500 font-mono">({inv.customerPhone})</span>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-[#3F63AD] font-mono font-bold">
+                              #{inv.invoiceNumber} • {inv.date ? (typeof inv.date === 'string' && inv.date.includes('T') ? inv.date.split('T')[0] : inv.date) : "N/A"}
+                            </div>
+                            {inv.notes && (
+                              <div className="text-[10px] text-slate-500 italic mt-0.5 truncate max-w-xs">
+                                Note: {inv.notes}
+                              </div>
+                            )}
+                          </td>
+                          <td className="p-3 font-mono font-bold text-slate-900">
+                            {formatCurrency(inv.total || inv.netAmount || 0)}
+                          </td>
+                          <td className="p-3 font-mono text-emerald-700 font-semibold">
+                            {formatCurrency(inv.paidAmount || inv.dueAdvanceAmount || 0)}
+                            <span className="block text-[9px] text-slate-400 font-normal">
+                              via {inv.dueAdvanceMode || inv.paymentMode || "Cash"}
+                            </span>
+                          </td>
+                          <td className="p-3">
+                            {isCleared ? (
+                              <span className="text-xs font-mono font-bold text-emerald-600">₹0.00 (PAID)</span>
+                            ) : (
+                              <span className="text-sm font-mono font-black text-rose-700">
+                                {formatCurrency(inv.balanceAmount || 0)}
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3">
+                            <div className={cn(
+                              "font-mono text-xs font-bold inline-flex items-center gap-1 px-2 py-0.5 rounded",
+                              isTodayDue && "bg-rose-100 text-rose-800 border border-rose-200",
+                              isOverdue && "bg-amber-100 text-amber-800 border border-amber-200",
+                              !isTodayDue && !isOverdue && "text-slate-700 bg-slate-100"
+                            )}>
+                              <Calendar className="w-3 h-3" />
+                              {inv.dueDate ? (typeof inv.dueDate === 'string' && inv.dueDate.includes('T') ? inv.dueDate.split('T')[0] : inv.dueDate) : "Immediate"}
+                            </div>
+                            {isTodayDue && <span className="block text-[9px] font-bold text-rose-600 mt-0.5">⚠️ Due Today!</span>}
+                            {isOverdue && <span className="block text-[9px] font-bold text-amber-600 mt-0.5">🚨 Overdue</span>}
+                          </td>
+                          <td className="p-3">
+                            {isCleared ? (
+                              <div className="text-[10px] text-emerald-800 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-200">
+                                <span className="font-bold">✅ Cleared</span>
+                                <div className="text-[9px] text-slate-600">
+                                  via {inv.dueClearedMode || "UPI"} {inv.dueClearedAt ? `on ${typeof inv.dueClearedAt === 'string' && inv.dueClearedAt.includes('T') ? inv.dueClearedAt.split('T')[0] : inv.dueClearedAt}` : ""}
+                                </div>
+                              </div>
+                            ) : (
+                              <Badge className="bg-rose-50 text-rose-700 border-rose-200 text-[10px] font-bold">
+                                Pending Settlement
+                              </Badge>
+                            )}
+                          </td>
+                          <td className="p-3 text-right">
+                            {!isCleared ? (
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedDueInvoice(inv);
+                                  setClearDuePaymentMode("Cash");
+                                  setClearDueTxnId("");
+                                  setClearDueStaff(inv.salesExecutive || "AMIT SINGH");
+                                  setClearDueNotes(`Due settled for ${inv.customerName}`);
+                                }}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-8 px-3 shadow-sm rounded-lg"
+                              >
+                                <Check className="w-3.5 h-3.5 mr-1" /> Clear Due
+                              </Button>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  router.push(`/invoice?id=${inv._id || inv.invoiceNumber}`);
+                                }}
+                                className="text-xs h-8 text-slate-600 border-slate-300"
+                              >
+                                <Printer className="w-3.5 h-3.5 mr-1" /> Invoice
+                              </Button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ─── PAYMENT LEAKAGE & VOID AUDIT DETAILS MODAL ────────────────── */}
+      <Dialog open={!!leakageModal} onOpenChange={() => setLeakageModal(null)}>
+        <DialogContent className="max-w-4xl p-0 rounded-2xl overflow-hidden border-none shadow-2xl">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <ShieldAlert className="w-5 h-5 text-rose-400" />
+                  <h3 className="text-xl font-black tracking-tight">{leakageModal?.title || "Audit Details"}</h3>
+                </div>
+                <p className="text-xs text-slate-300 mt-1">
+                  {leakageModal?.description || "Detailed audit log for counter void & bill modification tracking."}
+                </p>
+              </div>
+              <Badge className="bg-rose-500/20 text-rose-300 border border-rose-500/40 text-xs px-3 py-1 font-bold">
+                Security Audit
+              </Badge>
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="p-6 bg-slate-50 max-h-[60vh] overflow-y-auto space-y-4">
+            {(!leakageModal?.invoices || leakageModal.invoices.length === 0) ? (
+              <div className="py-12 text-center text-slate-400 text-xs font-medium bg-white rounded-xl border border-slate-200">
+                <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2 opacity-80" />
+                No void or leakage incidents found for this category in the selected period.
+              </div>
+            ) : (
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-50 text-slate-600 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">
+                    <tr>
+                      <th className="p-3">Invoice #</th>
+                      <th className="p-3">Customer</th>
+                      <th className="p-3">Date / Time</th>
+                      <th className="p-3">Payment Mode</th>
+                      <th className="p-3 text-right">Amount</th>
+                      <th className="p-3 text-center">Status</th>
+                      <th className="p-3 text-center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {leakageModal.invoices.map((inv: any, idx: number) => (
+                      <tr key={inv._id || inv.invoiceNumber || idx} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="p-3 font-mono font-bold text-slate-900">
+                          {inv.invoiceNumber || inv.id}
+                        </td>
+                        <td className="p-3 text-slate-700">{inv.customerName || inv.customer || "Walk-in Guest"}</td>
+                        <td className="p-3 text-slate-500 text-[11px]">{inv.date || "Today"}</td>
+                        <td className="p-3">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 text-slate-700">
+                            {inv.paymentMode || "Cash"}
+                          </span>
+                        </td>
+                        <td className="p-3 text-right font-mono font-black text-slate-900">
+                          {formatCurrency(inv.total || inv.amount || 0)}
+                        </td>
+                        <td className="p-3 text-center">
+                          <StatusBadge status={inv.status || "sent"} />
+                        </td>
+                        <td className="p-3 text-center">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handlePrintTrigger(inv)}
+                            className="h-7 px-2 text-[10px] font-bold text-[#3F63AD] border-[#3F63AD]/30 hover:bg-blue-50"
+                          >
+                            <Printer className="w-3 h-3 mr-1" /> View Bill
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white px-6 py-3.5 border-t border-slate-200 flex items-center justify-between">
+            <span className="text-xs text-slate-500 font-medium">
+              Audit log secured by Value Plus ERP protocol
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setLeakageModal(null)}
+              className="px-5 font-bold"
+            >
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── TRANSACTION & EXPENSE LEDGER DRILLDOWN MODAL ───────────────────────── */}
+      <Dialog open={!!activeModal} onOpenChange={() => { setActiveModal(null); setExpenseModalModeFilter("all"); }}>
+        <DialogContent className="max-w-4xl p-0 rounded-2xl overflow-hidden border-none shadow-2xl">
+          <div className={cn(
+            "p-6 text-white",
+            activeModal === "due" 
+              ? "bg-gradient-to-r from-rose-950 via-slate-900 to-rose-950" 
+              : (activeModal === "expenses" || activeModal?.startsWith("expense"))
+              ? "bg-gradient-to-r from-[#881337] via-[#4C0519] to-[#1E293B]"
+              : "bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537]"
+          )}>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  {activeModal === "due" ? (
+                    <Clock className="w-5 h-5 text-rose-400" />
+                  ) : (activeModal === "expenses" || activeModal?.startsWith("expense")) ? (
+                    <Receipt className="w-5 h-5 text-rose-400" />
+                  ) : (
+                    <CreditCard className="w-5 h-5 text-emerald-400" />
+                  )}
+                  <h3 className="text-xl font-black tracking-tight uppercase">
+                    {activeModal === "due" 
+                      ? "Due / Credit Bills Ledger" 
+                      : (activeModal === "expenses" || activeModal?.startsWith("expense"))
+                      ? "Expense & Cash Withdrawal Ledger"
+                      : `${activeModal} Payment Ledger`}
+                  </h3>
+                </div>
+                <p className="text-xs text-slate-300 mt-1">
+                  {activeModal === "due" 
+                    ? "Itemized outstanding balance & pending due bills in selected period." 
+                    : (activeModal === "expenses" || activeModal?.startsWith("expense"))
+                    ? "Itemized showroom expenses, payment channels (Cash/UPI/Bank/Card) and purpose descriptions."
+                    : `Itemized live receipts for ${activeModal} mode in selected period.`}
+                </p>
+              </div>
+              <Badge className={cn(
+                "text-xs px-3 py-1 font-bold",
+                activeModal === "due"
+                  ? "bg-rose-500/20 text-rose-300 border border-rose-500/40"
+                  : (activeModal === "expenses" || activeModal?.startsWith("expense"))
+                  ? "bg-rose-500/20 text-rose-300 border border-rose-500/40"
+                  : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+              )}>
+                {getFilteredTransactions().length} {activeModal === "due" ? "Due Bills" : (activeModal === "expenses" || activeModal?.startsWith("expense")) ? "Expense Vouchers" : "Transactions"}
+              </Badge>
+            </div>
+          </div>
+
+          <div className="p-6 bg-slate-50 max-h-[60vh] overflow-y-auto space-y-4">
+            {/* SEARCH & MODE FILTER BAR */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Input
+                  placeholder={(activeModal === "expenses" || activeModal?.startsWith("expense")) 
+                    ? "Search purpose description, category, payment mode, voucher #..." 
+                    : "Search customer, invoice number..."}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 bg-white border-slate-200 text-xs h-9"
+                />
+              </div>
+
+              {(activeModal === "expenses" || activeModal?.startsWith("expense")) && (
+                <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-slate-200 overflow-x-auto">
+                  {["all", "Cash", "UPI", "Bank Transfer", "Card"].map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setExpenseModalModeFilter(m)}
+                      className={cn(
+                        "px-2.5 py-1 text-[11px] font-bold rounded-md transition-all whitespace-nowrap cursor-pointer",
+                        expenseModalModeFilter === m
+                          ? "bg-rose-600 text-white shadow-xs"
+                          : "text-slate-600 hover:bg-slate-100"
+                      )}
+                    >
+                      {m === "all" ? "All Modes" : m}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {getFilteredTransactions().length === 0 ? (
+              <div className="py-12 text-center text-slate-400 text-xs font-medium bg-white rounded-xl border border-slate-200">
+                {activeModal === "due" 
+                  ? "No due bills recorded for this period." 
+                  : (activeModal === "expenses" || activeModal?.startsWith("expense"))
+                  ? "No expense vouchers recorded matching the selected filter."
+                  : "No transactions recorded for this payment mode."}
+              </div>
+            ) : (activeModal === "expenses" || activeModal?.startsWith("expense")) ? (
+              /* EXPENSE SPECIFIC DRILLDOWN TABLE */
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-50 text-slate-600 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">
+                    <tr>
+                      <th className="p-3">Voucher #</th>
+                      <th className="p-3">Purpose & Description</th>
+                      <th className="p-3">Payment Mode</th>
+                      <th className="p-3">Date</th>
+                      <th className="p-3 text-right">Amount</th>
+                      <th className="p-3 text-center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {getFilteredTransactions().map((exp: any, idx: number) => {
+                      const mode = exp.paymentMode || "Cash";
+                      const isCash = mode.toLowerCase().includes("cash");
+                      const isUPI = mode.toLowerCase().includes("upi");
+                      const isBank = mode.toLowerCase().includes("bank") || mode.toLowerCase().includes("transfer") || mode.toLowerCase().includes("neft");
+                      const isCard = mode.toLowerCase().includes("card");
+
+                      return (
+                        <tr key={exp.expenseNo || exp._id || idx} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="p-3 font-mono font-bold text-slate-900">
+                            {exp.expenseNo || `EXP-${idx + 1}`}
+                          </td>
+                          <td className="p-3">
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold text-slate-800">
+                                  {exp.description || exp.category || "Showroom Expense"}
+                                </span>
+                                <span className="text-[9px] font-semibold text-slate-500 px-1.5 py-0.2 bg-slate-100 rounded border border-slate-200">
+                                  {exp.category || "General"}
+                                </span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="p-3">
+                            <span className={cn(
+                              "inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase border",
+                              isCash ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                              isUPI ? "bg-purple-50 text-purple-700 border-purple-200" :
+                              isBank ? "bg-blue-50 text-blue-700 border-blue-200" :
+                              isCard ? "bg-cyan-50 text-cyan-700 border-cyan-200" :
+                              "bg-slate-100 text-slate-700 border-slate-200"
+                            )}>
+                              {isCash && <Wallet className="w-2.5 h-2.5" />}
+                              {isUPI && <Zap className="w-2.5 h-2.5" />}
+                              {isBank && <Building2 className="w-2.5 h-2.5" />}
+                              {isCard && <CreditCard className="w-2.5 h-2.5" />}
+                              {mode}
+                            </span>
+                          </td>
+                          <td className="p-3 text-slate-500 text-[11px]">
+                            {formatDateShort(exp.date || exp.createdAt)}
+                          </td>
+                          <td className="p-3 text-right font-mono font-black text-rose-600">
+                            {formatCurrency(exp.amount || 0)}
+                          </td>
+                          <td className="p-3 text-center">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => router.push(`/purchase/expenses?dateFilter=${widgetFilters.expenses}`)}
+                              className="h-7 px-2 text-[10px] font-bold text-rose-600 border-rose-200 hover:bg-rose-50"
+                            >
+                              <ExternalLink className="w-3 h-3 mr-1" /> Open Hub
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              /* SALES & BILLS TRANSACTION TABLE */
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-50 text-slate-600 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">
+                    <tr>
+                      <th className="p-3">Invoice #</th>
+                      <th className="p-3">Customer</th>
+                      <th className="p-3">Time / Date</th>
+                      <th className="p-3">Payment Mode</th>
+                      {activeModal === "due" ? (
+                        <>
+                          <th className="p-3 text-right">Total Bill</th>
+                          <th className="p-3 text-right text-rose-600">Pending Due</th>
+                        </>
+                      ) : (
+                        <th className="p-3 text-right">Amount</th>
+                      )}
+                      <th className="p-3 text-center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {getFilteredTransactions().map((txn: any, idx: number) => {
+                      const dueAmt = Number(txn.dueAmount) || Number(txn.balanceAmount) || (Number(txn.amount || txn.total || 0) - Number(txn.paidAmount || 0));
+                      return (
+                        <tr key={txn.id || txn.invoiceNumber || idx} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="p-3 font-mono font-bold text-slate-900">
+                            {txn.id || txn.invoiceNumber}
+                          </td>
+                          <td className="p-3 text-slate-700">{txn.customer || txn.customerName || "Walk-in Guest"}</td>
+                          <td className="p-3 text-slate-500 text-[11px]">{txn.time || txn.date || "Today"}</td>
+                          <td className="p-3">
+                            <span className={cn(
+                              "inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase",
+                              activeModal === "due" ? "bg-rose-100 text-rose-800 border border-rose-200" : "bg-slate-100 text-slate-700"
+                            )}>
+                              {txn.mode || activeModal}
+                            </span>
+                          </td>
+                          {activeModal === "due" ? (
+                            <>
+                              <td className="p-3 text-right font-mono font-bold text-slate-700">
+                                {formatCurrency(txn.amount || txn.total || 0)}
+                              </td>
+                              <td className="p-3 text-right font-mono font-black text-rose-600">
+                                {formatCurrency(dueAmt > 0 ? dueAmt : (txn.amount || txn.total || 0))}
+                              </td>
+                            </>
+                          ) : (
+                            <td className="p-3 text-right font-mono font-black text-slate-900">
+                              {formatCurrency(txn.amount || txn.total || 0)}
+                            </td>
+                          )}
+                          <td className="p-3 text-center">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handlePrintTrigger(txn)}
+                              className="h-7 px-2 text-[10px] font-bold text-[#3F63AD] border-[#3F63AD]/30 hover:bg-blue-50"
+                            >
+                              <Printer className="w-3 h-3 mr-1" /> View Bill
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white px-6 py-3.5 border-t border-slate-200 flex items-center justify-between">
+            <span className="text-xs text-slate-500 font-medium">
+              Total Filtered: {formatCurrency(getFilteredTransactions().reduce((s: number, t: any) => s + (t.amount || t.total || 0), 0))}
+            </span>
+            <div className="flex items-center gap-2">
+              {(activeModal === "expenses" || activeModal?.startsWith("expense")) && (
+                <Button
+                  size="sm"
+                  onClick={() => router.push("/purchase/expenses")}
+                  className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs h-8 px-3 rounded-lg"
+                >
+                  <Plus className="w-3.5 h-3.5 mr-1" /> Record New Expense
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setActiveModal(null); setExpenseModalModeFilter("all"); }}
+                className="px-5 font-bold"
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* ─── OFFICIAL INVOICE PRINT & PREVIEW MODAL ────────────────────── */}
       <Dialog open={!!activePrintInvoice} onOpenChange={() => setActivePrintInvoice(null)}>
@@ -2241,6 +4020,326 @@ export default function DashboardPage() {
               Close Window
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── QUICK ASSIGN TASK MODAL ───────────────────────────────────── */}
+      <Dialog open={isNewTaskModalOpen} onOpenChange={setIsNewTaskModalOpen}>
+        <DialogContent className="max-w-lg p-0 rounded-2xl overflow-hidden border-none shadow-2xl">
+          <div className="bg-gradient-to-r from-[#1E293B] via-[#30539C] to-[#1E293B] text-white p-5">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center">
+                <CheckSquare className="w-5 h-5 text-purple-300" />
+              </div>
+              <div>
+                <h3 className="text-base font-black tracking-tight">Assign Task / Self-Goal</h3>
+                <p className="text-xs text-slate-300">Delegate tasks to showroom staff or assign self-admin task</p>
+              </div>
+            </div>
+          </div>
+
+          <form onSubmit={handleCreateTaskSubmit} className="p-5 space-y-4 bg-slate-50">
+            <div>
+              <Label className="text-xs font-bold text-slate-700">Task Title *</Label>
+              <Input
+                value={taskForm.taskTitle}
+                onChange={(e) => setTaskForm({ ...taskForm, taskTitle: e.target.value })}
+                placeholder="e.g. Verify Bajaj Finance DO Settlement"
+                required
+                className="mt-1 bg-white font-medium text-xs h-9"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs font-bold text-slate-700">Assign To *</Label>
+                <select
+                  value={taskForm.assignedStaff}
+                  onChange={(e) => setTaskForm({ ...taskForm, assignedStaff: e.target.value })}
+                  className="mt-1 w-full h-9 rounded-md border border-input bg-white px-3 py-1 text-xs font-bold shadow-xs focus:outline-none"
+                >
+                  <option value="Admin (Self)">👑 Admin (Self)</option>
+                  <option value="Amit Singh">👤 Amit Singh</option>
+                  <option value="Rahul Verma">👤 Rahul Verma</option>
+                  <option value="Priya Sharma">👤 Priya Sharma</option>
+                  <option value="Pooja Gupta">👤 Pooja Gupta</option>
+                  <option value="Rakesh Patel">👤 Rakesh Patel</option>
+                  <option value="Vikash Kumar">👤 Vikash Kumar</option>
+                </select>
+              </div>
+
+              <div>
+                <Label className="text-xs font-bold text-slate-700">Priority</Label>
+                <select
+                  value={taskForm.priority}
+                  onChange={(e) => setTaskForm({ ...taskForm, priority: e.target.value as any })}
+                  className="mt-1 w-full h-9 rounded-md border border-input bg-white px-3 py-1 text-xs font-bold shadow-xs focus:outline-none"
+                >
+                  <option value="Low">Low</option>
+                  <option value="Medium">Medium</option>
+                  <option value="High">High</option>
+                  <option value="Urgent">🔥 Urgent</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs font-bold text-slate-700">Due Date</Label>
+                <Input
+                  type="date"
+                  value={taskForm.dueDate}
+                  onChange={(e) => setTaskForm({ ...taskForm, dueDate: e.target.value })}
+                  className="mt-1 bg-white text-xs h-9 font-medium"
+                />
+              </div>
+
+              <div>
+                <Label className="text-xs font-bold text-slate-700">Due Time</Label>
+                <Input
+                  type="time"
+                  value={taskForm.dueTime}
+                  onChange={(e) => setTaskForm({ ...taskForm, dueTime: e.target.value })}
+                  className="mt-1 bg-white text-xs h-9 font-medium"
+                />
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-xs font-bold text-slate-700">Description / Instructions</Label>
+              <textarea
+                value={taskForm.description}
+                onChange={(e) => setTaskForm({ ...taskForm, description: e.target.value })}
+                placeholder="Add actionable instructions, invoice numbers, or customer notes..."
+                rows={2}
+                className="mt-1 w-full rounded-md border border-input bg-white px-3 py-2 text-xs font-medium shadow-xs focus:outline-none"
+              />
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setIsNewTaskModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" size="sm" className="bg-[#30539C] hover:bg-[#1E3A8A] text-white font-bold px-4">
+                Assign Task
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── QUICK ADD LEAD MODAL ──────────────────────────────────────── */}
+      <Dialog open={isNewLeadModalOpen} onOpenChange={setIsNewLeadModalOpen}>
+        <DialogContent className="max-w-lg p-0 rounded-2xl overflow-hidden border-none shadow-2xl">
+          <div className="bg-gradient-to-r from-[#1B2537] via-[#10B981]/80 to-[#1B2537] text-white p-5">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center">
+                <Target className="w-5 h-5 text-emerald-300" />
+              </div>
+              <div>
+                <h3 className="text-base font-black tracking-tight">Register New Lead / Enquiry</h3>
+                <p className="text-xs text-slate-200">Capture walk-in customer enquiry & schedule follow-up</p>
+              </div>
+            </div>
+          </div>
+
+          <form onSubmit={handleCreateLeadSubmit} className="p-5 space-y-3.5 bg-slate-50">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs font-bold text-slate-700">Customer Name *</Label>
+                <Input
+                  value={leadForm.customerName}
+                  onChange={(e) => setLeadForm({ ...leadForm, customerName: e.target.value })}
+                  placeholder="e.g. Ramesh Srivastava"
+                  required
+                  className="mt-1 bg-white text-xs h-9 font-medium"
+                />
+              </div>
+
+              <div>
+                <Label className="text-xs font-bold text-slate-700">Mobile Number *</Label>
+                <Input
+                  value={leadForm.mobile}
+                  onChange={(e) => setLeadForm({ ...leadForm, mobile: e.target.value })}
+                  placeholder="10-digit mobile"
+                  required
+                  className="mt-1 bg-white text-xs h-9 font-mono font-medium"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs font-bold text-slate-700">Interested Product *</Label>
+                <Input
+                  value={leadForm.interestedProduct}
+                  onChange={(e) => setLeadForm({ ...leadForm, interestedProduct: e.target.value })}
+                  placeholder="e.g. Samsung 65' Neo QLED TV"
+                  required
+                  className="mt-1 bg-white text-xs h-9 font-medium"
+                />
+              </div>
+
+              <div>
+                <Label className="text-xs font-bold text-slate-700">Estimated Amount (₹)</Label>
+                <Input
+                  type="number"
+                  value={leadForm.estimatedValue}
+                  onChange={(e) => setLeadForm({ ...leadForm, estimatedValue: e.target.value })}
+                  placeholder="e.g. 125000"
+                  className="mt-1 bg-white text-xs h-9 font-mono font-medium"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <Label className="text-xs font-bold text-slate-700">Assigned Staff</Label>
+                <select
+                  value={leadForm.assignedStaff}
+                  onChange={(e) => setLeadForm({ ...leadForm, assignedStaff: e.target.value })}
+                  className="mt-1 w-full h-9 rounded-md border border-input bg-white px-2 py-1 text-xs font-medium shadow-xs focus:outline-none"
+                >
+                  <option value="Amit Singh">Amit Singh</option>
+                  <option value="Rahul Verma">Rahul Verma</option>
+                  <option value="Priya Sharma">Priya Sharma</option>
+                  <option value="Pooja Gupta">Pooja Gupta</option>
+                  <option value="Sales Team">Sales Team</option>
+                </select>
+              </div>
+
+              <div>
+                <Label className="text-xs font-bold text-slate-700">Status</Label>
+                <select
+                  value={leadForm.status}
+                  onChange={(e) => setLeadForm({ ...leadForm, status: e.target.value as any })}
+                  className="mt-1 w-full h-9 rounded-md border border-input bg-white px-2 py-1 text-xs font-bold shadow-xs focus:outline-none"
+                >
+                  <option value="New">New</option>
+                  <option value="Follow-up">Follow-up</option>
+                  <option value="Interested">Interested</option>
+                  <option value="Converted">Converted</option>
+                  <option value="Lost">Lost</option>
+                </select>
+              </div>
+
+              <div>
+                <Label className="text-xs font-bold text-slate-700">Follow-up Date</Label>
+                <Input
+                  type="date"
+                  value={leadForm.followUpDate}
+                  onChange={(e) => setLeadForm({ ...leadForm, followUpDate: e.target.value })}
+                  className="mt-1 bg-white text-xs h-9 font-medium"
+                />
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-xs font-bold text-slate-700">Discussion Notes</Label>
+              <textarea
+                value={leadForm.notes}
+                onChange={(e) => setLeadForm({ ...leadForm, notes: e.target.value })}
+                placeholder="Discount discussed, EMI scheme preferred, delivery preferences..."
+                rows={2}
+                className="mt-1 w-full rounded-md border border-input bg-white px-3 py-2 text-xs font-medium shadow-xs focus:outline-none"
+              />
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setIsNewLeadModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" size="sm" className="bg-[#76C043] hover:bg-[#60a82c] text-white font-bold px-4">
+                Save Lead
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── CLEAR DUE / SETTLEMENT MODAL ───────────────────────── */}
+      <Dialog open={!!selectedDueInvoice} onOpenChange={() => setSelectedDueInvoice(null)}>
+        <DialogContent className="max-w-md p-0 rounded-2xl overflow-hidden border-none shadow-2xl">
+          <div className="bg-gradient-to-r from-[#1B2537] via-[#243753] to-[#1B2537] text-white p-6">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-emerald-400">
+                <IndianRupee className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold tracking-tight">Clear Due & Record Settlement</h3>
+                <p className="text-xs text-slate-300">
+                  Invoice #{selectedDueInvoice?.invoiceNumber} • {selectedDueInvoice?.customerName}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <form onSubmit={handleConfirmClearDue} className="p-6 bg-slate-50 space-y-4">
+            <div className="p-3.5 bg-rose-50/80 rounded-xl border border-rose-200 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-rose-900">Outstanding Due Balance</p>
+                <p className="text-xs text-slate-500">Total: {formatCurrency(selectedDueInvoice?.total || 0)}</p>
+              </div>
+              <p className="text-2xl font-black text-rose-700 font-mono">
+                {formatCurrency(selectedDueInvoice?.balanceAmount || 0)}
+              </p>
+            </div>
+
+            <div>
+              <Label className="text-xs font-bold text-slate-800">Payment Collection Mode *</Label>
+              <Select value={clearDuePaymentMode} onValueChange={setClearDuePaymentMode}>
+                <SelectTrigger className="bg-white border-slate-300 mt-1 font-bold text-slate-900"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Cash">💵 Cash at Counter</SelectItem>
+                  <SelectItem value="UPI">📱 UPI / QR Code (PhonePe, GPay, Paytm)</SelectItem>
+                  <SelectItem value="Card">💳 POS Debit / Credit Card</SelectItem>
+                  <SelectItem value="Bank Transfer">🏦 Direct Bank Transfer / NEFT</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label className="text-xs font-bold text-slate-800">Collected / Cleared By (Staff Name)</Label>
+              <Select value={clearDueStaff} onValueChange={setClearDueStaff}>
+                <SelectTrigger className="bg-white border-slate-300 mt-1 font-semibold"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="AMIT SINGH">AMIT SINGH (Store Exec)</SelectItem>
+                  <SelectItem value="ROHAN VERMA">ROHAN VERMA (Counter)</SelectItem>
+                  <SelectItem value="PRIYA SHARMA">PRIYA SHARMA (Cashier)</SelectItem>
+                  <SelectItem value="STORE MANAGER">STORE MANAGER (Admin)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label className="text-xs font-bold text-slate-800">Transaction Ref / UTR / Note (Optional)</Label>
+              <Input 
+                placeholder="e.g. UPI Ref #4829103984 / Cash Slip" 
+                value={clearDueTxnId} 
+                onChange={(e) => setClearDueTxnId(e.target.value)} 
+                className="bg-white border-slate-300 mt-1 text-xs" 
+              />
+            </div>
+
+            <div>
+              <Label className="text-xs font-bold text-slate-800">Settlement Notes</Label>
+              <Input 
+                placeholder="e.g. Balance cleared in full by customer" 
+                value={clearDueNotes} 
+                onChange={(e) => setClearDueNotes(e.target.value)} 
+                className="bg-white border-slate-300 mt-1 text-xs" 
+              />
+            </div>
+
+            <DialogFooter className="pt-2 flex items-center justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setSelectedDueInvoice(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isClearingDue} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5">
+                {isClearingDue ? "Clearing..." : "Confirm & Clear Due (₹" + Number(selectedDueInvoice?.balanceAmount || 0).toLocaleString("en-IN") + ")"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 

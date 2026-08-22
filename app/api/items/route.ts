@@ -7,14 +7,34 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const brand = searchParams.get("brand");
     const category = searchParams.get("category");
+    const warehouse = searchParams.get("warehouse") || searchParams.get("location");
 
     await connectToDatabase();
 
-    const filter: Record<string, string> = {};
-    if (brand) filter.brand = brand;
-    if (category) filter.category = category;
+    const filter: any = {};
+    if (brand && brand !== "all") {
+      filter.brand = { $regex: new RegExp(`^${brand.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, "i") };
+    }
+    if (category && category !== "all") {
+      filter.category = { $regex: new RegExp(`^${category.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, "i") };
+    }
 
-    const items = await Item.find(filter).sort({ createdAt: -1 });
+    if (warehouse && warehouse !== "all") {
+      const isAshoka = warehouse.toLowerCase().includes("ashoka") || warehouse.toLowerCase().includes("kunraghat") || warehouse === "VP-KUN";
+      if (!isAshoka) {
+        const cleanWh = warehouse.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        filter.warehouse = { $regex: new RegExp(cleanWh, "i") };
+      } else {
+        filter.$or = [
+          { warehouse: { $exists: false } },
+          { warehouse: "" },
+          { warehouse: null },
+          { warehouse: { $regex: /ashoka|kunraghat|vp-kun|main showroom/i } }
+        ];
+      }
+    }
+
+    const items = await Item.find(filter).sort({ currentStock: -1, name: 1 });
     return NextResponse.json({ success: true, data: items });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

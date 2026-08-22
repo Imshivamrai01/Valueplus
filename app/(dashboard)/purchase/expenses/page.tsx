@@ -34,13 +34,21 @@ interface ExpenseItem {
 }
 
 const EXPENSE_CATEGORIES = [
-  "Store Rent",
-  "Electricity & Utilities",
-  "Courier & Freight",
-  "Staff Salary & Wages",
-  "Marketing & Promotions",
-  "Office Maintenance",
-  "Miscellaneous Overhead"
+  "Electricity Bill (Bijli Bill)",
+  "Water Bill & Water Supply",
+  "House Bill & Showroom Rent",
+  "Freight Charges & Transportation",
+  "Customer Delivery & Unloading",
+  "Generator Diesel & Fuel",
+  "Tea, Pantry & Staff Refreshment",
+  "Staff Salary & Daily Wages",
+  "Showroom Repair & Maintenance",
+  "Office Stationery & Printing",
+  "Internet Broadband & Phone Bill",
+  "Marketing, Hoardings & Advertising",
+  "Security Guard & Cleaning Services",
+  "Bank & POS Machine Charges",
+  "General Petty Cash & Miscellaneous"
 ];
 
 export default function ExpensesPage() {
@@ -69,7 +77,7 @@ function ExpensesContent() {
   const [selectedVoucherForPrint, setSelectedVoucherForPrint] = useState<ExpenseItem | null>(null);
 
   const [formData, setFormData] = useState({
-    category: "Store Rent",
+    category: "Electricity Bill (Bijli Bill)",
     description: "",
     amount: "",
     paymentMode: "UPI" as "UPI" | "Bank Transfer" | "Cash" | "Card",
@@ -84,6 +92,16 @@ function ExpensesContent() {
       return json.success ? json.data : [];
     }
   });
+
+  const { data: cashRegisterData } = useQuery({
+    queryKey: ["cash-register"],
+    queryFn: async () => {
+      const res = await fetch("/api/cash-register");
+      const json = await res.json();
+      return json.success ? json.data : null;
+    }
+  });
+  const liveCashBalance = cashRegisterData?.currentBalance || 0;
 
   // Filtered expenses based on active filters
   const filtered = useMemo(() => {
@@ -199,16 +217,17 @@ function ExpensesContent() {
       if (!json.success) throw new Error(json.error || "Failed to create expense");
       return json.data;
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["expenses"] });
-      toast.success(`Expense voucher ${data.expenseNo || ""} recorded!`);
+      queryClient.invalidateQueries({ queryKey: ["cash-register"] });
+      toast.success("Expense voucher recorded successfully");
       setIsFormOpen(false);
-      setFormData({ 
-        category: "Store Rent", 
-        description: "", 
-        amount: "", 
+      setFormData({
+        category: "Store Rent",
+        description: "",
+        amount: "",
         paymentMode: "UPI",
-        date: new Date().toISOString().split("T")[0]
+        date: new Date().toISOString().split("T")[0],
       });
     },
     onError: (error: any) => {
@@ -285,6 +304,11 @@ function ExpensesContent() {
       breadcrumbs={[{ label: "Purchase" }, { label: "Expenses" }]}
       actions={
         <div className="flex items-center gap-2">
+          <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold shadow-2xs">
+            <Wallet className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Showroom Cash: {formatCurrency(liveCashBalance)}</span>
+          </div>
+
           <Button variant="outline" size="sm" onClick={handleExportCSV} className="text-xs h-9">
             <Download className="w-3.5 h-3.5 mr-1.5" /> Export CSV
           </Button>
@@ -627,15 +651,44 @@ function ExpensesContent() {
                 </div>
 
                 <div className="space-y-1.5 md:col-span-2">
-                  <Label className="text-xs font-semibold text-slate-700">Particulars / Description *</Label>
+                  <Label className="text-xs font-bold text-slate-700">
+                    Particulars / Reason for Expense (Kyu hua / Kis cheez ka kharcha hai) *
+                  </Label>
                   <Input
-                    placeholder="e.g. Monthly Showroom Rent — Prayagraj Branch Outlet"
+                    placeholder="Mandatory: e.g. Paid electricity bill / Tea & refreshments for staff / Freight for stock"
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                     className="bg-slate-50 border-slate-300"
+                    required
                   />
                 </div>
               </div>
+
+              {/* LIVE CASH REGISTER BALANCE & OVERFLOW WARNING */}
+              {formData.paymentMode === "Cash" && (
+                <div className={`p-3 rounded-xl border flex items-start gap-2.5 transition-all ${
+                  Number(formData.amount) > liveCashBalance
+                    ? "bg-rose-50 border-rose-300 text-rose-900"
+                    : "bg-emerald-50 border-emerald-200 text-emerald-800"
+                }`}>
+                  <Wallet className={`w-4 h-4 mt-0.5 flex-shrink-0 ${Number(formData.amount) > liveCashBalance ? "text-rose-600" : "text-emerald-600"}`} />
+                  <div className="text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold">Showroom Cash in Register:</span>
+                      <span className="font-mono font-black">{formatCurrency(liveCashBalance)}</span>
+                    </div>
+                    {Number(formData.amount) > liveCashBalance ? (
+                      <span className="text-[11px] text-rose-700 mt-1 block font-medium">
+                        ⚠️ <strong>Cash Deficit Warning:</strong> Expense amount ({formatCurrency(Number(formData.amount))}) exceeds available register cash by <strong>{formatCurrency(Number(formData.amount) - liveCashBalance)}</strong>. A cash deficit will be logged in the Cash Ledger.
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-emerald-700 mt-0.5 block">
+                        ✓ Sufficient cash balance available in showroom register.
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

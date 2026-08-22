@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 
 export default function BOMPage() {
   const queryClient = useQueryClient();
@@ -165,7 +166,7 @@ export default function BOMPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {isLoading ? <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">Loading...</td></tr> : filteredBoms.map((row: any) => (
+            {isLoading ? <tr><td colSpan={4} className="p-0"><TableShimmer rows={6} cols={4} /></td></tr> : filteredBoms.map((row: any) => (
               <tr key={row._id} className="hover:bg-slate-50/50">
                 <td className="px-4 py-3 font-medium text-[#3F63AD]">{row.bomNumber}</td>
                 <td className="px-4 py-3">{row.finishedGoodName}</td>

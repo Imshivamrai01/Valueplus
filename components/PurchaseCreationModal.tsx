@@ -24,19 +24,14 @@ interface PurchaseCreationModalProps {
   isOpen: boolean;
   onClose: () => void;
   mode?: "entry" | "debit-note" | "order";
+  preloadedItem?: any;
+  preloadedItems?: any[];
 }
 
-export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: PurchaseCreationModalProps) {
+export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preloadedItem, preloadedItems }: PurchaseCreationModalProps) {
   const queryClient = useQueryClient();
   const [currentMode, setCurrentMode] = useState<"entry" | "debit-note" | "order">(mode);
   const [createdBillToPrint, setCreatedBillToPrint] = useState<any | null>(null);
-
-  // Sync mode prop with local state when modal opens
-  useEffect(() => {
-    if (isOpen) {
-      setCurrentMode(mode);
-    }
-  }, [isOpen, mode]);
 
   const { data: suppliers = [] } = useQuery({
     queryKey: ["suppliers"],
@@ -46,6 +41,45 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry" }: Purch
       return json.success ? json.data : [];
     }
   });
+
+  // Sync mode prop & preloaded item with local state when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setCurrentMode(mode);
+      if (preloadedItem || (preloadedItems && preloadedItems.length > 0)) {
+        const itemsToLoad = preloadedItems && preloadedItems.length > 0 ? preloadedItems : [preloadedItem];
+        const firstItem = itemsToLoad[0];
+        
+        let matchedSupplier = suppliers.find((s: any) => 
+          s.name?.toLowerCase().includes(firstItem.brand?.toLowerCase()) ||
+          (firstItem.supplier && s.name?.toLowerCase().includes(firstItem.supplier?.toLowerCase()))
+        );
+
+        const supplierName = matchedSupplier?.name || (firstItem.brand ? `${firstItem.brand} India Distribution` : "Authorized Electronics Distributor");
+
+        setForm(prev => ({
+          ...prev,
+          supplierName: supplierName,
+          supplierPhone: matchedSupplier?.phone || "9876543210",
+          supplierId: matchedSupplier?._id || "auto",
+          items: itemsToLoad.map((it: any) => {
+            const reorderQty = Math.max(1, (Number(it.reorderLevel || 5) * 2) - Number(it.currentStock || 0));
+            const purRate = Number(it.purchasePrice || it.rate || (it.sellingPrice ? it.sellingPrice * 0.82 : 1000));
+            return {
+              id: Math.random().toString(),
+              itemId: it.code || it.vpCode || it._id || "ITEM",
+              name: it.name,
+              quantity: it.orderQty || reorderQty,
+              rate: Math.round(purRate),
+              gstRate: Number(it.gstRate || 18),
+              serialNumbers: [],
+              showSerials: false,
+            };
+          })
+        }));
+      }
+    }
+  }, [isOpen, mode, preloadedItem, preloadedItems, suppliers]);
 
   const { data: catalogItems = [] } = useQuery({
     queryKey: ["items"],

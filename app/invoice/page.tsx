@@ -8,6 +8,7 @@ import {
 import { toast } from "sonner";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { cn } from "@/lib/utils";
 
 // ─── HELPERS ───────────────────────────────────────────────────
 function formatCurrency(amount: number) {
@@ -119,63 +120,140 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
         
         docNo: invoice.estimateNumber || invoice.invoiceNumber || invoice.docNo || "EST-2026-0001",
         dated: invoice.date ? (typeof invoice.date === 'string' && invoice.date.includes('T') ? invoice.date.split('T')[0] : invoice.date) : "15/08/2026",
+        dueDate: invoice.dueDate || "",
         
         customerName: invoice.customerName || "Cash Customer",
         customerPhone: invoice.customerPhone || "7985803562",
+        customerAltPhone: invoice.customerAltPhone || invoice.altPhone || "",
         customerGstin: invoice.customerGST || invoice.customerGstin || "",
         customerPan: invoice.customerPAN || invoice.customerPan || "",
         customerState: invoice.customerState || invoice.placeOfSupply || "Uttar Pradesh(09)",
         shippingAddress: invoice.shippingAddress || invoice.customerAddress || "c31 divya nagar, gorakhpur, Uttar Pradesh(09)",
         
-        items: (invoice.items || []).map((it: any, idx: number) => {
-          const qty = Number(it.quantity || it.qty || 1);
-          const rate = Number(it.rate || 0);
-          const discount = Number(it.discount || 0);
-          const taxable = it.taxableAmount || (rate - discount) * qty;
-          const gstRate = Number(it.gstRate || 18);
-          const isIntra = !invoice.placeOfSupply || invoice.placeOfSupply.includes("09") || invoice.placeOfSupply.includes("Uttar Pradesh");
-          const halfRate = gstRate / 2;
-          const halfGst = (taxable * (halfRate / 100));
+        ...(() => {
+          const tableRows: any[] = [];
+          let sno = 1;
+          let runningSubtotal = 0;
+          let runningSgst = 0;
+          let runningCgst = 0;
+          let runningIgst = 0;
+          let runningEwTotal = 0;
+
+          (invoice.items || []).forEach((it: any) => {
+            const qty = Number(it.quantity || it.qty || 1);
+            const rate = Number(it.rate || 0);
+            const discount = Number(it.discount || 0);
+            const taxable = it.taxableAmount || (rate - discount) * qty;
+            const gstRate = Number(it.gstRate || 18);
+            const isIntra = !invoice.placeOfSupply || invoice.placeOfSupply.includes("09") || invoice.placeOfSupply.includes("Uttar Pradesh");
+            const halfRate = gstRate / 2;
+            const halfGst = (taxable * (halfRate / 100));
+
+            const prodSgst = isIntra ? (it.sgst || halfGst) : 0;
+            const prodCgst = isIntra ? (it.cgst || halfGst) : 0;
+            const prodIgst = isIntra ? 0 : (it.igst || (taxable * (gstRate / 100)));
+            const prodTotal = taxable + prodSgst + prodCgst + prodIgst;
+
+            runningSubtotal += taxable;
+            runningSgst += prodSgst;
+            runningCgst += prodCgst;
+            runningIgst += prodIgst;
+
+            // 1. Base Main Product Row (Clean, original format)
+            tableRows.push({
+              sno: sno++,
+              name: it.itemName || it.name || "Product Item",
+              vpCode: it.vpCode || it.itemCode || "",
+              batchNo: it.batchNumber || it.batchNo || (tableRows.length === 0 ? "605PLTV314681" : ""),
+              serialNo: it.serialNumber || it.serialImei || "",
+              isWarrantyItem: false,
+              hsn: it.hsn || it.hsnCode || "85287217",
+              uom: it.unit || "Pcs",
+              qty,
+              rate,
+              amount: taxable,
+              disc: discount,
+              taxableValue: taxable,
+              sgstRate: isIntra ? halfRate : 0,
+              sgstAmount: prodSgst,
+              cgstRate: isIntra ? halfRate : 0,
+              cgstAmount: prodCgst,
+              igstRate: isIntra ? 0 : gstRate,
+              igstAmount: prodIgst,
+              total: prodTotal,
+            });
+
+            // 2. Separate Distinct Extended Warranty Item Row (0% GST / No GST addition)
+            const ewAmt = Number(it.extendedWarrantyAmount) || 0;
+            if (ewAmt > 0) {
+              runningEwTotal += ewAmt;
+              runningSubtotal += ewAmt;
+
+              const providerName = it.extendedWarrantyProvider || "OneAssist";
+              const durationText = it.extendedWarrantyDuration ? `${it.extendedWarrantyDuration} Year${Number(it.extendedWarrantyDuration) > 1 ? 's' : ''}` : "Cover";
+
+              tableRows.push({
+                sno: sno++,
+                name: `Extended Warranty Protection — ${providerName} (${durationText})`,
+                vpCode: "",
+                batchNo: "",
+                serialNo: "",
+                policyNo: it.extendedWarrantyPolicyNo || "",
+                forProduct: it.itemName || it.name || "Appliance",
+                isWarrantyItem: true,
+                hsn: "",
+                uom: "-",
+                qty: 1,
+                rate: ewAmt,
+                amount: ewAmt,
+                disc: 0,
+                taxableValue: ewAmt,
+                sgstRate: 0,
+                sgstAmount: 0,
+                cgstRate: 0,
+                cgstAmount: 0,
+                igstRate: 0,
+                igstAmount: 0,
+                total: ewAmt,
+              });
+            }
+          });
+
+          const subtotalVal = invoice.subtotal || invoice.taxableAmount || runningSubtotal;
+          const totalGstVal = invoice.totalGST || (runningSgst + runningCgst + runningIgst);
+          const freightVal = invoice.freightCharges || invoice.shippingCharges || 0;
+          const rawNet = subtotalVal + totalGstVal + freightVal;
+          const netVal = invoice.total || Math.round(rawNet);
+          const roundOffVal = invoice.roundOff !== undefined ? invoice.roundOff : Number((netVal - rawNet).toFixed(2));
 
           return {
-            sno: idx + 1,
-            name: it.itemName || it.name || "Product Item",
-            vpCode: it.vpCode || it.itemCode || "",
-            batchNo: it.batchNumber || it.batchNo || (idx === 0 ? "605PLTV314681" : ""),
-            serialNo: it.serialNumber || it.serialImei || "",
-            extendedWarranty: it.extendedWarrantyPlan || "",
-            extendedWarrantyAmount: it.extendedWarrantyAmount || 0,
-            hsn: it.hsn || it.hsnCode || "85287217",
-            uom: it.unit || "Pcs",
-            qty,
-            rate,
-            amount: taxable,
-            disc: discount,
-            taxableValue: taxable,
-            sgstRate: isIntra ? halfRate : 0,
-            sgstAmount: isIntra ? (it.sgst || halfGst) : 0,
-            cgstRate: isIntra ? halfRate : 0,
-            cgstAmount: isIntra ? (it.cgst || halfGst) : 0,
-            igstRate: isIntra ? 0 : gstRate,
-            igstAmount: isIntra ? 0 : (it.igst || (taxable * (gstRate / 100))),
-            total: it.amount || (taxable + (taxable * (gstRate / 100)) + (it.extendedWarrantyAmount || 0)),
+            items: tableRows,
+            subtotal: subtotalVal,
+            totalGst: totalGstVal,
+            cgst: invoice.cgst || runningCgst,
+            sgst: invoice.sgst || runningSgst,
+            igst: invoice.igst || runningIgst,
+            roundOff: roundOffVal,
+            netAmount: netVal,
+            extendedWarrantyTotal: runningEwTotal || invoice.extendedWarrantyTotal || 0,
+            freightCharges: freightVal,
           };
-        }),
-        
-        subtotal: invoice.subtotal || invoice.taxableAmount || 21610.17,
-        totalGst: invoice.totalGST || 3889.84,
-        cgst: invoice.cgst || 1944.92,
-        sgst: invoice.sgst || 1944.92,
-        igst: invoice.igst || 0,
-        roundOff: invoice.roundOff || 0.01,
-        netAmount: invoice.total || 25500.00,
-        extendedWarrantyTotal: invoice.extendedWarrantyTotal || 0,
+        })(),
         
         paymentMode: invoice.paymentMode || "Cash",
         paidAmount: invoice.paidAmount || invoice.total || 25500.00,
         balanceAmount: invoice.balanceAmount || 0,
         vehicleNumber: invoice.vehicleNumber || "",
+        financeProvider: invoice.financeProvider || "",
         financeDoId: invoice.financeDoId || "",
+        financeDownPayment: invoice.financeDownPayment || 0,
+        financeDownPaymentMode: invoice.financeDownPaymentMode || "Cash",
+        financeGrossLoan: invoice.financeGrossLoan || 0,
+        dueAdvanceAmount: invoice.dueAdvanceAmount || 0,
+        dueAdvanceMode: invoice.dueAdvanceMode || "Cash",
+        dueClearedAt: invoice.dueClearedAt ? (typeof invoice.dueClearedAt === 'string' && invoice.dueClearedAt.includes('T') ? invoice.dueClearedAt.split('T')[0] : invoice.dueClearedAt) : "",
+        dueClearedMode: invoice.dueClearedMode || "",
+        dueClearedTxnId: invoice.dueClearedTxnId || "",
         deliveryChallanNo: invoice.deliveryChallanNo || "",
         reprintCount: invoice.reprintCount || 0,
         lastPrintedAt: invoice.lastPrintedAt || "",
@@ -195,9 +273,11 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
       
       docNo: "SVAK2026RI00602",
       dated: "15/08/2026",
+      dueDate: "",
       
       customerName: "AJAY TIWARI",
       customerPhone: "7985803562",
+      customerAltPhone: "",
       customerGstin: "",
       customerPan: "",
       customerState: "Uttar Pradesh(09)",
@@ -211,7 +291,10 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
           batchNo: "605PLTV314681",
           serialNo: "SN43LG881923",
           extendedWarranty: "1 Year Extended Warranty",
+          extendedWarrantyProvider: "OneAssist",
+          extendedWarrantyDuration: 1,
           extendedWarrantyAmount: 0,
+          extendedWarrantyPolicyNo: "",
           hsn: "85287217",
           uom: "Pcs",
           qty: 1,
@@ -237,12 +320,22 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
       roundOff: 0.01,
       netAmount: 25500.00,
       extendedWarrantyTotal: 0,
+      freightCharges: 0,
       
       paymentMode: "Cash",
       paidAmount: 25500.00,
       balanceAmount: 0,
       vehicleNumber: "",
+      financeProvider: "",
       financeDoId: "",
+      financeDownPayment: 0,
+      financeDownPaymentMode: "Cash",
+      financeGrossLoan: 0,
+      dueAdvanceAmount: 0,
+      dueAdvanceMode: "Cash",
+      dueClearedAt: "",
+      dueClearedMode: "",
+      dueClearedTxnId: "",
       deliveryChallanNo: "",
       reprintCount: 0,
       lastPrintedAt: "",
@@ -412,7 +505,10 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
           <div className="col-span-4 p-2 space-y-1">
             <p className="font-bold border-b pb-0.5 uppercase text-slate-800">Bill to: Customer</p>
             <p className="font-black text-xs text-slate-900">{activeData.customerName}</p>
-            <p className="text-slate-700">Ph./Mobile No.: <span className="font-mono font-bold">{activeData.customerPhone}</span></p>
+            <p className="text-slate-700">
+              Ph./Mobile No.: <span className="font-mono font-bold">{activeData.customerPhone}</span>
+              {activeData.customerAltPhone ? <span className="text-slate-600"> / Alt: <span className="font-mono font-bold">{activeData.customerAltPhone}</span></span> : null}
+            </p>
           </div>
 
           {/* Col 2: Tax Details */}
@@ -428,7 +524,10 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
             <p className="font-bold border-b pb-0.5 uppercase text-slate-800">Shipping Details</p>
             <p className="font-black text-slate-900 uppercase">{activeData.customerName}</p>
             <p className="text-slate-700 capitalize">{activeData.shippingAddress}</p>
-            <p className="text-slate-700">Ph:/Mobile:/<span className="font-mono font-bold">{activeData.customerPhone}</span></p>
+            <p className="text-slate-700">
+              Ph:/Mobile:/<span className="font-mono font-bold">{activeData.customerPhone}</span>
+              {activeData.customerAltPhone ? <span className="text-slate-600"> / Alt:<span className="font-mono font-bold">{activeData.customerAltPhone}</span></span> : null}
+            </p>
             {activeData.customerGstin && <p>GSTNO: <span className="font-mono font-bold">{activeData.customerGstin}</span></p>}
           </div>
         </div>
@@ -454,10 +553,12 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
             </thead>
             <tbody className="divide-y divide-slate-300">
               {activeData.items.map((it: any) => (
-                <tr key={it.sno} className="align-top">
+                <tr key={it.sno} className={cn("align-top", it.isWarrantyItem && "bg-slate-50/40")}>
                   <td className="p-1 border-r border-slate-400 text-center font-bold">{it.sno}</td>
                   <td className="p-1 border-r border-slate-400 font-medium">
-                    <div className="font-bold text-slate-900">{it.name}</div>
+                    <div className={cn("font-bold", it.isWarrantyItem ? "text-[#30539C]" : "text-slate-900")}>
+                      {it.name}
+                    </div>
                     {it.vpCode && <div className="text-[9px] font-mono text-slate-500">VP Code: {it.vpCode}</div>}
                     {it.serialNo && (
                       <div className="text-[9px] font-mono text-slate-700">
@@ -469,9 +570,9 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
                         1 No. : Batchno: <strong>{it.batchNo}</strong>
                       </div>
                     )}
-                    {it.extendedWarranty && (
-                      <div className="text-[9px] font-semibold text-purple-700">
-                        • {it.extendedWarranty} {it.extendedWarrantyAmount > 0 ? `(₹${it.extendedWarrantyAmount})` : ""}
+                    {it.isWarrantyItem && (
+                      <div className="text-[8.5px] text-slate-600 font-mono mt-0.5">
+                        Applicable on: <strong>{it.forProduct}</strong> {it.policyNo ? `• Policy/Cert: ${it.policyNo}` : ""}
                       </div>
                     )}
                   </td>
@@ -537,13 +638,19 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
             </p>
           </div>
           <div className="col-span-4 divide-y divide-slate-300">
+            {activeData.freightCharges > 0 && (
+              <div className="flex justify-between p-1.5 text-[10px]">
+                <span className="font-semibold text-slate-700">Freight / Delivery Fee</span>
+                <span className="font-mono font-bold text-slate-900">+₹{activeData.freightCharges?.toFixed(2)}</span>
+              </div>
+            )}
             <div className="flex justify-between p-1.5">
               <span className="font-semibold">Round Off</span>
-              <span className="font-mono font-bold">{activeData.roundOff?.toFixed(2)}</span>
+              <span className="font-mono font-bold">{activeData.roundOff > 0 ? `+${activeData.roundOff?.toFixed(2)}` : activeData.roundOff?.toFixed(2)}</span>
             </div>
             <div className="flex justify-between p-1.5 font-bold bg-slate-50 text-xs">
               <span>Net Amount</span>
-              <span className="font-mono text-black font-black">{activeData.netAmount?.toFixed(2)}</span>
+              <span className="font-mono text-black font-black">₹{activeData.netAmount?.toFixed(2)}</span>
             </div>
             <div className="flex justify-between p-1.5 text-[9px]">
               <span>GST Payable on Reverse Charge</span>
@@ -587,8 +694,31 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
 
         {/* ─── REMARKS & PAYMENT SUMMARY ─────────────────────────── */}
         <div className="py-2 border-b border-slate-400 text-[10px] space-y-1">
-          <p><span className="font-bold">Remarks:</span> Mode: <span className="font-bold uppercase">{activeData.paymentMode}</span> {activeData.financeDoId ? `• Finance DO: ${activeData.financeDoId}` : ""} {activeData.vehicleNumber ? `• Vehicle No: ${activeData.vehicleNumber}` : ""}</p>
-          <p><span className="font-bold">Payment Details:</span> Paid: <span className="font-mono font-bold">₹{activeData.paidAmount?.toFixed(2)}</span> {activeData.balanceAmount > 0 ? `• Balance Due: ₹${activeData.balanceAmount?.toFixed(2)}` : "• Full Settlement Received"}</p>
+          {activeData.paymentMode === "Finance" ? (
+            <p>
+              <span className="font-bold">Remarks:</span> Payment Mode: <span className="font-bold uppercase text-orange-700">FINANCE ({activeData.financeProvider || "Bajaj Finance"})</span> • Sanctioned Loan: <span className="font-mono font-bold">₹{(activeData.financeGrossLoan || (activeData.netAmount - (activeData.financeDownPayment || 0)))?.toFixed(2)}</span> • Down Payment: <span className="font-mono font-bold">₹{(activeData.financeDownPayment || 0)?.toFixed(2)}</span> via <span className="font-bold uppercase">{activeData.financeDownPaymentMode || "Cash"}</span> • DO ID: <span className="font-mono font-bold">{activeData.financeDoId || "N/A"}</span> {activeData.vehicleNumber ? `• Vehicle: ${activeData.vehicleNumber}` : ""}
+            </p>
+          ) : activeData.paymentMode === "Due / Credit" ? (
+            <p>
+              <span className="font-bold">Remarks:</span> Payment Mode: <span className="font-bold uppercase text-rose-700">DUE / CREDIT</span> • Advance Received: <span className="font-mono font-bold">₹{(activeData.dueAdvanceAmount || activeData.paidAmount || 0)?.toFixed(2)}</span> via <span className="font-bold uppercase">{activeData.dueAdvanceMode || "Cash"}</span> • Balance Due: <span className="font-mono font-bold text-rose-800">₹{activeData.balanceAmount?.toFixed(2)}</span> {activeData.dueDate ? `(Promise Date: ${activeData.dueDate})` : ""} {activeData.vehicleNumber ? `• Vehicle: ${activeData.vehicleNumber}` : ""}
+            </p>
+          ) : activeData.paymentMode === "Credit Card" || activeData.paymentMode === "Debit Card" ? (
+            <p>
+              <span className="font-bold">Remarks:</span> Mode: <span className="font-bold uppercase text-amber-800">{activeData.paymentMode}</span> {activeData.cardType ? `(${activeData.cardType})` : ""} {activeData.cardTxnId ? `• Auth/RRN: ${activeData.cardTxnId}` : ""} {activeData.cardLast4 ? `• Card: ****${activeData.cardLast4}` : ""} {activeData.cardMdrPercent ? `• Bank MDR Rate: ${activeData.cardMdrPercent}%` : ""} {activeData.vehicleNumber ? `• Vehicle: ${activeData.vehicleNumber}` : ""}
+            </p>
+          ) : (
+            <p>
+              <span className="font-bold">Remarks:</span> Mode: <span className="font-bold uppercase">{activeData.paymentMode}</span> {activeData.upiTxnId ? `• UPI UTR: ${activeData.upiTxnId}` : ""} {activeData.vehicleNumber ? `• Vehicle No: ${activeData.vehicleNumber}` : ""}
+            </p>
+          )}
+
+          {activeData.dueClearedAt ? (
+            <p className="text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-300 inline-block">
+              ✅ DUE CLEARED ON {activeData.dueClearedAt} via {activeData.dueClearedMode || "UPI"} {activeData.dueClearedTxnId ? `(Txn: ${activeData.dueClearedTxnId})` : ""} • Final Balance: ₹0.00 (PAID IN FULL)
+            </p>
+          ) : (
+            <p><span className="font-bold">Payment Details:</span> Paid: <span className="font-mono font-bold">₹{activeData.paidAmount?.toFixed(2)}</span> {activeData.balanceAmount > 0 ? `• Balance Due: ₹${activeData.balanceAmount?.toFixed(2)}` : "• Full Settlement Received"}</p>
+          )}
         </div>
 
         {/* ─── FOOTER & DISPATCH INFORMATION ──────────────────────── */}

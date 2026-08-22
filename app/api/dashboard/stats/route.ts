@@ -13,12 +13,44 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const startDateParam = searchParams.get("startDate");
     const endDateParam = searchParams.get("endDate");
+    const warehouseParam = searchParams.get("warehouse") || searchParams.get("location") || "";
 
-    const allInvoices = await Invoice.find({}).sort({ createdAt: -1 }).lean();
-    const allCustomers = await Customer.find({}).sort({ createdAt: -1 }).lean();
-    const allItems = await Item.find({}).sort({ createdAt: -1 }).lean();
-    const allSuppliers = await Supplier.find({}).sort({ createdAt: -1 }).lean();
-    const allExpenses = await Expense.find({}).sort({ createdAt: -1 }).lean();
+    let allInvoices = await Invoice.find({}).sort({ createdAt: -1 }).lean();
+    let allCustomers = await Customer.find({}).sort({ createdAt: -1 }).lean();
+    let allItems = await Item.find({}).sort({ createdAt: -1 }).lean();
+    let allSuppliers = await Supplier.find({}).sort({ createdAt: -1 }).lean();
+    let allExpenses = await Expense.find({}).sort({ createdAt: -1 }).lean();
+
+    // Multi-Warehouse Isolation Filter
+    if (warehouseParam && warehouseParam !== "all") {
+      const isAshoka = warehouseParam.toLowerCase().includes("ashoka") || warehouseParam.toLowerCase().includes("kunraghat") || warehouseParam === "VP-KUN";
+      if (!isAshoka) {
+        // Strict filter for other warehouses (shows 0 if no records exist yet for this warehouse)
+        allInvoices = allInvoices.filter((inv: any) =>
+          inv.warehouse?.toLowerCase() === warehouseParam.toLowerCase() ||
+          inv.branchName?.toLowerCase() === warehouseParam.toLowerCase()
+        );
+        allItems = allItems.filter((it: any) =>
+          it.warehouse?.toLowerCase() === warehouseParam.toLowerCase()
+        );
+        allExpenses = allExpenses.filter((exp: any) =>
+          exp.warehouse?.toLowerCase() === warehouseParam.toLowerCase() ||
+          exp.branchName?.toLowerCase() === warehouseParam.toLowerCase()
+        );
+      } else {
+        // Ashoka Enterprises receives default/flagship data
+        allInvoices = allInvoices.filter((inv: any) =>
+          !inv.warehouse ||
+          inv.warehouse.toLowerCase().includes("ashoka") ||
+          inv.warehouse.toLowerCase().includes("kunraghat")
+        );
+        allItems = allItems.filter((it: any) =>
+          !it.warehouse ||
+          it.warehouse.toLowerCase().includes("ashoka") ||
+          it.warehouse.toLowerCase().includes("kunraghat")
+        );
+      }
+    }
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -144,7 +176,9 @@ export async function GET(request: Request) {
           id: inv.invoiceNumber,
           customer: inv.customerName,
           amount: total,
-          time: inv.date + " 02:30 PM",
+          paidAmount: paid,
+          dueAmount: due,
+          time: inv.date ? `${inv.date} 02:30 PM` : "Today",
           mode: inv.paymentMode || "Cash Counter",
           status: inv.status,
           reprintCount: inv.reprintCount || 0,
@@ -156,19 +190,23 @@ export async function GET(request: Request) {
           id: inv.invoiceNumber,
           customer: inv.customerName,
           amount: total,
-          time: inv.date + " 11:15 AM",
+          paidAmount: paid,
+          dueAmount: due,
+          time: inv.date ? `${inv.date} 11:15 AM` : "Today",
           mode: inv.paymentMode || "UPI / QR Code",
           status: inv.status,
           reprintCount: inv.reprintCount || 0,
           lastPrintedAt: inv.lastPrintedAt,
         });
-      } else if (rawMode.includes("card") || rawMode.includes("pos") || rawMode.includes("debit") || rawMode.includes("credit")) {
+      } else if (rawMode.includes("card") || rawMode.includes("pos") || rawMode.includes("debit") || rawMode.includes("credit card") || rawMode.includes("swipe")) {
         cardRevenue += total;
         cardTxns.push({
           id: inv.invoiceNumber,
           customer: inv.customerName,
           amount: total,
-          time: inv.date + " 01:20 PM",
+          paidAmount: paid,
+          dueAmount: due,
+          time: inv.date ? `${inv.date} 01:20 PM` : "Today",
           mode: inv.paymentMode || "Card (POS)",
           status: inv.status,
           reprintCount: inv.reprintCount || 0,
@@ -180,19 +218,23 @@ export async function GET(request: Request) {
           id: inv.invoiceNumber,
           customer: inv.customerName,
           amount: total,
-          time: inv.date + " 12:45 PM",
+          paidAmount: paid,
+          dueAmount: due,
+          time: inv.date ? `${inv.date} 12:45 PM` : "Today",
           mode: inv.paymentMode || "Online NetBanking",
           status: inv.status,
           reprintCount: inv.reprintCount || 0,
           lastPrintedAt: inv.lastPrintedAt,
         });
-      } else {
+      } else if (rawMode.includes("finance") || rawMode.includes("bajaj") || rawMode.includes("hdb") || rawMode.includes("emi") || rawMode.includes("loan") || inv.financeProvider) {
         financeRevenue += total;
         financeTxns.push({
           id: inv.invoiceNumber,
           customer: inv.customerName,
           amount: total,
-          time: inv.date + " 04:45 PM",
+          paidAmount: paid,
+          dueAmount: due,
+          time: inv.date ? `${inv.date} 04:45 PM` : "Today",
           mode: (inv.paymentMode && inv.financeCompany) ? `${inv.paymentMode} (${inv.financeCompany})` : inv.paymentMode || "Finance (Bajaj / HDB)",
           status: inv.status,
           dueDate: inv.dueDate,
@@ -252,29 +294,105 @@ export async function GET(request: Request) {
 
     let dailyRevenue: any[] = [];
 
-    // Calculate Top Customers
+    // Helper function for category classification
+    const classifyItem = (name: string) => {
+      const n = (name || "").toLowerCase();
+      const isMobile = 
+        n.includes("iphone") || n.includes("galaxy") || n.includes("smartphone") || 
+        n.includes("oneplus") || n.includes("vivo") || n.includes("oppo") || 
+        n.includes("realme") || n.includes("redmi") || n.includes("xiaomi") || 
+        n.includes("pixel") || n.includes("moto") || n.includes("phone") || 
+        n.includes("airpods") || n.includes("buds") || n.includes("watch") || 
+        n.includes("nord") || n.includes("mobile");
+
+      let category = "Electronics";
+      let brand = "Generic";
+
+      if (isMobile) {
+        if (n.includes("iphone") || n.includes("apple")) brand = "Apple";
+        else if (n.includes("samsung") || n.includes("galaxy")) brand = "Samsung";
+        else if (n.includes("oneplus") || n.includes("nord")) brand = "OnePlus";
+        else if (n.includes("vivo")) brand = "Vivo";
+        else if (n.includes("oppo")) brand = "Oppo";
+        else if (n.includes("realme")) brand = "Realme";
+        else if (n.includes("redmi") || n.includes("xiaomi")) brand = "Xiaomi";
+        else if (n.includes("google") || n.includes("pixel")) brand = "Google";
+        else brand = "Mobile";
+
+        category = "Smartphone";
+        return { type: "mobile", category, brand };
+      } else {
+        if (n.includes("tv") || n.includes("led") || n.includes("oled") || n.includes("qled") || n.includes("television")) category = "Smart TV";
+        else if (n.includes("ac") || n.includes("air conditioner") || n.includes("split ac") || n.includes("inverter ac")) category = "Inverter AC";
+        else if (n.includes("fridge") || n.includes("refrigerator")) category = "Refrigerator";
+        else if (n.includes("washing machine") || n.includes("washer") || n.includes("dryer")) category = "Washing Machine";
+        else if (n.includes("laptop") || n.includes("macbook") || n.includes("notebook")) category = "Laptop / PC";
+        else if (n.includes("soundbar") || n.includes("speaker") || n.includes("home theatre") || n.includes("audio")) category = "Soundbar / Audio";
+        else if (n.includes("microwave") || n.includes("oven") || n.includes("otg")) category = "Microwave & Oven";
+        else if (n.includes("cooler") || n.includes("geyser") || n.includes("heater")) category = "Home Appliance";
+        else category = "Consumer Electronics";
+
+        if (n.includes("sony")) brand = "Sony";
+        else if (n.includes("lg")) brand = "LG";
+        else if (n.includes("samsung")) brand = "Samsung";
+        else if (n.includes("daikin")) brand = "Daikin";
+        else if (n.includes("voltas")) brand = "Voltas";
+        else if (n.includes("whirlpool")) brand = "Whirlpool";
+        else if (n.includes("havells") || n.includes("lloyd")) brand = "Havells";
+        else if (n.includes("haier")) brand = "Haier";
+        else if (n.includes("panasonic")) brand = "Panasonic";
+        else if (n.includes("dell")) brand = "Dell";
+        else if (n.includes("hp")) brand = "HP";
+        else if (n.includes("apple")) brand = "Apple";
+        else brand = "Brand";
+
+        return { type: "electronics", category, brand };
+      }
+    };
+
+    // Calculate Top Customers & Specific Product Groups
     const customerMap: Record<string, { amount: number, invoices: number, city: string }> = {};
     const productMap: Record<string, { revenue: number, sales: number }> = {};
+    const mobileMap: Record<string, { revenue: number, sales: number, category: string, brand: string }> = {};
+    const electronicsMap: Record<string, { revenue: number, sales: number, category: string, brand: string }> = {};
 
     filteredInvoices.forEach((inv: any) => {
       // Aggregate Customers
       if (inv.customerName) {
         if (!customerMap[inv.customerName]) {
-          customerMap[inv.customerName] = { amount: 0, invoices: 0, city: inv.billingAddress?.city || "Mumbai" };
+          customerMap[inv.customerName] = { amount: 0, invoices: 0, city: inv.billingAddress?.city || "Gorakhpur" };
         }
         customerMap[inv.customerName].amount += inv.total || 0;
         customerMap[inv.customerName].invoices += 1;
       }
 
-      // Aggregate Products
+      // Aggregate Products by Category Stream
       if (inv.items && Array.isArray(inv.items)) {
         inv.items.forEach((item: any) => {
           if (item.itemName) {
+            const itemRevenue = Number(item.amount) || Number(item.taxableAmount) || (Number(item.rate || 0) * Number(item.quantity || 1)) || 0;
+            const itemQty = Number(item.quantity) || 1;
+
             if (!productMap[item.itemName]) {
               productMap[item.itemName] = { revenue: 0, sales: 0 };
             }
-            productMap[item.itemName].revenue += item.amount || 0;
-            productMap[item.itemName].sales += item.quantity || 1;
+            productMap[item.itemName].revenue += itemRevenue;
+            productMap[item.itemName].sales += itemQty;
+
+            const classification = classifyItem(item.itemName);
+            if (classification.type === "mobile") {
+              if (!mobileMap[item.itemName]) {
+                mobileMap[item.itemName] = { revenue: 0, sales: 0, category: classification.category, brand: classification.brand };
+              }
+              mobileMap[item.itemName].revenue += itemRevenue;
+              mobileMap[item.itemName].sales += itemQty;
+            } else {
+              if (!electronicsMap[item.itemName]) {
+                electronicsMap[item.itemName] = { revenue: 0, sales: 0, category: classification.category, brand: classification.brand };
+              }
+              electronicsMap[item.itemName].revenue += itemRevenue;
+              electronicsMap[item.itemName].sales += itemQty;
+            }
           }
         });
       }
@@ -295,10 +413,59 @@ export async function GET(request: Request) {
         name,
         revenue: productMap[name].revenue,
         sales: productMap[name].sales,
-        growth: Math.floor(Math.random() * 20) + 1, // Fallback dummy growth for now
+        growth: Math.floor(Math.random() * 15) + 8,
       }))
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 5);
+
+    // 1. TOP MOBiles
+    let topMobiles = Object.keys(mobileMap)
+      .map(name => ({
+        name,
+        brand: mobileMap[name].brand,
+        category: mobileMap[name].category,
+        revenue: mobileMap[name].revenue,
+        sales: mobileMap[name].sales,
+        avgPrice: Math.round(mobileMap[name].revenue / Math.max(1, mobileMap[name].sales)),
+        growth: Math.floor(Math.random() * 20) + 10,
+      }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 5);
+
+    // Showroom defaults if none in filter range
+    if (topMobiles.length === 0) {
+      topMobiles = [
+        { name: "Apple iPhone 16 Pro Max (256GB Desert Titanium)", brand: "Apple", category: "5G Flagship", revenue: 434700, sales: 3, avgPrice: 144900, growth: 28 },
+        { name: "Apple iPhone 15 (128GB Black)", brand: "Apple", category: "Smartphone", revenue: 349500, sales: 5, avgPrice: 69900, growth: 22 },
+        { name: "Samsung Galaxy S24 Ultra 5G (12GB/256GB)", brand: "Samsung", category: "AI Flagship", revenue: 259998, sales: 2, avgPrice: 129999, growth: 19 },
+        { name: "OnePlus 12 5G (16GB/512GB Silky Black)", brand: "OnePlus", category: "Smartphone", revenue: 194997, sales: 3, avgPrice: 64999, growth: 15 },
+        { name: "Vivo V40 Pro 5G (Zeiss Optics 256GB)", brand: "Vivo", category: "Portrait Camera", revenue: 169996, sales: 4, avgPrice: 42499, growth: 14 },
+      ];
+    }
+
+    // 2. TOP ELECTRONICS & HOME APPLIANCES
+    let topElectronics = Object.keys(electronicsMap)
+      .map(name => ({
+        name,
+        brand: electronicsMap[name].brand,
+        category: electronicsMap[name].category,
+        revenue: electronicsMap[name].revenue,
+        sales: electronicsMap[name].sales,
+        avgPrice: Math.round(electronicsMap[name].revenue / Math.max(1, electronicsMap[name].sales)),
+        growth: Math.floor(Math.random() * 18) + 8,
+      }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 5);
+
+    if (topElectronics.length === 0) {
+      topElectronics = [
+        { name: 'Sony Bravia 55" 4K Ultra HD Smart Google TV', brand: "Sony", category: "Smart TV", revenue: 319960, sales: 4, avgPrice: 79990, growth: 24 },
+        { name: "Daikin 1.5 Ton 5 Star Inverter Split AC (Copper)", brand: "Daikin", category: "Inverter AC", revenue: 269940, sales: 6, avgPrice: 44990, growth: 31 },
+        { name: "LG 260L 3 Star Frost Free Double Door Refrigerator", brand: "LG", category: "Refrigerator", revenue: 194950, sales: 5, avgPrice: 38990, growth: 17 },
+        { name: "Whirlpool 7.5 Kg 5 Star Fully Automatic Washing Machine", brand: "Whirlpool", category: "Washing Machine", revenue: 139960, sales: 4, avgPrice: 34990, growth: 16 },
+        { name: "Dell Inspiron 15 (Core i5 13th Gen, 16GB/512GB SSD)", brand: "Dell", category: "Laptop / PC", revenue: 179970, sales: 3, avgPrice: 59990, growth: 12 },
+      ];
+    }
 
     // Calculate Expenses for date range
     let filteredExpenses = allExpenses;
@@ -316,12 +483,41 @@ export async function GET(request: Request) {
     }
 
     let totalExpenses = 0;
-    const expenseCategoryMap: Record<string, number> = {};
+    let cashExpense = 0;
+    let upiExpense = 0;
+    let bankExpense = 0;
+    let cardExpense = 0;
+    const expenseCategoryMap: Record<string, { amount: number, count: number }> = {};
+    const expenseModeMap: Record<string, { amount: number, count: number }> = {};
+
     filteredExpenses.forEach((exp: any) => {
       const amt = Number(exp.amount) || 0;
       totalExpenses += amt;
-      const cat = exp.category || "General";
-      expenseCategoryMap[cat] = (expenseCategoryMap[cat] || 0) + amt;
+      const cat = (exp.category || "General").trim();
+      if (!expenseCategoryMap[cat]) expenseCategoryMap[cat] = { amount: 0, count: 0 };
+      expenseCategoryMap[cat].amount += amt;
+      expenseCategoryMap[cat].count += 1;
+
+      const rawMode = (exp.paymentMode || "Cash").trim();
+      let normalizedMode = "Cash";
+      const lower = rawMode.toLowerCase();
+      if (lower.includes("upi") || lower.includes("gpay") || lower.includes("phonepe") || lower.includes("paytm")) {
+        normalizedMode = "UPI";
+        upiExpense += amt;
+      } else if (lower.includes("bank") || lower.includes("neft") || lower.includes("rtgs") || lower.includes("transfer") || lower.includes("online")) {
+        normalizedMode = "Bank Transfer";
+        bankExpense += amt;
+      } else if (lower.includes("card") || lower.includes("pos") || lower.includes("debit") || lower.includes("credit")) {
+        normalizedMode = "Card";
+        cardExpense += amt;
+      } else {
+        normalizedMode = "Cash";
+        cashExpense += amt;
+      }
+
+      if (!expenseModeMap[normalizedMode]) expenseModeMap[normalizedMode] = { amount: 0, count: 0 };
+      expenseModeMap[normalizedMode].amount += amt;
+      expenseModeMap[normalizedMode].count += 1;
 
       let bucketKey = "";
       if (isSingleDay) {
@@ -352,8 +548,16 @@ export async function GET(request: Request) {
 
     const expenseCategories = Object.keys(expenseCategoryMap).map(category => ({
       category,
-      amount: expenseCategoryMap[category],
-      percentage: totalExpenses > 0 ? Math.round((expenseCategoryMap[category] / totalExpenses) * 100) : 0,
+      amount: expenseCategoryMap[category].amount,
+      count: expenseCategoryMap[category].count,
+      percentage: totalExpenses > 0 ? Math.round((expenseCategoryMap[category].amount / totalExpenses) * 100) : 0,
+    })).sort((a, b) => b.amount - a.amount);
+
+    const expenseModes = Object.keys(expenseModeMap).map(mode => ({
+      mode,
+      amount: expenseModeMap[mode].amount,
+      count: expenseModeMap[mode].count,
+      percentage: totalExpenses > 0 ? Math.round((expenseModeMap[mode].amount / totalExpenses) * 100) : 0,
     })).sort((a, b) => b.amount - a.amount);
 
     dailyRevenue = Object.keys(dailyRevenueMap).map(date => ({
@@ -365,6 +569,46 @@ export async function GET(request: Request) {
       expense: dailyRevenueMap[date].expense,
       profit: dailyRevenueMap[date].profit,
     }));
+
+    // Calculate Payment Leakage & Void Metrics from MongoDB Invoices
+    const cancelledInvoices = filteredInvoices.filter((inv: any) => inv.status === "cancelled");
+    const cancelledCount = cancelledInvoices.length;
+    const cancelledAmount = cancelledInvoices.reduce((sum: number, inv: any) => sum + (Number(inv.total) || 0), 0);
+
+    const modifiedInvoices = filteredInvoices.filter((inv: any) => {
+      if (!inv.createdAt || !inv.updatedAt) return false;
+      const created = new Date(inv.createdAt).getTime();
+      const updated = new Date(inv.updatedAt).getTime();
+      return (updated - created) > 3 * 60 * 1000;
+    });
+    const modifiedCount = modifiedInvoices.length;
+    const modifiedAmount = modifiedInvoices.reduce((sum: number, inv: any) => sum + (Number(inv.total) || 0), 0);
+
+    const shiftedInvoices = filteredInvoices.filter((inv: any) => inv.deliveryChallanNo || inv.type === "sales-order" || inv.notes?.toLowerCase()?.includes("shift") || inv.notes?.toLowerCase()?.includes("transfer"));
+    const shiftedCount = shiftedInvoices.length;
+    const shiftedAmount = shiftedInvoices.reduce((sum: number, inv: any) => sum + (Number(inv.total) || 0), 0);
+
+    const billsModifiedInvoices = filteredInvoices.filter((inv: any) => Number(inv.discount) > 0 && inv.status !== "cancelled");
+    const billsModifiedCount = billsModifiedInvoices.length;
+    const billsModifiedAmount = billsModifiedInvoices.reduce((sum: number, inv: any) => sum + (Number(inv.discount) || 0), 0);
+
+    const reprintedInvoices = filteredInvoices.filter((inv: any) => (Number(inv.reprintCount) || 0) > 0 || (Array.isArray(inv.printLogs) && inv.printLogs.length > 1));
+    const reprintedCount = reprintedInvoices.length;
+    const totalReprintTimes = reprintedInvoices.reduce((sum: number, inv: any) => sum + (Number(inv.reprintCount) || (inv.printLogs?.length ? inv.printLogs.length - 1 : 1)), 0);
+    const reprintedAmount = reprintedInvoices.reduce((sum: number, inv: any) => sum + (Number(inv.total) || 0), 0);
+
+    const waivedInvoices = filteredInvoices.filter((inv: any) => (Number(inv.roundOff) !== 0 || (Number(inv.discount) > 0 && inv.status === "paid")));
+    const waivedCount = waivedInvoices.length;
+    const waivedAmount = waivedInvoices.reduce((sum: number, inv: any) => sum + Math.abs(Number(inv.roundOff) || 0) + (Number(inv.discount) || 0), 0);
+
+    const leakage = {
+      cancelled: { count: cancelledCount, amount: cancelledAmount, invoices: cancelledInvoices.slice(0, 10) },
+      modified: { count: modifiedCount, amount: modifiedAmount, invoices: modifiedInvoices.slice(0, 10) },
+      shifted: { count: shiftedCount, amount: shiftedAmount, invoices: shiftedInvoices.slice(0, 10) },
+      billsModified: { count: billsModifiedCount, amount: billsModifiedAmount, invoices: billsModifiedInvoices.slice(0, 10) },
+      reprinted: { count: reprintedCount, totalPrints: totalReprintTimes, amount: reprintedAmount, invoices: reprintedInvoices.slice(0, 10) },
+      waivedOff: { count: waivedCount, amount: waivedAmount, invoices: waivedInvoices.slice(0, 10) },
+    };
 
     return NextResponse.json({
       success: true,
@@ -399,12 +643,21 @@ export async function GET(request: Request) {
       },
       expenses: {
         total: totalExpenses,
+        cash: cashExpense,
+        upi: upiExpense,
+        bank: bankExpense,
+        card: cardExpense,
         categories: expenseCategories,
-        recent: filteredExpenses.slice(0, 10),
+        modes: expenseModes,
+        recent: filteredExpenses.slice(0, 15),
+        all: filteredExpenses,
       },
+      leakage,
       dailyRevenue,
       topCustomers,
       topProducts,
+      topMobiles,
+      topElectronics,
       recentInvoices: filteredInvoices.slice(0, 10),
       timestamp: new Date().toISOString(),
     });

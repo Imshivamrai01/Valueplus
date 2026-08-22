@@ -5,7 +5,7 @@ export function Skeleton({ className, ...props }: React.HTMLAttributes<HTMLDivEl
   return (
     <div
       className={cn(
-        "animate-pulse rounded-md bg-gradient-to-r from-slate-200/80 via-slate-100/90 to-slate-200/80 bg-[length:200%_100%]",
+        "rounded-md bg-gradient-to-r from-slate-200/80 via-slate-100 to-slate-200/80 bg-[length:200%_100%] animate-pulse shimmer-pulse",
         className
       )}
       {...props}
@@ -35,7 +35,7 @@ export function MetricCardsShimmer({ count = 4 }: { count?: number }) {
 
 export function TableShimmer({ rows = 6, cols = 7 }: { rows?: number; cols?: number }) {
   return (
-    <div className="w-full space-y-3 p-4">
+    <div className="w-full space-y-3 p-4 bg-white rounded-2xl">
       {/* Header skeleton */}
       <div className="flex items-center justify-between gap-4 pb-3 border-b border-slate-100">
         {Array.from({ length: cols }).map((_, c) => (
@@ -104,3 +104,61 @@ export function DistributionShimmer() {
     </div>
   );
 }
+
+export function GridCardsShimmer({ count = 6 }: { count?: number }) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full">
+      {Array.from({ length: count }).map((_, idx) => (
+        <div key={idx} className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm space-y-3">
+          <div className="flex items-center gap-3">
+            <Skeleton className="w-10 h-10 rounded-xl" />
+            <div className="space-y-1.5 flex-1">
+              <Skeleton className="h-4 w-3/4 rounded" />
+              <Skeleton className="h-3 w-1/2 rounded" />
+            </div>
+          </div>
+          <Skeleton className="h-3 w-full rounded" />
+          <div className="flex justify-between pt-2 border-t border-slate-100">
+            <Skeleton className="h-3.5 w-20 rounded" />
+            <Skeleton className="h-3.5 w-16 rounded" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function GodownHubShimmer() {
+  return (
+    <div className="space-y-5">
+      {/* Banner Shimmer */}
+      <div className="p-6 rounded-2xl bg-[#1B2537] border border-slate-700 shadow-xl space-y-4">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <Skeleton className="w-12 h-12 rounded-2xl bg-white/10" />
+            <div className="space-y-2">
+              <Skeleton className="h-5 w-48 bg-white/20 rounded" />
+              <Skeleton className="h-3.5 w-64 bg-white/10 rounded" />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Skeleton className="h-9 w-32 bg-white/10 rounded-xl" />
+            <Skeleton className="h-9 w-36 bg-white/20 rounded-xl" />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-white/10">
+          {Array.from({ length: 4 }).map((_, idx) => (
+            <div key={idx} className="bg-white/5 rounded-xl p-3 space-y-2">
+              <Skeleton className="h-3 w-24 bg-white/10 rounded" />
+              <Skeleton className="h-6 w-32 bg-white/20 rounded" />
+              <Skeleton className="h-2.5 w-20 bg-white/10 rounded" />
+            </div>
+          ))}
+        </div>
+      </div>
+      {/* Table Shimmer */}
+      <TableShimmer rows={6} cols={7} />
+    </div>
+  );
+}
+

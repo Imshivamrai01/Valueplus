@@ -9,6 +9,13 @@ export interface ILineItem {
   quantity: number;
   unit: string;
   rate: number;
+  minSellingPrice?: number;
+  adminOverrideRate?: boolean;
+  incentiveTargetAmount?: number;
+  incentiveAmount?: number;
+  incentiveType?: "none" | "fixed" | "percentage";
+  incentiveValue?: number;
+  incentiveEarned?: number;
   discount: number;
   discountType: "percent" | "amount";
   taxableAmount: number;
@@ -19,9 +26,11 @@ export interface ILineItem {
   amount: number;
   serialNumber?: string;
   batchNumber?: string;
+  extendedWarrantyProvider?: string;
   extendedWarrantyPlan?: string;
   extendedWarrantyAmount?: number;
   extendedWarrantyDuration?: number;
+  extendedWarrantyPolicyNo?: string;
 }
 
 export interface IInvoice extends Document {
@@ -32,6 +41,7 @@ export interface IInvoice extends Document {
   customerGST?: string;
   customerPAN?: string;
   customerPhone?: string;
+  customerAltPhone?: string;
   customerEmail?: string;
   customerAddress?: string;
   customerCity?: string;
@@ -52,11 +62,7 @@ export interface IInvoice extends Document {
   igst: number;
   totalGST: number;
   extendedWarrantyTotal?: number;
-  roundOff: number;
-  total: number;
-  paidAmount: number;
-  balanceAmount: number;
-  paymentMode: "Cash" | "UPI" | "Online" | "Card" | "Finance" | "Multiple";
+  paymentMode: "Cash" | "UPI" | "Online" | "Card" | "Credit Card" | "Debit Card" | "Finance" | "Due / Credit" | "Multiple";
   paymentTerms: string;
   
   // Payment Details
@@ -64,9 +70,11 @@ export interface IInvoice extends Document {
   upiTxnId?: string;
   onlineTxnId?: string;
   onlineGateway?: string;
+  cardCategory?: "Credit Card" | "Debit Card" | "Card";
   cardAmount?: number;
   cardType?: string;
   cardTxnId?: string;
+  cardLast4?: string;
   cardMdrPercent?: number;
   cardMdrAmount?: number;
   cardNetSettlement?: number;
@@ -79,6 +87,7 @@ export interface IInvoice extends Document {
   financeNetLoan?: number;
   financeMarginMoney?: number;
   financeDownPayment?: number;
+  financeDownPaymentMode?: string;
   financeDealerSubsidy?: number;
   financeExpectedDisbursement?: number;
   financeActualDisbursement?: number;
@@ -91,14 +100,28 @@ export interface IInvoice extends Document {
   downPayment?: number;
   downPaymentMode?: string;
   shippingCharges?: number;
+  freightCharges?: number;
   financeTenureMonths?: number;
   financeSchemeType?: string;
   financeInterestRate?: number;
   monthlyEMI?: number;
+  totalInterest?: number;
+
+  // Due / Credit Details & Clearance
+  dueAdvanceAmount?: number;
+  dueAdvanceMode?: string;
+  dueClearedAt?: string;
+  dueClearedMode?: string;
+  dueClearedBy?: string;
+  dueClearedNotes?: string;
+  dueClearedTxnId?: string;
+
   deliveryChallanNo?: string;
   creditNoteRef?: string;
   notes?: string;
   salesExecutive?: string;
+  salesExecutiveIncentive?: number;
+  adminOverridePinUsed?: boolean;
   reprintCount?: number;
   lastPrintedAt?: string;
   printLogs?: Array<{ printedAt: string; printedBy?: string }>;
@@ -113,6 +136,13 @@ const LineItemSchema = new Schema({
   quantity: { type: Number, required: true },
   unit: { type: String, required: true, default: "Pcs" },
   rate: { type: Number, required: true },
+  minSellingPrice: { type: Number, default: 0 },
+  adminOverrideRate: { type: Boolean, default: false },
+  incentiveTargetAmount: { type: Number, default: 0 },
+  incentiveAmount: { type: Number, default: 0 },
+  incentiveType: { type: String, default: "none" },
+  incentiveValue: { type: Number, default: 0 },
+  incentiveEarned: { type: Number, default: 0 },
   discount: { type: Number, default: 0 },
   discountType: { type: String, enum: ["percent", "amount"], default: "amount" },
   taxableAmount: { type: Number, required: true },
@@ -123,9 +153,11 @@ const LineItemSchema = new Schema({
   amount: { type: Number, required: true },
   serialNumber: { type: String, default: "" },
   batchNumber: { type: String, default: "" },
+  extendedWarrantyProvider: { type: String, default: "" },
   extendedWarrantyPlan: { type: String, default: "" },
   extendedWarrantyAmount: { type: Number, default: 0 },
   extendedWarrantyDuration: { type: Number, default: 0 },
+  extendedWarrantyPolicyNo: { type: String, default: "" },
 });
 
 const InvoiceSchema = new Schema<IInvoice>(
@@ -137,6 +169,7 @@ const InvoiceSchema = new Schema<IInvoice>(
     customerGST: { type: String, default: "" },
     customerPAN: { type: String, default: "" },
     customerPhone: { type: String, index: true },
+    customerAltPhone: { type: String, default: "" },
     customerEmail: String,
     customerAddress: String,
     customerCity: String,
@@ -146,7 +179,7 @@ const InvoiceSchema = new Schema<IInvoice>(
     vehicleNumber: { type: String, default: "" },
     shippingAddress: String,
     date: { type: String, required: true, index: true },
-    dueDate: { type: String, required: true },
+    dueDate: { type: String, required: true, index: true },
     status: { type: String, enum: ["draft", "sent", "paid", "partial", "overdue", "cancelled", "pending"], default: "sent", index: true },
     items: [LineItemSchema],
     subtotal: { type: Number, required: true },
@@ -168,9 +201,11 @@ const InvoiceSchema = new Schema<IInvoice>(
     upiTxnId: String,
     onlineTxnId: String,
     onlineGateway: String,
+    cardCategory: { type: String, default: "Credit Card" },
     cardAmount: Number,
     cardType: String,
     cardTxnId: String,
+    cardLast4: String,
     cardMdrPercent: Number,
     cardMdrAmount: Number,
     cardNetSettlement: Number,
@@ -182,6 +217,7 @@ const InvoiceSchema = new Schema<IInvoice>(
     financeNetLoan: Number,
     financeMarginMoney: Number,
     financeDownPayment: Number,
+    financeDownPaymentMode: { type: String, default: "Cash" },
     financeDealerSubsidy: Number,
     financeExpectedDisbursement: Number,
     financeActualDisbursement: Number,
@@ -197,17 +233,29 @@ const InvoiceSchema = new Schema<IInvoice>(
 
     downPayment: Number,
     downPaymentMode: String,
-    shippingCharges: Number,
+    shippingCharges: { type: Number, default: 0 },
+    freightCharges: { type: Number, default: 0 },
     financeTenureMonths: Number,
     financeSchemeType: String,
     financeInterestRate: Number,
     monthlyEMI: Number,
     totalInterest: Number,
 
+    // Due / Credit tracking & clearance
+    dueAdvanceAmount: { type: Number, default: 0 },
+    dueAdvanceMode: { type: String, default: "Cash" },
+    dueClearedAt: { type: String },
+    dueClearedMode: { type: String },
+    dueClearedBy: { type: String },
+    dueClearedNotes: { type: String },
+    dueClearedTxnId: { type: String },
+
     deliveryChallanNo: String,
     creditNoteRef: String,
     notes: String,
     salesExecutive: { type: String, default: "AMIT SINGH" },
+    salesExecutiveIncentive: { type: Number, default: 0 },
+    adminOverridePinUsed: { type: Boolean, default: false },
     reprintCount: { type: Number, default: 0 },
     lastPrintedAt: { type: String },
     printLogs: [
@@ -225,4 +273,3 @@ if (mongoose.models.Invoice) {
 }
 const Invoice: Model<IInvoice> = mongoose.model<IInvoice>("Invoice", InvoiceSchema);
 export default Invoice;
-

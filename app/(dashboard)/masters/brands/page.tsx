@@ -1,4 +1,5 @@
 "use client";
+
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PageShell } from "@/components/shared/page-shell";
@@ -7,54 +8,21 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
   ChevronRight, Search, Package, Tag, Award,
-  ArrowLeft, TrendingUp, Box, IndianRupee
+  ArrowLeft, TrendingUp, Box, ShoppingCart, Eye, CheckCircle2, AlertTriangle, Layers
 } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
-import { MetricCardsShimmer, TableShimmer, Skeleton } from "@/components/shared/shimmer-skeleton";
-
-// Brand color palette
-const BRAND_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  Apple:    { bg: "bg-slate-900",   text: "text-white",      border: "border-slate-700"    },
-  Samsung:  { bg: "bg-blue-600",    text: "text-white",      border: "border-blue-500"     },
-  OnePlus:  { bg: "bg-red-600",     text: "text-white",      border: "border-red-500"      },
-  Xiaomi:   { bg: "bg-orange-500",  text: "text-white",      border: "border-orange-400"   },
-  Realme:   { bg: "bg-yellow-500",  text: "text-slate-900",  border: "border-yellow-400"   },
-  Vivo:     { bg: "bg-sky-500",     text: "text-white",      border: "border-sky-400"      },
-  Oppo:     { bg: "bg-green-600",   text: "text-white",      border: "border-green-500"    },
-  Sony:     { bg: "bg-black",       text: "text-white",      border: "border-slate-600"    },
-  LG:       { bg: "bg-rose-600",    text: "text-white",      border: "border-rose-500"     },
-  Dell:     { bg: "bg-blue-800",    text: "text-white",      border: "border-blue-700"     },
-  HP:       { bg: "bg-blue-500",    text: "text-white",      border: "border-blue-400"     },
-  Lenovo:   { bg: "bg-red-800",     text: "text-white",      border: "border-red-700"      },
-  Asus:     { bg: "bg-indigo-600",  text: "text-white",      border: "border-indigo-500"   },
-  boAt:     { bg: "bg-violet-600",  text: "text-white",      border: "border-violet-500"   },
-  JBL:      { bg: "bg-orange-600",  text: "text-white",      border: "border-orange-500"   },
-  Noise:    { bg: "bg-cyan-600",    text: "text-white",      border: "border-cyan-500"     },
-  Daikin:   { bg: "bg-teal-600",    text: "text-white",      border: "border-teal-500"     },
-  Voltas:   { bg: "bg-blue-700",    text: "text-white",      border: "border-blue-600"     },
-  Whirlpool:{ bg: "bg-slate-600",   text: "text-white",      border: "border-slate-500"    },
-  Haier:    { bg: "bg-sky-700",     text: "text-white",      border: "border-sky-600"      },
-};
-
-function getBrandColor(name: string) {
-  return BRAND_COLORS[name] || { bg: "bg-[#3F63AD]", text: "text-white", border: "border-[#3F63AD]" };
-}
-
-function BrandInitial({ name }: { name: string }) {
-  const color = getBrandColor(name);
-  const initials = name.slice(0, 2).toUpperCase();
-  return (
-    <div className={cn("w-14 h-14 rounded-2xl flex items-center justify-center text-lg font-black tracking-tight shadow-lg flex-shrink-0", color.bg, color.text)}>
-      {initials}
-    </div>
-  );
-}
+import { TableShimmer, GridCardsShimmer } from "@/components/shared/shimmer-skeleton";
+import { BrandLogo, getBrandMeta } from "@/components/shared/brand-logo";
+import { InvoiceCreationModal } from "@/components/InvoiceCreationModal";
+import Link from "next/link";
 
 export default function BrandsPage() {
   const [selectedBrand, setSelectedBrand] = useState<string | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [stockFilter, setStockFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const [isBillingModalOpen, setIsBillingModalOpen] = useState(false);
 
   // ── Fetch all brands ────────────────────────────────────────────
   const { data: brands = [], isLoading: loadingBrands } = useQuery({
@@ -71,7 +39,8 @@ export default function BrandsPage() {
   const { data: brandItems = [], isLoading: loadingBrandItems } = useQuery({
     queryKey: ["items", "brand", selectedBrand],
     queryFn: async () => {
-      const res = await fetch(`/api/items?brand=${encodeURIComponent(selectedBrand!)}`);
+      if (!selectedBrand) return [];
+      const res = await fetch(`/api/items?brand=${encodeURIComponent(selectedBrand)}`);
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
       return json.data;
@@ -82,253 +51,195 @@ export default function BrandsPage() {
   // ── Compute categories for selected brand ───────────────────────
   const brandCategories = useMemo(() => {
     if (!Array.isArray(brandItems) || !brandItems.length) return [];
-    const catMap: Record<string, { count: number; totalStock: number; avgPrice: number }> = {};
+    const catMap: Record<string, number> = {};
     brandItems.forEach((item: any) => {
       const cat = item.category || "Uncategorized";
-      if (!catMap[cat]) catMap[cat] = { count: 0, totalStock: 0, avgPrice: 0 };
-      catMap[cat].count += 1;
-      catMap[cat].totalStock += item.currentStock || 0;
-      catMap[cat].avgPrice += item.sellingPrice || 0;
+      catMap[cat] = (catMap[cat] || 0) + 1;
     });
-    return Object.entries(catMap).map(([name, data]) => ({
+    return Object.entries(catMap).map(([name, count]) => ({
       name,
-      count: data.count,
-      totalStock: data.totalStock,
-      avgPrice: Math.round(data.avgPrice / data.count),
+      count,
     })).sort((a, b) => b.count - a.count);
   }, [brandItems]);
 
-  // ── Items for selected brand + category ─────────────────────────
-  const categoryItems = useMemo(() => {
-    if (!selectedCategory || !Array.isArray(brandItems)) return [];
-    return brandItems.filter((item: any) => item.category === selectedCategory);
-  }, [brandItems, selectedCategory]);
-
-  // ── Filtered data based on search ───────────────────────────────
+  // ── Filtered Brands (Level 1) ───────────────────────────────────
   const filteredBrands = useMemo(() => {
-    if (!search) return brands;
-    return brands.filter((b: any) =>
+    const list = Array.isArray(brands) ? [...brands] : [];
+    const sorted = list.sort((a: any, b: any) =>
+      (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" })
+    );
+    if (!search) return sorted;
+    return sorted.filter((b: any) =>
       b.name.toLowerCase().includes(search.toLowerCase()) ||
       (b.description && b.description.toLowerCase().includes(search.toLowerCase()))
     );
   }, [brands, search]);
 
-  const filteredCategories = useMemo(() => {
-    if (!search) return brandCategories;
-    return brandCategories.filter((c) => c.name.toLowerCase().includes(search.toLowerCase()));
-  }, [brandCategories, search]);
+  // ── Filtered Brand Items (Level 2) ──────────────────────────────
+  const filteredBrandProducts = useMemo(() => {
+    if (!Array.isArray(brandItems)) return [];
+    return brandItems.filter((item: any) => {
+      // Category filter
+      if (selectedCategory !== "all" && item.category !== selectedCategory) return false;
+      
+      // Stock filter
+      if (stockFilter === "in_stock" && (item.currentStock || 0) <= 0) return false;
+      if (stockFilter === "low_stock" && ((item.currentStock || 0) > (item.reorderLevel || 3) || (item.currentStock || 0) <= 0)) return false;
+      if (stockFilter === "out_of_stock" && (item.currentStock || 0) > 0) return false;
 
-  const filteredItems = useMemo(() => {
-    if (!search) return categoryItems;
-    return categoryItems.filter((item: any) =>
-      item.name.toLowerCase().includes(search.toLowerCase()) ||
-      item.code?.toLowerCase().includes(search.toLowerCase())
-    );
-  }, [categoryItems, search]);
+      // Search filter
+      if (search) {
+        const q = search.toLowerCase();
+        const nameMatch = (item.name || "").toLowerCase().includes(q);
+        const codeMatch = (item.code || "").toLowerCase().includes(q);
+        const vpCodeMatch = (item.vpCode || "").toLowerCase().includes(q);
+        const catMatch = (item.category || "").toLowerCase().includes(q);
+        const modelMatch = (item.modelNumber || "").toLowerCase().includes(q);
+        if (!nameMatch && !codeMatch && !vpCodeMatch && !catMatch && !modelMatch) return false;
+      }
 
-  // ── Stats for brands ────────────────────────────────────────────
-  const brandItemCounts = useMemo(() => {
-    // We don't fetch all items upfront; show items count from brand.items (if available)
-    const map: Record<string, number> = {};
-    brands.forEach((b: any) => {
-      map[b.name] = b.items || 0;
+      return true;
     });
-    return map;
-  }, [brands]);
+  }, [brandItems, selectedCategory, stockFilter, search]);
 
-  // ── Navigation ──────────────────────────────────────────────────
+  // ── Navigation Handlers ─────────────────────────────────────────
   const handleBrandClick = (brandName: string) => {
     setSelectedBrand(brandName);
-    setSelectedCategory(null);
+    setSelectedCategory("all");
+    setStockFilter("all");
     setSearch("");
   };
 
-  const handleCategoryClick = (catName: string) => {
-    setSelectedCategory(catName);
+  const handleBackToBrands = () => {
+    setSelectedBrand(null);
+    setSelectedCategory("all");
+    setStockFilter("all");
     setSearch("");
   };
 
-  const handleBack = () => {
-    if (selectedCategory) {
-      setSelectedCategory(null);
-      setSearch("");
-    } else if (selectedBrand) {
-      setSelectedBrand(null);
-      setSearch("");
+  // ── Stats Calculations ──────────────────────────────────────────
+  const brandStats = useMemo(() => {
+    if (!Array.isArray(brandItems) || !brandItems.length) {
+      return { total: 0, inStock: 0, stockUnits: 0, avgPrice: 0 };
     }
-  };
+    const total = brandItems.length;
+    const inStock = brandItems.filter((i: any) => (i.currentStock || 0) > 0).length;
+    const stockUnits = brandItems.reduce((acc: number, i: any) => acc + (i.currentStock || 0), 0);
+    const totalPrice = brandItems.reduce((acc: number, i: any) => acc + (i.sellingPrice || 0), 0);
+    const avgPrice = Math.round(totalPrice / total);
+    return { total, inStock, stockUnits, avgPrice };
+  }, [brandItems]);
 
   // ── Breadcrumbs ─────────────────────────────────────────────────
   const breadcrumbs = [
     { label: "Masters", href: "/masters/items" },
-    { label: "Brands" },
+    { label: "Brands", href: "/masters/brands" },
+    ...(selectedBrand ? [{ label: selectedBrand }] : []),
   ];
-
-  // ── Level detection ─────────────────────────────────────────────
-  const level = selectedCategory ? "items" : selectedBrand ? "categories" : "brands";
-
-  // ── Page title & subtitle ───────────────────────────────────────
-  const pageTitle = level === "items"
-    ? `${selectedBrand} — ${selectedCategory}`
-    : level === "categories"
-    ? `${selectedBrand}`
-    : "Brands";
-
-  const pageSubtitle = level === "items"
-    ? `${filteredItems.length} products`
-    : level === "categories"
-    ? `${brandCategories.length} product categories`
-    : "Click a brand to explore categories & products";
 
   return (
     <PageShell
-      title={pageTitle}
-      subtitle={pageSubtitle}
+      title={selectedBrand ? `${selectedBrand} Products Catalog` : "Showroom Brands Master"}
+      subtitle={
+        selectedBrand
+          ? `Browsing ${filteredBrandProducts.length} authorized ${selectedBrand} products in showroom inventory`
+          : "Explore authorized showroom brands, view product catalogs, live stock & pricing"
+      }
       breadcrumbs={breadcrumbs}
       actions={
         selectedBrand ? (
-          <Button variant="outline" size="sm" onClick={handleBack} className="gap-2">
-            <ArrowLeft className="w-4 h-4" />
-            {selectedCategory ? `Back to ${selectedBrand}` : "All Brands"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button 
+              size="sm" 
+              onClick={() => setIsBillingModalOpen(true)} 
+              className="gap-2 bg-[#30539C] hover:bg-[#25427d] text-white font-semibold shadow-sm"
+            >
+              <ShoppingCart className="w-4 h-4" /> Create Bill / Invoice
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleBackToBrands} className="gap-2 font-semibold">
+              <ArrowLeft className="w-4 h-4" />
+              Back to All Brands
+            </Button>
+          </div>
         ) : undefined
       }
     >
-      {/* ── Breadcrumb trail ─────────────────────────────────── */}
-      {(selectedBrand || selectedCategory) && (
-        <nav className="flex items-center gap-1.5 text-sm text-muted-foreground -mt-4 mb-2">
-          <button onClick={() => { setSelectedBrand(null); setSelectedCategory(null); setSearch(""); }} className="hover:text-[#3F63AD] transition-colors font-medium">
-            All Brands
-          </button>
-          {selectedBrand && (
-            <>
-              <ChevronRight className="w-3.5 h-3.5" />
-              <button
-                onClick={() => { setSelectedCategory(null); setSearch(""); }}
-                className={cn("hover:text-[#3F63AD] transition-colors font-medium", !selectedCategory && "text-foreground")}
-              >
-                {selectedBrand}
-              </button>
-            </>
-          )}
-          {selectedCategory && (
-            <>
-              <ChevronRight className="w-3.5 h-3.5" />
-              <span className="text-foreground font-medium">{selectedCategory}</span>
-            </>
-          )}
-        </nav>
-      )}
+      {/* ════════════════════════════════════════════════════════════ */}
+      {/* LEVEL 1: ALL BRANDS DIRECTORY                                */}
+      {/* ════════════════════════════════════════════════════════════ */}
+      {!selectedBrand && (
+        <div className="space-y-5">
+          {/* KPI Summary Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              { label: "Partner Brands", value: brands.length, icon: Award, sub: "Authorized Electronics" },
+              { label: "Active Brands", value: brands.filter((b: any) => b.status === "active").length, icon: TrendingUp, sub: "Live In Catalog" },
+              { label: "Total SKUs", value: brands.reduce((a: number, b: any) => a + (b.items || 0), 0), icon: Package, sub: "Gorakhpur Showroom" },
+              { label: "Categories", value: 9, icon: Tag, sub: "Product Segments" },
+            ].map((s) => (
+              <div key={s.label} className="metric-card bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{s.label}</span>
+                  <s.icon className="w-4 h-4 text-[#30539C]" />
+                </div>
+                <p className="text-2xl font-black text-slate-900 mt-1">{s.value}</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">{s.sub}</p>
+              </div>
+            ))}
+          </div>
 
-      {/* ── Stats row ─────────────────────────────────────────── */}
-      {level === "brands" && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[
-            { label: "Total Brands", value: brands.length, icon: Award },
-            { label: "Active Brands", value: brands.filter((b: any) => b.status === "active").length, icon: TrendingUp },
-            { label: "Total Products", value: brands.reduce((a: number, b: any) => a + (b.items || 0), 0), icon: Package },
-            { label: "Categories", value: 10, icon: Tag },
-          ].map((s) => (
-            <div key={s.label} className="metric-card">
-              <s.icon className="w-5 h-5 text-[#3F63AD] mb-2" />
-              <p className="text-2xl font-bold">{s.value}</p>
-              <p className="text-xs text-muted-foreground mt-1">{s.label}</p>
-            </div>
-          ))}
-        </div>
-      )}
+          {/* Search bar */}
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Input
+              placeholder="Search partner brands (e.g., Samsung, Daikin, LG)..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 h-10 text-sm bg-white"
+            />
+          </div>
 
-      {level === "categories" && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[
-            { label: "Categories", value: brandCategories.length },
-            { label: "Total Products", value: brandItems.length },
-            { label: "Total Stock", value: brandItems.reduce((a: number, i: any) => a + (i.currentStock || 0), 0) },
-            { label: "Avg Price", value: formatCurrency(brandItems.length ? brandItems.reduce((a: number, i: any) => a + (i.sellingPrice || 0), 0) / brandItems.length : 0) },
-          ].map((s) => (
-            <div key={s.label} className="metric-card">
-              <p className="text-2xl font-bold">{s.value}</p>
-              <p className="text-xs text-muted-foreground mt-1">{s.label}</p>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {level === "items" && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[
-            { label: "Total Products", value: categoryItems.length },
-            { label: "In Stock", value: categoryItems.filter((i: any) => (i.currentStock || 0) > 0).length },
-            { label: "Total Stock", value: categoryItems.reduce((a: number, i: any) => a + (i.currentStock || 0), 0) },
-            { label: "Avg Price", value: formatCurrency(categoryItems.length ? categoryItems.reduce((a: number, i: any) => a + (i.sellingPrice || 0), 0) / categoryItems.length : 0) },
-          ].map((s) => (
-            <div key={s.label} className="metric-card">
-              <p className="text-2xl font-bold">{s.value}</p>
-              <p className="text-xs text-muted-foreground mt-1">{s.label}</p>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ── Search bar ────────────────────────────────────────── */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input
-          placeholder={
-            level === "brands" ? "Search brands..." :
-            level === "categories" ? "Search categories..." :
-            "Search products..."
-          }
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9"
-        />
-      </div>
-
-      {/* ════════════════════════════════════════════════════════ */}
-      {/* LEVEL 1: BRANDS GRID                                   */}
-      {/* ════════════════════════════════════════════════════════ */}
-      {level === "brands" && (
-        <div>
+          {/* Brands Grid */}
           {loadingBrands ? (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <div key={i} className="metric-card animate-pulse h-36 bg-slate-100" />
-              ))}
-            </div>
+            <GridCardsShimmer count={8} />
           ) : filteredBrands.length === 0 ? (
-            <div className="data-table-container p-12 text-center text-muted-foreground">
-              No brands found
+            <div className="bg-white rounded-xl border border-slate-200 p-12 text-center text-slate-500">
+              <Package className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+              <p className="font-semibold text-sm">No brands found matching "{search}"</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {filteredBrands.map((brand: any) => {
-                const color = getBrandColor(brand.name);
+                const { color } = getBrandMeta(brand.name);
                 return (
                   <button
-                    key={brand._id || brand.id}
+                    key={brand._id || brand.id || brand.name}
                     onClick={() => handleBrandClick(brand.name)}
-                    className="metric-card text-left group hover:scale-[1.02] transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#3F63AD] focus:ring-offset-2"
+                    className="metric-card bg-white p-4 rounded-xl border border-slate-200 text-left group hover:border-[#30539C] hover:shadow-md transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#30539C]"
                   >
-                    <div className="flex items-start gap-3 mb-4">
-                      <BrandInitial name={brand.name} />
+                    <div className="flex items-start gap-3.5 mb-3.5">
+                      <BrandLogo name={brand.name} size="md" />
                       <div className="flex-1 min-w-0">
-                        <p className="font-bold text-foreground text-base leading-tight truncate">{brand.name}</p>
-                        <Badge variant={brand.status === "active" ? "success" : "secondary"} className="mt-1">
-                          {brand.status}
+                        <p className="font-bold text-slate-900 text-base leading-tight truncate group-hover:text-[#30539C] transition-colors">
+                          {brand.name}
+                        </p>
+                        <Badge variant={brand.status === "active" ? "success" : "secondary"} className="mt-1 text-[10px] px-1.5 py-0">
+                          {brand.status || "active"}
                         </Badge>
                       </div>
                     </div>
-                    <p className="text-xs text-muted-foreground line-clamp-2 mb-3 leading-relaxed">
-                      {brand.description}
+                    
+                    <p className="text-xs text-slate-500 line-clamp-2 mb-3.5 leading-relaxed">
+                      {brand.description || `Explore authorized ${brand.name} electronics & appliances`}
                     </p>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground font-medium">
-                        <Package className="w-3.5 h-3.5" />
-                        <span>{brand.items || 0} items</span>
+
+                    <div className="flex items-center justify-between pt-2.5 border-t border-slate-100">
+                      <div className="flex items-center gap-1.5 text-xs text-slate-600 font-semibold">
+                        <Package className="w-3.5 h-3.5 text-[#30539C]" />
+                        <span>{brand.items || 0} Products</span>
                       </div>
-                      <span className={cn("text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1 group-hover:gap-2 transition-all", color.bg, color.text)}>
-                        View <ChevronRight className="w-3 h-3" />
+                      <span className={cn("text-xs font-bold px-2.5 py-1 rounded-lg flex items-center gap-1 group-hover:gap-1.5 transition-all", color.bg, color.text)}>
+                        Open Catalog <ChevronRight className="w-3 h-3" />
                       </span>
                     </div>
                   </button>
@@ -339,147 +250,267 @@ export default function BrandsPage() {
         </div>
       )}
 
-      {/* ════════════════════════════════════════════════════════ */}
-      {/* LEVEL 2: CATEGORIES for selected brand                 */}
-      {/* ════════════════════════════════════════════════════════ */}
-      {level === "categories" && (
-        <div>
-          {loadingBrandItems ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="metric-card animate-pulse h-32 bg-slate-100" />
-              ))}
+      {/* ════════════════════════════════════════════════════════════ */}
+      {/* LEVEL 2: DIRECT BRAND PRODUCTS CATALOG                        */}
+      {/* ════════════════════════════════════════════════════════════ */}
+      {selectedBrand && (
+        <div className="space-y-4">
+          {/* Brand Header Banner */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <BrandLogo name={selectedBrand} size="xl" className="shadow-md" />
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tight">{selectedBrand}</h2>
+                  <Badge variant="success" className="text-xs">Authorized Partner</Badge>
+                </div>
+                <p className="text-xs text-slate-500 font-medium mt-1">
+                  M/S Ashoka Enterprises · Gorakhpur Showroom Official Catalog
+                </p>
+              </div>
             </div>
-          ) : filteredCategories.length === 0 ? (
-            <div className="data-table-container p-12 text-center text-muted-foreground">
-              No categories found for {selectedBrand}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredCategories.map((cat) => {
-                const color = getBrandColor(selectedBrand!);
-                return (
-                  <button
-                    key={cat.name}
-                    onClick={() => handleCategoryClick(cat.name)}
-                    className="metric-card text-left group hover:scale-[1.01] transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#3F63AD] focus:ring-offset-2"
-                  >
-                    <div className="flex items-center gap-4 mb-3">
-                      <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0", color.bg)}>
-                        <Tag className={cn("w-5 h-5", color.text)} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-bold text-foreground text-base">{cat.name}</p>
-                        <p className="text-xs text-muted-foreground">{selectedBrand}</p>
-                      </div>
-                      <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-[#3F63AD] group-hover:translate-x-0.5 transition-all" />
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100">
-                      <div>
-                        <p className="text-lg font-bold text-foreground">{cat.count}</p>
-                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Products</p>
-                      </div>
-                      <div>
-                        <p className="text-lg font-bold text-foreground">{cat.totalStock}</p>
-                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">In Stock</p>
-                      </div>
-                      <div>
-                        <p className="text-sm font-bold text-foreground">{formatCurrency(cat.avgPrice)}</p>
-                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Avg Price</p>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
 
-      {/* ════════════════════════════════════════════════════════ */}
-      {/* LEVEL 3: ITEMS for selected brand + category           */}
-      {/* ════════════════════════════════════════════════════════ */}
-      {level === "items" && (
-        <div className="data-table-container">
-          <div className="flex items-center justify-between px-4 py-3 border-b">
-            <div className="flex items-center gap-2">
-              <Box className="w-4 h-4 text-[#3F63AD]" />
-              <span className="font-semibold text-sm text-foreground">{selectedBrand} — {selectedCategory}</span>
+            {/* Quick Metrics Bar */}
+            <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
+              <div className="bg-slate-50 px-3.5 py-2 rounded-xl border border-slate-100 text-center min-w-[90px]">
+                <p className="text-[10px] font-semibold text-slate-400 uppercase">Total SKUs</p>
+                <p className="text-base font-black text-slate-900">{brandStats.total}</p>
+              </div>
+              <div className="bg-emerald-50 px-3.5 py-2 rounded-xl border border-emerald-100 text-center min-w-[90px]">
+                <p className="text-[10px] font-semibold text-emerald-700 uppercase">In Stock</p>
+                <p className="text-base font-black text-emerald-800">{brandStats.inStock}</p>
+              </div>
+              <div className="bg-blue-50 px-3.5 py-2 rounded-xl border border-blue-100 text-center min-w-[90px]">
+                <p className="text-[10px] font-semibold text-[#30539C] uppercase">Units Available</p>
+                <p className="text-base font-black text-[#30539C]">{brandStats.stockUnits} Pcs</p>
+              </div>
+              <div className="bg-slate-50 px-3.5 py-2 rounded-xl border border-slate-100 text-center min-w-[100px]">
+                <p className="text-[10px] font-semibold text-slate-400 uppercase">Avg Selling Price</p>
+                <p className="text-base font-black text-slate-900">{formatCurrency(brandStats.avgPrice)}</p>
+              </div>
             </div>
-            <span className="text-sm text-muted-foreground font-medium">
-              {filteredItems.length} products
-            </span>
           </div>
 
-          {loadingBrandItems ? (
-            <TableShimmer rows={6} cols={8} />
-          ) : filteredItems.length === 0 ? (
-            <div className="p-12 text-center text-muted-foreground">No products found</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-slate-50/70">
-                    <th className="text-left px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wider">Product</th>
-                    <th className="text-left px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wider hidden md:table-cell">Code</th>
-                    <th className="text-left px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wider hidden lg:table-cell">HSN</th>
-                    <th className="text-right px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wider">MRP</th>
-                    <th className="text-right px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wider">Price</th>
-                    <th className="text-center px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wider hidden sm:table-cell">Stock</th>
-                    <th className="text-center px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wider">GST</th>
-                    <th className="text-center px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wider">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {filteredItems.map((item: any) => (
-                    <tr
-                      key={item._id || item.code}
-                      className="hover:bg-slate-50/80 transition-colors"
-                    >
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-xs font-bold", getBrandColor(item.brand).bg, getBrandColor(item.brand).text)}>
-                            {item.brand?.slice(0, 2).toUpperCase()}
-                          </div>
-                          <div>
-                            <p className="font-semibold text-foreground text-sm leading-tight line-clamp-1">{item.name}</p>
-                            <p className="text-xs text-muted-foreground">{item.brand}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 hidden md:table-cell">
-                        <span className="font-mono text-xs bg-slate-100 px-2 py-1 rounded-md text-slate-600">{item.code}</span>
-                      </td>
-                      <td className="px-4 py-3 hidden lg:table-cell">
-                        <span className="text-xs text-muted-foreground">{item.hsnCode}</span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-xs text-muted-foreground line-through">{formatCurrency(item.mrp)}</span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="font-bold text-sm text-foreground">{formatCurrency(item.sellingPrice)}</span>
-                      </td>
-                      <td className="px-4 py-3 text-center hidden sm:table-cell">
-                        <span className={cn("text-sm font-bold", (item.currentStock || 0) <= (item.reorderLevel || 0) ? "text-red-500" : "text-emerald-600")}>
-                          {item.currentStock || 0}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <Badge variant="info" className="text-xs">{item.gstRate}%</Badge>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <Badge variant={item.status === "active" ? "success" : "secondary"} className="text-xs">
-                          {item.status === "active" ? "Active" : "Inactive"}
-                        </Badge>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {/* Category Filter Tabs */}
+          {brandCategories.length > 0 && (
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+              <button
+                onClick={() => setSelectedCategory("all")}
+                className={cn(
+                  "px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5",
+                  selectedCategory === "all"
+                    ? "bg-[#30539C] text-white shadow-sm"
+                    : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+                )}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                All Products ({brandStats.total})
+              </button>
+              {brandCategories.map((c) => (
+                <button
+                  key={c.name}
+                  onClick={() => setSelectedCategory(c.name)}
+                  className={cn(
+                    "px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5",
+                    selectedCategory === c.name
+                      ? "bg-[#30539C] text-white shadow-sm"
+                      : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+                  )}
+                >
+                  <Tag className="w-3.5 h-3.5" />
+                  {c.name} ({c.count})
+                </button>
+              ))}
             </div>
           )}
+
+          {/* Search & Stock Filter Toolbar */}
+          <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-3">
+            <div className="relative w-full md:w-80">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Input
+                placeholder={`Search ${selectedBrand} models, VP Code, name...`}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 h-9 text-xs bg-slate-50 border-slate-200"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 w-full md:w-auto">
+              <button
+                onClick={() => setStockFilter("all")}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
+                  stockFilter === "all" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                )}
+              >
+                All Status
+              </button>
+              <button
+                onClick={() => setStockFilter("in_stock")}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1",
+                  stockFilter === "in_stock" ? "bg-emerald-600 text-white" : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                )}
+              >
+                <CheckCircle2 className="w-3 h-3" /> In Stock
+              </button>
+              <button
+                onClick={() => setStockFilter("low_stock")}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1",
+                  stockFilter === "low_stock" ? "bg-amber-600 text-white" : "bg-amber-50 text-amber-700 hover:bg-amber-100"
+                )}
+              >
+                <AlertTriangle className="w-3 h-3" /> Low Stock
+              </button>
+
+              {(search || selectedCategory !== "all" || stockFilter !== "all") && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSearch("");
+                    setSelectedCategory("all");
+                    setStockFilter("all");
+                  }}
+                  className="h-8 text-xs text-slate-500 hover:text-red-600 ml-auto"
+                >
+                  Reset
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Products Table */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            {loadingBrandItems ? (
+              <div className="p-6">
+                <TableShimmer rows={8} cols={7} />
+              </div>
+            ) : filteredBrandProducts.length === 0 ? (
+              <div className="p-12 text-center text-slate-500">
+                <Package className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                <p className="font-bold text-sm text-slate-800">No products found</p>
+                <p className="text-xs text-slate-500 mt-1">
+                  Try clearing your search query or selecting "All Products" above.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-50 text-slate-500 font-semibold text-[11px] uppercase border-b border-slate-200 tracking-wider">
+                    <tr>
+                      <th className="px-4 py-3">Product Name & Code</th>
+                      <th className="px-3 py-3">Category</th>
+                      <th className="px-3 py-3">HSN & Tax</th>
+                      <th className="px-3 py-3 text-right">Purchase Rate</th>
+                      <th className="px-3 py-3 text-right">Showroom Price</th>
+                      <th className="px-3 py-3 text-right">MRP</th>
+                      <th className="px-3 py-3 text-center">Live Stock</th>
+                      <th className="px-3 py-3 text-center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredBrandProducts.map((item: any) => {
+                      const isLow = (item.currentStock || 0) <= (item.reorderLevel || 3) && (item.currentStock || 0) > 0;
+                      const isOut = (item.currentStock || 0) === 0;
+
+                      return (
+                        <tr key={item._id || item.code} className="hover:bg-slate-50/80 transition-colors">
+                          {/* 1. Product Name & Code */}
+                          <td className="px-4 py-3 min-w-[280px] max-w-[380px]">
+                            <div className="font-bold text-slate-900 text-xs leading-normal mb-1.5">
+                              {item.name}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="inline-flex items-center font-mono font-bold text-[10px] text-[#30539C] bg-blue-50 px-2 py-0.5 rounded border border-blue-200 shadow-2xs">
+                                VP: {item.vpCode || item.code}
+                              </span>
+                              <span className="inline-flex items-center text-[10px] text-slate-500 font-mono bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                                SKU: {item.code}
+                              </span>
+                            </div>
+                          </td>
+
+                          {/* 2. Category */}
+                          <td className="px-3 py-3 whitespace-nowrap">
+                            <span className="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                              {item.category || "General"}
+                            </span>
+                          </td>
+
+                          {/* 3. HSN & GST */}
+                          <td className="px-3 py-3 whitespace-nowrap">
+                            <p className="font-mono text-slate-700 font-semibold">{item.hsnCode || item.hsn || "84151010"}</p>
+                            <p className="text-[10px] text-slate-400 font-medium">GST {item.gstRate || 18}%</p>
+                          </td>
+
+                          {/* 4. Purchase Rate */}
+                          <td className="px-3 py-3 text-right whitespace-nowrap">
+                            <span className="font-semibold text-slate-600 font-mono">
+                              {formatCurrency(item.purchasePrice || 0)}
+                            </span>
+                          </td>
+
+                          {/* 5. Showroom Selling Price */}
+                          <td className="px-3 py-3 text-right whitespace-nowrap">
+                            <span className="font-bold text-slate-900 text-sm font-mono text-[#30539C]">
+                              {formatCurrency(item.sellingPrice || 0)}
+                            </span>
+                          </td>
+
+                          {/* 6. MRP */}
+                          <td className="px-3 py-3 text-right whitespace-nowrap">
+                            <span className="text-slate-400 line-through text-xs font-mono">
+                              {formatCurrency(item.mrp || 0)}
+                            </span>
+                          </td>
+
+                          {/* 7. Current Live Stock */}
+                          <td className="px-3 py-3 text-center whitespace-nowrap">
+                            <span
+                              className={cn(
+                                "px-2.5 py-1 rounded-full text-xs font-black font-mono inline-block",
+                                isOut
+                                  ? "bg-red-100 text-red-700 border border-red-200"
+                                  : isLow
+                                  ? "bg-amber-100 text-amber-800 border border-amber-200"
+                                  : "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                              )}
+                            >
+                              {item.currentStock || 0} {item.unit || "Pcs"}
+                            </span>
+                          </td>
+
+                          {/* 8. Action */}
+                          <td className="px-3 py-3 text-center whitespace-nowrap">
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={() => setIsBillingModalOpen(true)}
+                              className="h-7 text-[11px] gap-1.5 px-3 border-[#30539C]/40 text-[#30539C] hover:bg-[#30539C] hover:text-white font-semibold transition-all shadow-2xs"
+                            >
+                              <ShoppingCart className="w-3.5 h-3.5" /> Bill Now
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
+
+      {/* ─── Billing / Tax Invoice Creation Modal ───────────────── */}
+      <InvoiceCreationModal
+        isOpen={isBillingModalOpen}
+        onClose={() => setIsBillingModalOpen(false)}
+        mode="invoice"
+      />
     </PageShell>
   );
 }

@@ -11,23 +11,26 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertTriangle, Plus, Search, CheckCircle2, XCircle, ShieldAlert, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
+import { useBranch } from "@/context/BranchContext";
 
 export default function StockDiscrepanciesPage() {
   const queryClient = useQueryClient();
+  const { activeLocation } = useBranch();
   const [searchTerm, setSearchTerm] = useState("");
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
 
   const { data: items = [] } = useQuery({
-    queryKey: ["items"],
+    queryKey: ["items", activeLocation?.name],
     queryFn: async () => {
-      const res = await fetch("/api/items");
+      const whParam = activeLocation?.name ? `?warehouse=${encodeURIComponent(activeLocation.name)}` : "";
+      const res = await fetch(`/api/items${whParam}`);
       const json = await res.json();
       return json.success ? json.data : [];
     },
   });
 
   const { data: discrepancies = [], isLoading } = useQuery({
-    queryKey: ["discrepancies"],
+    queryKey: ["discrepancies", activeLocation?.name],
     queryFn: async () => {
       const res = await fetch("/api/inventory/discrepancies");
       const json = await res.json();

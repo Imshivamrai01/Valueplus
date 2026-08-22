@@ -16,11 +16,23 @@ export async function GET(req: Request) {
 
     await connectToDatabase();
 
-    // 1. Fetch Items
+    // 1. Fetch Items with Warehouse Isolation
     const filter: any = {};
     if (brand && brand !== "all") filter.brand = brand;
     if (category && category !== "all") filter.category = category;
-    if (warehouse && warehouse !== "all") filter.warehouse = warehouse;
+    
+    if (warehouse && warehouse !== "all") {
+      const isAshoka = warehouse.toLowerCase().includes("ashoka") || warehouse.toLowerCase().includes("kunraghat") || warehouse === "VP-KUN";
+      if (!isAshoka) {
+        filter.warehouse = { $regex: new RegExp(`^${warehouse.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, "i") };
+      } else {
+        filter.$or = [
+          { warehouse: { $exists: false } },
+          { warehouse: "" },
+          { warehouse: { $regex: /ashoka|kunraghat/i } }
+        ];
+      }
+    }
 
     const items = await Item.find(filter).sort({ currentStock: -1, name: 1 }).lean();
 

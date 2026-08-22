@@ -33,7 +33,42 @@ export async function POST(req: Request) {
       body.date = new Date().toISOString().split("T")[0];
     }
     
-    const query = await WalkInQuery.create(body);
+    const leadCount = await Lead.countDocuments();
+    const leadId = `LEAD-2026-${String(leadCount + 1).padStart(4, "0")}`;
+
+    const query = await WalkInQuery.create({
+      ...body,
+      status: "Converted to Lead",
+      leadId,
+    });
+
+    try {
+      await Lead.create({
+        leadId,
+        customerName: body.customerName,
+        mobile: (body.mobile || "").replace(/\D/g, ""),
+        source: "Walk-in Store",
+        walkInReason: body.reason || "Product Enquiry",
+        interestedProduct: body.interestedProduct || "Showroom Product",
+        assignedStaff: body.staff || "Amit Singh",
+        estimatedValue: Number(body.budget) || 0,
+        priority: "Medium",
+        status: "New",
+        followUpDate: body.followUpDate,
+        notes: body.notes || `Walk-in enquiry for ${body.interestedProduct}`,
+        timeline: [
+          {
+            date: new Date(),
+            action: `Walk-in Visit (${body.reason || "Enquiry"})`,
+            notes: `Customer visited showroom. Interested in ${body.interestedProduct}. Budget: ₹${body.budget || 0}`,
+            staff: body.staff || "Sales Counter",
+          },
+        ],
+      });
+    } catch (leadErr) {
+      console.error("Error auto-creating Lead from WalkIn:", leadErr);
+    }
+
     return NextResponse.json({ success: true, data: query });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 400 });

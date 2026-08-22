@@ -7,14 +7,28 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const assignedStaff = searchParams.get("staff");
     const status = searchParams.get("status");
+    const role = searchParams.get("role");
     
     await connectToDatabase();
     
     const filter: any = {};
-    if (assignedStaff) filter.assignedStaff = assignedStaff;
-    if (status && status !== "all") filter.status = status;
     
-    const tasks = await StaffTask.find(filter).sort({ dueDate: 1, createdAt: -1 });
+    // If specific staff is requested or non-admin user
+    if (assignedStaff && assignedStaff !== "all") {
+      const firstName = assignedStaff.trim().split(" ")[0];
+      filter.$or = [
+        { assignedStaff: { $regex: new RegExp(assignedStaff, "i") } },
+        { assignedStaff: { $regex: new RegExp(firstName, "i") } },
+        { assignedStaff: "All Staff" },
+        { assignedStaff: "Sales Staff" },
+      ];
+    }
+    
+    if (status && status !== "all") {
+      filter.status = status;
+    }
+    
+    const tasks = await StaffTask.find(filter).sort({ dueDate: 1, createdAt: -1 }).lean();
     return NextResponse.json({ success: true, data: tasks });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

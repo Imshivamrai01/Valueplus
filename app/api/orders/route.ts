@@ -2,10 +2,29 @@ import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import Invoice from "@/models/Invoice";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const { searchParams } = new URL(req.url);
+    const staff = searchParams.get("staff") || searchParams.get("salesExecutive");
+
     await connectToDatabase();
-    const orders = await Invoice.find({ type: "sales-order" }).sort({ createdAt: -1 }).lean();
+
+    const type = searchParams.get("type");
+    const filter: any = type ? { type } : { type: { $in: ["sales-order", "tax-invoice"] } };
+
+    if (staff && staff !== "all") {
+      const firstName = staff.trim().split(" ")[0];
+      filter.$or = [
+        { salesExecutive: { $regex: new RegExp(staff, "i") } },
+        { salesExecutive: { $regex: new RegExp(firstName, "i") } },
+        { createdBy: { $regex: new RegExp(staff, "i") } },
+        { createdBy: { $regex: new RegExp(firstName, "i") } },
+        { salesperson: { $regex: new RegExp(staff, "i") } },
+        { salesperson: { $regex: new RegExp(firstName, "i") } },
+      ];
+    }
+
+    const orders = await Invoice.find(filter).sort({ createdAt: -1 }).lean();
     return NextResponse.json({ success: true, data: orders });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -22,6 +41,8 @@ export async function POST(request: Request) {
       type: "sales-order",
       customerId: body.customerId || "CUST-000",
       customerName: body.customerName,
+      salesExecutive: body.salesExecutive || body.staffName || "Admin",
+      createdBy: body.createdBy || body.salesExecutive || "Admin",
       date: body.date || new Date().toISOString().split("T")[0],
       dueDate: body.deliveryDate || body.date,
       status: body.orderStatus || "sent",

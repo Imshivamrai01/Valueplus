@@ -62,11 +62,11 @@
   }
   
   .page-header {
-    @apply sticky top-0 z-30 flex items-center justify-between px-8 py-5 bg-white/80 backdrop-blur-xl border-b border-black/[0.04] shadow-[0_1px_2px_rgba(0,0,0,0.02)];
+    @apply sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3 px-4 sm:px-8 py-3.5 sm:py-5 bg-white/80 backdrop-blur-xl border-b border-black/[0.04] shadow-[0_1px_2px_rgba(0,0,0,0.02)];
   }
 
   .page-content {
-    @apply p-8 space-y-8;
+    @apply p-3.5 sm:p-8 space-y-4 sm:space-y-8;
   }
 
   .metric-card {
@@ -98,7 +98,22 @@
   }
 
   .badge-neutral {
-    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200;
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200;
+  }
+
+  @keyframes shimmerEffect {
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+
+  .shimmer-pulse {
+    background: linear-gradient(90deg, #f1f5f9 0%, #e2e8f0 35%, #cbd5e1 50%, #e2e8f0 65%, #f1f5f9 100%);
+    background-size: 200% 100%;
+    animation: shimmerEffect 1.6s infinite ease-in-out;
   }
 
   .section-title {

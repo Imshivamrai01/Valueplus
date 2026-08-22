@@ -16,6 +16,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
 import { formatDate } from "@/lib/utils";
+import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 
 export default function StockAdjustmentPage() {
   const queryClient = useQueryClient();
@@ -166,7 +167,9 @@ export default function StockAdjustmentPage() {
             <tbody className="divide-y">
               {isLoading ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">Loading...</td>
+                  <td colSpan={5} className="p-0">
+                    <TableShimmer rows={6} cols={5} />
+                  </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>

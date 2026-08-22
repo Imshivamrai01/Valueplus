@@ -18,6 +18,11 @@ export interface IItem extends Document {
   gstRate: number;
   purchasePrice: number;
   sellingPrice: number;
+  minSellingPrice?: number;
+  incentiveTargetAmount?: number;
+  incentiveAmount?: number;
+  incentiveType?: "none" | "fixed" | "percentage";
+  incentiveValue?: number;
   mrp: number;
   openingStock: number;
   currentStock: number;
@@ -50,6 +55,11 @@ const ItemSchema = new Schema<IItem>(
     gstRate: { type: Number, default: 18 },
     purchasePrice: { type: Number, required: true },
     sellingPrice: { type: Number, required: true },
+    minSellingPrice: { type: Number, default: 0 },
+    incentiveTargetAmount: { type: Number, default: 0 },
+    incentiveAmount: { type: Number, default: 0 },
+    incentiveType: { type: String, enum: ["none", "fixed", "percentage"], default: "none" },
+    incentiveValue: { type: Number, default: 0 },
     mrp: { type: Number, required: true },
     openingStock: { type: Number, default: 0 },
     currentStock: { type: Number, default: 0 },
@@ -70,4 +80,3 @@ if (mongoose.models.Item) {
 }
 const Item: Model<IItem> = mongoose.model<IItem>("Item", ItemSchema);
 export default Item;
-

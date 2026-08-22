@@ -6,8 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, Search, ShoppingBag, Truck, Trash2, AlertTriangle } from "lucide-react";
+import { Plus, Search, ShoppingBag, Truck, Trash2, AlertTriangle, Sparkles } from "lucide-react";
 import { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -34,6 +35,7 @@ const INITIAL_POS: POItem[] = [
 ];
 
 export default function PurchaseOrdersPage() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -83,14 +85,24 @@ export default function PurchaseOrdersPage() {
     <>
       <PageShell
         title="Purchase Orders"
-      subtitle="Manage inventory restock purchase orders to suppliers"
-      breadcrumbs={[{ label: "Purchase" }, { label: "Purchase Orders" }]}
-      actions={
-        <Button size="sm" onClick={() => setIsFormOpen(true)}>
-          <Plus className="w-4 h-4 mr-1.5" /> New Purchase Order
-        </Button>
-      }
-    >
+        subtitle="Manage inventory restock purchase orders to suppliers"
+        breadcrumbs={[{ label: "Purchase", href: "/purchase/orders" }, { label: "Purchase Orders" }]}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="outline"
+              size="sm" 
+              onClick={() => router.push("/purchase/low-stock")}
+              className="border-amber-300 text-amber-900 bg-amber-50/70 hover:bg-amber-100 font-bold text-xs shadow-2xs"
+            >
+              <AlertTriangle className="w-3.5 h-3.5 mr-1.5 text-amber-600" /> Low Stock Auto Reorder
+            </Button>
+            <Button size="sm" onClick={() => setIsFormOpen(true)} className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white">
+              <Plus className="w-4 h-4 mr-1.5" /> New Purchase Order
+            </Button>
+          </div>
+        }
+      >
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[{ label: "Total POs", value: pos.length }, { label: "Received", value: pos.filter(p => p.status === "received").length }, { label: "In-Transit / Sent", value: pos.filter(p => p.status === "sent").length }, { label: "Total PO Value", value: formatCurrency(pos.reduce((a, b) => a + b.totalAmount, 0)) }].map((s) => (
           <div key={s.label} className="metric-card">

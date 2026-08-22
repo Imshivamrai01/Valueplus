@@ -14,23 +14,26 @@ import {
   Package, Sparkles, ShieldAlert, ArrowRight
 } from "lucide-react";
 import { toast } from "sonner";
+import { useBranch } from "@/context/BranchContext";
 
 export default function InventoryAuditPage() {
   const queryClient = useQueryClient();
+  const { activeLocation } = useBranch();
   const [searchTerm, setSearchTerm] = useState("");
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
 
   const { data: items = [] } = useQuery({
-    queryKey: ["items"],
+    queryKey: ["items", activeLocation?.name],
     queryFn: async () => {
-      const res = await fetch("/api/items");
+      const whParam = activeLocation?.name ? `?warehouse=${encodeURIComponent(activeLocation.name)}` : "";
+      const res = await fetch(`/api/items${whParam}`);
       const json = await res.json();
       return json.success ? json.data : [];
     },
   });
 
   const { data: audits = [], isLoading } = useQuery({
-    queryKey: ["audits"],
+    queryKey: ["audits", activeLocation?.name],
     queryFn: async () => {
       const res = await fetch("/api/inventory/audit");
       const json = await res.json();

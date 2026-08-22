@@ -35,10 +35,17 @@ export default withAuth(
 export const config = {
   matcher: [
     "/dashboard/:path*",
+    "/warehouse/:path*",
     "/sales/:path*",
     "/purchase/:path*",
     "/inventory/:path*",
     "/masters/:path*",
+    "/finance/:path*",
+    "/staff/:path*",
+    "/marketing/:path*",
+    "/banking/:path*",
+    "/accounting/:path*",
+    "/gst/:path*",
     "/reports/:path*",
     "/settings/:path*",
     "/login",

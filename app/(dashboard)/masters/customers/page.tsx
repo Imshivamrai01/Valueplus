@@ -15,10 +15,17 @@ import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils";
 import { INDIA_STATES, INDIA_STATES_AND_DISTRICTS, normalizeStateName, normalizeCityName } from "@/lib/data/locations";
 
+import { useSession } from "next-auth/react";
+import Link from "next/link";
+
 const CUSTOMER_GROUPS = ["Retail","Wholesale","Distributor","Corporate","VIP"];
 
 export default function CustomersPage() {
   const queryClient = useQueryClient();
+  const { data: session } = useSession();
+  const userRole = ((session?.user as any)?.role || "admin").toLowerCase();
+  const isSuperAdminOrAdmin = userRole === "admin" || userRole === "superadmin" || userRole === "manager";
+
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -186,8 +193,37 @@ export default function CustomersPage() {
   };
 
   return (
-    <PageShell title="Customers" subtitle={`${customers.length} registered customers`} breadcrumbs={[{ label: "Masters" }, { label: "Customers" }]}
-      actions={<Button size="sm" onClick={handleAddNew}><Plus className="w-4 h-4 mr-1.5" /> Add Customer</Button>}>
+    <PageShell
+      title="Customers"
+      subtitle={`${customers.length} registered customers`}
+      breadcrumbs={[{ label: "Masters" }, { label: "Customers" }]}
+      actions={
+        isSuperAdminOrAdmin ? (
+          <Button size="sm" onClick={handleAddNew}>
+            <Plus className="w-4 h-4 mr-1.5" /> Add Customer
+          </Button>
+        ) : (
+          <Link href="/sales/estimates">
+            <Button size="sm" variant="outline" className="text-xs font-bold text-[#30539C] border-blue-200 hover:bg-blue-50">
+              <FileText className="w-4 h-4 mr-1.5" /> Add Customer via Estimate
+            </Button>
+          </Link>
+        )
+      }
+    >
+      {!isSuperAdminOrAdmin && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3.5 flex items-center justify-between text-xs text-slate-700">
+          <div className="flex items-center gap-2">
+            <Badge className="bg-[#30539C] text-white text-[10px]">Staff Note</Badge>
+            <span>Direct customer creation in master records is managed by Admin. Sales staff can create new customers directly while generating an <strong>Estimate / Quotation</strong>.</span>
+          </div>
+          <Link href="/sales/estimates">
+            <Button size="sm" className="bg-[#30539C] hover:bg-[#203a70] text-white text-xs h-7 px-3">
+              Go to Estimates →
+            </Button>
+          </Link>
+        </div>
+      )}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[{ label:"Total Customers", value:customers.length }, { label:"Active", value:customers.filter(c=>c.status==="active").length }, { label:"Total Outstanding", value:formatCurrency(customers.reduce((a,c)=>a+(c.outstandingBalance || 0),0)) }, { label:"New This Month", value:customers.length }].map(s => (
           <div key={s.label} className="metric-card"><p className="text-2xl font-bold">{s.value}</p><p className="text-xs text-muted-foreground mt-1">{s.label}</p></div>

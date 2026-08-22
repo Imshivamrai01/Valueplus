@@ -10,16 +10,20 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Truck, Plus, Search, CheckCircle2, FileText, Printer, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
+import { useBranch } from "@/context/BranchContext";
+import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 
 export default function EWayBillPage() {
   const queryClient = useQueryClient();
+  const { activeLocation } = useBranch();
   const [searchTerm, setSearchTerm] = useState("");
   const [isPrepModalOpen, setIsPrepModalOpen] = useState(false);
 
   const { data: invoices = [] } = useQuery({
-    queryKey: ["invoices"],
+    queryKey: ["invoices", activeLocation?.name],
     queryFn: async () => {
-      const res = await fetch("/api/invoices");
+      const whParam = activeLocation?.name ? `?warehouse=${encodeURIComponent(activeLocation.name)}` : "";
+      const res = await fetch(`/api/invoices${whParam}`);
       const json = await res.json();
       return json.success ? json.data : [];
     },
@@ -158,7 +162,7 @@ export default function EWayBillPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {isLoading ? (
-                <tr><td colSpan={8} className="p-6 text-center text-slate-500">Loading E-Way bills...</td></tr>
+                <tr><td colSpan={8} className="p-0"><TableShimmer rows={6} cols={8} /></td></tr>
               ) : filtered.length === 0 ? (
                 <tr><td colSpan={8} className="p-6 text-center text-slate-500">No E-Way bills generated yet.</td></tr>
               ) : (

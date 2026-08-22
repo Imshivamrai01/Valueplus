@@ -12,26 +12,66 @@ export async function GET(req: Request) {
     
     await connectToDatabase();
     
-    const filter: any = {
-      type: { $ne: "sales-order" },
-    };
+    const invoices = await Invoice.find({ type: { $ne: "sales-order" } }).lean();
     
-    const now = new Date();
-    const todayStr = now.toISOString().split("T")[0];
-    
-    if (range === "today") {
-      filter.date = todayStr;
-    } else if (range === "week" || range === "this week") {
-      const oneWeekAgo = new Date(now.getTime() - 7 * 86400000).toISOString().split("T")[0];
-      filter.date = { $gte: oneWeekAgo, $lte: todayStr };
-    } else if (range === "month" || range === "this month") {
-      const monthStart = `${todayStr.substring(0, 7)}-01`;
-      filter.date = { $gte: monthStart, $lte: todayStr };
-    } else if (startDate && endDate) {
-      filter.date = { $gte: startDate, $lte: endDate };
+    let filteredInvoices = invoices;
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      filteredInvoices = invoices.filter((inv: any) => {
+        const d = new Date(inv.date || inv.createdAt);
+        return d >= start && d <= end;
+      });
+    } else if (range === "today") {
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      const end = new Date();
+      end.setHours(23, 59, 59, 999);
+      filteredInvoices = invoices.filter((inv: any) => {
+        const d = new Date(inv.date || inv.createdAt);
+        return d >= start && d <= end;
+      });
+    } else if (range === "yesterday") {
+      const start = new Date();
+      start.setDate(start.getDate() - 1);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(start);
+      end.setHours(23, 59, 59, 999);
+      filteredInvoices = invoices.filter((inv: any) => {
+        const d = new Date(inv.date || inv.createdAt);
+        return d >= start && d <= end;
+      });
+    } else if (range === "week" || range === "this week" || range === "last 7 days") {
+      const start = new Date();
+      start.setDate(start.getDate() - 7);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date();
+      end.setHours(23, 59, 59, 999);
+      filteredInvoices = invoices.filter((inv: any) => {
+        const d = new Date(inv.date || inv.createdAt);
+        return d >= start && d <= end;
+      });
+    } else if (range === "month" || range === "this month" || range === "last 30 days") {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date();
+      end.setHours(23, 59, 59, 999);
+      filteredInvoices = invoices.filter((inv: any) => {
+        const d = new Date(inv.date || inv.createdAt);
+        return d >= start && d <= end;
+      });
+    } else if (range === "last month") {
+      const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(now.getFullYear(), now.getMonth(), 0);
+      end.setHours(23, 59, 59, 999);
+      filteredInvoices = invoices.filter((inv: any) => {
+        const d = new Date(inv.date || inv.createdAt);
+        return d >= start && d <= end;
+      });
     }
-    
-    const invoices = await Invoice.find(filter);
     
     // Group metrics by staff
     const staffMap: Record<string, {
@@ -44,7 +84,7 @@ export async function GET(req: Request) {
       warrantySales: number;
     }> = {};
     
-    invoices.forEach((inv: any) => {
+    filteredInvoices.forEach((inv: any) => {
       const staff = inv.salesExecutive || "Amit Kumar";
       if (!staffMap[staff]) {
         staffMap[staff] = {
@@ -88,8 +128,8 @@ export async function GET(req: Request) {
       success: true,
       range,
       data: rankedStaff,
-      totalInvoicesInPeriod: invoices.length,
-      totalRevenueInPeriod: invoices.reduce((sum: number, inv: any) => sum + (Number(inv.total) || 0), 0),
+      totalInvoicesInPeriod: filteredInvoices.length,
+      totalRevenueInPeriod: filteredInvoices.reduce((sum: number, inv: any) => sum + (Number(inv.total) || 0), 0),
     });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

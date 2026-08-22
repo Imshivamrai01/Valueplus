@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { DollarSign, Plus, Search, CheckCircle2, Lock, ShieldAlert, CreditCard } from "lucide-react";
 import { toast } from "sonner";
+import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 
 export default function StaffSalaryPage() {
   const queryClient = useQueryClient();
@@ -108,7 +109,7 @@ export default function StaffSalaryPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {isLoading ? (
-                <tr><td colSpan={8} className="p-6 text-center text-slate-500">Loading payroll data...</td></tr>
+                <tr><td colSpan={8} className="p-0"><TableShimmer rows={6} cols={8} /></td></tr>
               ) : filtered.length === 0 ? (
                 <tr><td colSpan={8} className="p-6 text-center text-slate-500">No salary records found for {selectedMonth}.</td></tr>
               ) : (

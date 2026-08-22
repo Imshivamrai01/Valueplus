@@ -15,6 +15,8 @@ import { InvoiceCreationModal } from "@/components/InvoiceCreationModal";
 import ValueplusInvoice from "@/app/invoice/page";
 
 import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/shared/date-range-filter";
+import { useSession } from "next-auth/react";
+import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 
 interface EstimateItem {
   id: string;
@@ -27,6 +29,12 @@ interface EstimateItem {
 }
 
 export default function EstimatesPage() {
+  const { data: session } = useSession();
+  const userRole = ((session?.user as any)?.role || "admin").toLowerCase();
+  const currentUserName = session?.user?.name || "Staff Member";
+  const isSuperAdminOrAdmin = userRole === "admin" || userRole === "superadmin" || userRole === "manager";
+  const isIndividualStaff = !isSuperAdminOrAdmin;
+
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useState("This Month");
@@ -36,6 +44,7 @@ export default function EstimatesPage() {
   const [activePrintEstimate, setActivePrintEstimate] = useState<any>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [selectedEstimate, setSelectedEstimate] = useState<any | null>(null);
+  const [convertingEstimate, setConvertingEstimate] = useState<any | null>(null);
 
   const { data: estimates = [], isLoading } = useQuery({
     queryKey: ["estimates"],
@@ -121,6 +130,9 @@ export default function EstimatesPage() {
       customerName: formData.customerName,
       expiryDate: formData.expiryDate || new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString(),
       total: Number(formData.totalAmount) || 0,
+      salesperson: isIndividualStaff ? currentUserName : "AMIT SINGH",
+      salesExecutive: isIndividualStaff ? currentUserName : "AMIT SINGH",
+      createdBy: currentUserName,
       status: "Sent",
     };
 
@@ -181,7 +193,9 @@ export default function EstimatesPage() {
             <tbody className="divide-y">
               {isLoading ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">Loading estimates...</td>
+                  <td colSpan={8} className="p-0">
+                    <TableShimmer rows={7} cols={8} />
+                  </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
@@ -201,6 +215,22 @@ export default function EstimatesPage() {
                     <Badge variant={e.status === "Accepted" ? "success" : e.status === "Sent" ? "info" : e.status === "Converted" ? "default" : "secondary"}>{e.status}</Badge>
                   </td>
                   <td className="px-4 py-3 text-right flex items-center justify-end gap-1.5">
+                    {e.status !== "Converted" && (
+                      !isIndividualStaff ? (
+                        <Button
+                          size="sm"
+                          className="h-7 px-2.5 text-[11px] font-bold bg-[#76C043] hover:bg-[#60a82c] text-white shadow-xs"
+                          onClick={() => setConvertingEstimate(e)}
+                          title="Make Tax Invoice / Bill from this Estimate"
+                        >
+                          ⚡ Make Bill
+                        </Button>
+                      ) : (
+                        <Badge variant="outline" className="text-[10px] text-amber-700 bg-amber-50 border-amber-200">
+                          Active Estimate
+                        </Badge>
+                      )
+                    )}
                     <Button 
                       variant="outline" 
                       size="sm" 
@@ -257,6 +287,18 @@ export default function EstimatesPage() {
         onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: ["estimates"] });
           setIsFormOpen(false);
+        }} 
+      />
+
+      <InvoiceCreationModal 
+        isOpen={!!convertingEstimate} 
+        onClose={() => setConvertingEstimate(null)} 
+        mode="invoice"
+        preloadedEstimate={convertingEstimate}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ["estimates"] });
+          queryClient.invalidateQueries({ queryKey: ["invoices"] });
+          setConvertingEstimate(null);
         }} 
       />
 

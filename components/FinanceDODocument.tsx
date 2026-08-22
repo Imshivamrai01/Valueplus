@@ -74,7 +74,7 @@ export function FinanceDODocument({ data, onBack }: FinanceDODocumentProps) {
               <ArrowLeft className="w-3.5 h-3.5" /> Back to List
             </button>
           ) : (
-            <Link href="/sales/finance-do" className="px-3 py-1.5 rounded-lg border text-xs font-semibold hover:bg-slate-50 flex items-center gap-1.5">
+            <Link href="/finance/ledger" className="px-3 py-1.5 rounded-lg border text-xs font-semibold hover:bg-slate-50 flex items-center gap-1.5">
               <ArrowLeft className="w-3.5 h-3.5" /> Back to Finance DOs
             </Link>
           )}

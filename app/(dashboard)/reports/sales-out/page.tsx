@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Search, Download, Printer, Filter, Receipt, FileText, ArrowUpDown } from "lucide-react";
 import { DateRangeFilter, resolveDateRange } from "@/components/shared/date-range-filter";
+import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 import Link from "next/link";
 
 function formatCurrency(val: number) {
@@ -241,7 +242,7 @@ function SalesOutReportContent() {
             </thead>
             <tbody className="divide-y divide-slate-100 font-sans">
               {isLoading ? (
-                <tr><td colSpan={12} className="p-6 text-center text-slate-500">Loading Sales Out Report...</td></tr>
+                <tr><td colSpan={12} className="p-0"><TableShimmer rows={7} cols={12} /></td></tr>
               ) : filtered.length === 0 ? (
                 <tr><td colSpan={12} className="p-6 text-center text-slate-500">No sales transactions match the criteria.</td></tr>
               ) : (

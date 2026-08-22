@@ -270,29 +270,41 @@ export default function LoginPage() {
               </Button>
             </form>
 
-            {/* Demo credentials */}
-            <div className="mt-6 p-4 bg-[#F8FAFC] rounded-xl border border-border">
-              <div className="flex items-center gap-2 mb-2">
-                <Lock className="w-3.5 h-3.5 text-[#3F63AD]" />
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Demo Credentials</p>
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div>
-                  <p className="text-muted-foreground text-xs">Username</p>
-                  <p className="font-mono font-semibold text-foreground">admin</p>
+            {/* 1-Click Role Quick Login */}
+            <div className="mt-6 p-4 bg-slate-50 rounded-2xl border border-slate-200">
+              <div className="flex items-center justify-between mb-2.5">
+                <div className="flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 text-[#3F63AD]" />
+                  <p className="text-xs font-bold text-slate-800 uppercase tracking-wide">Quick Role Login</p>
                 </div>
-                <div>
-                  <p className="text-muted-foreground text-xs">Password</p>
-                  <p className="font-mono font-semibold text-foreground">123456</p>
-                </div>
+                <span className="text-[10px] text-slate-400 font-medium">Click any role to autofill & login</span>
               </div>
-              <button
-                type="button"
-                onClick={() => { setUsername("admin"); setPassword("123456"); }}
-                className="mt-2 text-xs text-[#3F63AD] hover:underline font-medium"
-              >
-                Click to auto-fill →
-              </button>
+
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { role: "👑 Super Admin", id: "admin@valueplus.in", pass: "admin123" },
+                  { role: "🏬 Store Incharge", id: "storeincharge@valueplus.in", pass: "store123" },
+                  { role: "👔 Sales Executive", id: "salesman@valueplus.in", pass: "salesman123" },
+                  { role: "💳 POS Cashier", id: "cashier@valueplus.in", pass: "cashier123" },
+                  { role: "🏢 Godown Manager", id: "warehouse@valueplus.in", pass: "warehouse123" },
+                  { role: "📊 Chief Accountant", id: "accounts@valueplus.in", pass: "accounts123" },
+                  { role: "👥 HR & Payroll", id: "hr@valueplus.in", pass: "hr123" },
+                  { role: "🏭 Supplier Portal", id: "supplier@valueplus.in", pass: "supplier123" },
+                ].map((item) => (
+                  <button
+                    key={item.role}
+                    type="button"
+                    onClick={() => {
+                      setUsername(item.id);
+                      setPassword(item.pass);
+                    }}
+                    className="flex flex-col items-start p-2 rounded-xl bg-white hover:bg-blue-50 border border-slate-200 hover:border-[#3F63AD]/50 transition-all text-left group shadow-xs"
+                  >
+                    <span className="text-[11px] font-bold text-slate-800 group-hover:text-[#3F63AD]">{item.role}</span>
+                    <span className="text-[10px] text-slate-400 font-mono mt-0.5">{item.id}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 

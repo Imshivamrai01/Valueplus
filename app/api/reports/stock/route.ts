@@ -6,10 +6,26 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const category = searchParams.get("category"); // specific category or "all"
+    const warehouse = searchParams.get("warehouse") || searchParams.get("location");
     
     await connectToDatabase();
     
-    const allItems = await Item.find({ status: "active" }).lean();
+    let allItems = await Item.find({ status: "active" }).lean();
+    
+    if (warehouse && warehouse !== "all") {
+      const isAshoka = warehouse.toLowerCase().includes("ashoka") || warehouse.toLowerCase().includes("kunraghat") || warehouse === "VP-KUN";
+      if (!isAshoka) {
+        allItems = allItems.filter((it: any) =>
+          it.warehouse?.toLowerCase() === warehouse.toLowerCase()
+        );
+      } else {
+        allItems = allItems.filter((it: any) =>
+          !it.warehouse ||
+          it.warehouse.toLowerCase().includes("ashoka") ||
+          it.warehouse.toLowerCase().includes("kunraghat")
+        );
+      }
+    }
     
     // Calculate category map dynamically
     const categoryMap: Record<string, { name: string; quantity: number; value: number; itemCount: number }> = {};

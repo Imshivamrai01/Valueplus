@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 
 export default function VariantsPage() {
   const [variants, setVariants] = useState<any[]>([]);
@@ -83,7 +84,7 @@ export default function VariantsPage() {
       actions={<Button size="sm" onClick={() => setIsFormOpen(true)}><Plus className="w-4 h-4 mr-1.5" /> Add Variant</Button>}>
       <div className="data-table-container divide-y">
         {loading ? (
-          <div className="p-8 text-center text-muted-foreground">Loading...</div>
+          <TableShimmer rows={6} cols={3} />
         ) : variants.length === 0 ? (
           <div className="p-8 text-center text-muted-foreground">No variants found</div>
         ) : variants.map(v => (

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * VALUEPLUS ERP — Delivery & Return Challan (With Printable Challan Sheet & Premium Landscape Form)
+ * VALUEPLUS ERP — Delivery & Return Challan (GIDA Central Hub Logistics & Official Invoice-Style Print)
  */
 
 import { PageShell } from "@/components/shared/page-shell";
@@ -9,149 +9,91 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { 
-  Plus, Search, Truck, ArrowLeftRight, PackageCheck, Printer, Download, Eye, RotateCcw, 
-  Building, Sparkles, FileText, CheckCircle2, ShieldCheck, FileCheck, ArrowRight, UserCheck, PhoneCall, X, MessageCircle
+  Plus, Search, Truck, PackageCheck, Printer, Download, RotateCcw, 
+  FileText, CheckCircle2, UserCheck, MessageCircle,
+  FileMinus, Tag, Edit3, Hash, Building2, Store, Check, X, Sparkles, Layers,
+  PhoneCall, ShieldCheck, CheckCircle, ArrowLeft
 } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
-import { formatDate, cn } from "@/lib/utils";
+import { formatDate, cn, formatCurrency } from "@/lib/utils";
 import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/shared/date-range-filter";
 import { toast } from "sonner";
-
+import { useRouter } from "next/navigation";
+import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 
 interface ChallanItem {
-  id: string;
+  _id?: string;
+  id?: string;
   challanNo: string;
-  type: "Customer Return" | "Warehouse Return" | "Supplier Return" | "Client Return";
+  type: "Customer Return" | "Warehouse Return" | "Supplier Return" | "Outward Delivery";
+  invoiceNumber?: string;
   sourceParty: string;
   sourceAddress: string;
+  sourcePhone?: string;
   destinationParty: string;
   destinationAddress: string;
+  customerPhone?: string;
   itemName: string;
+  vpCode?: string;
   hsn: string;
   serialImei: string;
   quantity: number;
   unit: string;
+  itemPrice?: number;
+  defectDescription?: string;
   reason: string;
   date: string;
   vehicleNo: string;
+  transporterName?: string;
   driverName: string;
   driverPhone: string;
-  status: "dispatched" | "in-transit" | "returned" | "received";
+  ewayBillNo?: string;
+  flowType?: "CNR" | "PR";
+  approvalStatus?: "pending" | "approved" | "rejected";
+  approvedAt?: string;
+  approvedBy?: string;
+  status: "dispatched" | "in-transit" | "delivered" | "returned" | "received";
 }
 
-const INITIAL_CHALLANS: ChallanItem[] = [
-  {
-    id: "1",
-    challanNo: "DC-2026-0089",
-    type: "Customer Return",
-    sourceParty: "Sharma Enterprises Pvt Ltd",
-    sourceAddress: "18, Nehru Market, Civil Lines, Prayagraj, UP – 211001",
-    destinationParty: "VALUEPLUS Head Warehouse",
-    destinationAddress: "B-42, Sector 63, Noida Industrial Area, UP – 201301",
-    itemName: "iPhone 15 Pro Max 256GB (Defective Unit)",
-    hsn: "8517",
-    serialImei: "IMEI 359182049182341",
-    quantity: 1,
-    unit: "PCS",
-    reason: "Display flickering - Warranty Claim Return",
-    date: "2026-08-02",
-    vehicleNo: "UP-70-AT-4921",
-    driverName: "Rakesh Kumar",
-    driverPhone: "+91 98765 12345",
-    status: "in-transit",
-  },
-  {
-    id: "2",
-    challanNo: "DC-2026-0088",
-    type: "Warehouse Return",
-    sourceParty: "Pune Branch Store",
-    sourceAddress: "Survey No. 89, Hinjewadi Phase 2, Pune, MH – 411057",
-    destinationParty: "VALUEPLUS Main Store",
-    destinationAddress: "Plot 45, MIDC Andheri East, Mumbai, MH – 400093",
-    itemName: "Sony Bravia 55\" Smart LED TV",
-    hsn: "8528",
-    serialImei: "SN SNY55-891024",
-    quantity: 2,
-    unit: "PCS",
-    reason: "Excess stock transfer back to Main Store",
-    date: "2026-08-01",
-    vehicleNo: "MH-12-PQ-8812",
-    driverName: "Suresh Patil",
-    driverPhone: "+91 98123 45678",
-    status: "returned",
-  },
-  {
-    id: "3",
-    challanNo: "DC-2026-0087",
-    type: "Supplier Return",
-    sourceParty: "VALUEPLUS Store (Delhi)",
-    sourceAddress: "Sector 63, Noida, UP – 201301",
-    destinationParty: "Apple Authorized Service Base",
-    destinationAddress: "Connaught Place, New Delhi – 110001",
-    itemName: "AirPods Pro (2nd Gen) USB-C",
-    hsn: "8518",
-    serialImei: "SN AAP-9018241",
-    quantity: 5,
-    unit: "PR",
-    reason: "Factory defect return to brand manufacturer",
-    date: "2026-07-30",
-    vehicleNo: "DL-1C-XY-3012",
-    driverName: "Amit Singh",
-    driverPhone: "+91 98012 34567",
-    status: "received",
-  },
-  {
-    id: "4",
-    challanNo: "DC-2026-0086",
-    type: "Client Return",
-    sourceParty: "Patel Industries",
-    sourceAddress: "Plot 12, GIDC Naroda, Ahmedabad, GJ – 382330",
-    destinationParty: "VALUEPLUS Central Hub",
-    destinationAddress: "MIDC Industrial Area, Mumbai, MH – 400093",
-    itemName: "MacBook Air M3 16GB/512GB",
-    hsn: "8471",
-    serialImei: "SN C02G8912MD6",
-    quantity: 1,
-    unit: "PCS",
-    reason: "Wrong SKU dispatched - Replacement Return",
-    date: "2026-07-28",
-    vehicleNo: "GJ-01-AB-1902",
-    driverName: "Vikram Shah",
-    driverPhone: "+91 98901 23456",
-    status: "dispatched",
-  },
-];
+const GIDA_HUB = {
+  name: "VALUEPLUS Central Warehouse & Hub (GIDA)",
+  address: "PLOT NO. G-12, SECTOR 13, GIDA INDUSTRIAL AREA, GORAKHPUR (UP) - 273209",
+  phone: "9140860604",
+};
 
-const STATUS_MAP = {
-  dispatched: { label: "Dispatched", variant: "warning" as const },
-  "in-transit": { label: "In-Transit", variant: "info" as const },
-  returned: { label: "Returned to Base", variant: "success" as const },
-  received: { label: "Received & Closed", variant: "success" as const },
+const KUNRAGHAT_STORE = {
+  name: "VALUEPLUS Showroom & Store (Kunraghat)",
+  address: "H. NO. 116, NEAR SHANTI MARRIAGE HOUSE DEORIA ROAD, KUNRAGHAT GORAKHPUR (UP)",
+  phone: "9140860604",
 };
 
 export default function DeliveryChallanPage() {
-  const [challans, setChallans] = useState<any[]>([]);
+  const router = useRouter();
+  const [challans, setChallans] = useState<ChallanItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [flowFilter, setFlowFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("This Month");
   const [dateRange, setDateRange] = useState(() => resolveDateRange("This Month"));
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [selectedChallan, setSelectedChallan] = useState<any | null>(null);
+  const [selectedChallan, setSelectedChallan] = useState<ChallanItem | null>(null);
   const [isPrintOpen, setIsPrintOpen] = useState(false);
   
   const [items, setItems] = useState<any[]>([]);
   const [invoices, setInvoices] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [purchases, setPurchases] = useState<any[]>([]);
   
-  const [showItemSuggestions, setShowItemSuggestions] = useState(false);
-  const [showPartySuggestions, setShowPartySuggestions] = useState(false);
-  const [showBillSuggestions, setShowBillSuggestions] = useState(false);
-  const [billSearchQuery, setBillSearchQuery] = useState("");
+  const [selectedProductUniqueId, setSelectedProductUniqueId] = useState<string | null>(null);
+  const [itemSearchText, setItemSearchText] = useState("");
+  const [hsnFilterText, setHsnFilterText] = useState("");
+  const [billFilterText, setBillFilterText] = useState("");
+  const [showPartyDropdown, setShowPartyDropdown] = useState(false);
 
   const fetchChallans = async () => {
     try {
@@ -170,9 +112,7 @@ export default function DeliveryChallanPage() {
       const res = await fetch("/api/items");
       const json = await res.json();
       if (json.success) setItems(json.data);
-    } catch (error) {
-      console.error(error);
-    }
+    } catch (error) { console.error(error); }
   };
 
   const fetchInvoices = async () => {
@@ -180,9 +120,7 @@ export default function DeliveryChallanPage() {
       const res = await fetch("/api/invoices");
       const json = await res.json();
       if (json.success) setInvoices(json.data);
-    } catch (error) {
-      console.error(error);
-    }
+    } catch (error) { console.error(error); }
   };
 
   const fetchCustomers = async () => {
@@ -190,9 +128,7 @@ export default function DeliveryChallanPage() {
       const res = await fetch("/api/customers");
       const json = await res.json();
       if (json.success) setCustomers(json.data);
-    } catch (error) {
-      console.error(error);
-    }
+    } catch (error) { console.error(error); }
   };
 
   const fetchSuppliers = async () => {
@@ -200,9 +136,15 @@ export default function DeliveryChallanPage() {
       const res = await fetch("/api/suppliers");
       const json = await res.json();
       if (json.success) setSuppliers(json.data);
-    } catch (error) {
-      console.error(error);
-    }
+    } catch (error) { console.error(error); }
+  };
+
+  const fetchPurchases = async () => {
+    try {
+      const res = await fetch("/api/purchase-entries?type=entry");
+      const json = await res.json();
+      if (json.success) setPurchases(json.data);
+    } catch (error) { console.error(error); }
   };
 
   useEffect(() => {
@@ -211,108 +153,267 @@ export default function DeliveryChallanPage() {
     fetchInvoices();
     fetchCustomers();
     fetchSuppliers();
+    fetchPurchases();
   }, []);
 
   const [formData, setFormData] = useState({
-    type: "Customer Return",
+    type: "Customer Return" as ChallanItem["type"],
+    flowType: "CNR" as "CNR" | "PR",
     invoiceNumber: "",
     sourceParty: "",
     sourcePhone: "",
     sourceAddress: "",
-    destinationParty: "VALUEPLUS Head Warehouse (Gorakhpur)",
-    destinationAddress: "H. NO. 116, NEAR SHANTI MARRIAGE HOUSE DEORIA ROAD, KUNRAGHAT GORAKHPUR",
+    destinationParty: GIDA_HUB.name,
+    destinationAddress: GIDA_HUB.address,
     itemName: "",
     vpCode: "",
-    hsn: "8517",
+    hsn: "85287217",
     serialImei: "",
     quantity: "1",
     unit: "PCS",
-    reason: "Defective Warranty Return",
-    vehicleNo: "",
-    driverName: "",
-    driverPhone: "",
+    itemPrice: "",
+    defectDescription: "",
+    reason: "Defective Replacement / Transit to GIDA Hub",
+    vehicleNo: "UP-53-ET-8819",
+    transporterName: "Value Plus In-House Van (GIDA Route)",
+    driverName: "AMIT SINGH",
+    driverPhone: "9140860604",
+    ewayBillNo: "",
   });
 
-  // Calculate past purchased/billed products for the currently entered party
-  const partyPurchasedItems = useMemo(() => {
+  const handleCategoryChange = (category: ChallanItem["type"]) => {
+    setSelectedProductUniqueId(null);
+    if (category === "Customer Return") {
+      setFormData((prev) => ({
+        ...prev,
+        type: category,
+        flowType: "CNR",
+        sourceParty: "",
+        sourcePhone: "",
+        sourceAddress: "",
+        destinationParty: GIDA_HUB.name,
+        destinationAddress: GIDA_HUB.address,
+        itemName: "",
+        serialImei: "",
+        reason: "Customer Defective Return Transit to GIDA Hub",
+      }));
+    } else if (category === "Warehouse Return") {
+      setFormData((prev) => ({
+        ...prev,
+        type: category,
+        flowType: "PR",
+        sourceParty: KUNRAGHAT_STORE.name,
+        sourcePhone: KUNRAGHAT_STORE.phone,
+        sourceAddress: KUNRAGHAT_STORE.address,
+        destinationParty: GIDA_HUB.name,
+        destinationAddress: GIDA_HUB.address,
+        itemName: "",
+        serialImei: "",
+        reason: "Showroom Return to GIDA Central Warehouse",
+      }));
+    } else if (category === "Supplier Return") {
+      setFormData((prev) => ({
+        ...prev,
+        type: category,
+        flowType: "PR",
+        sourceParty: GIDA_HUB.name,
+        sourcePhone: GIDA_HUB.phone,
+        sourceAddress: GIDA_HUB.address,
+        destinationParty: "Authorised Brand Service Center",
+        destinationAddress: "Industrial Area, Gorakhpur / Delhi Hub",
+        itemName: "",
+        serialImei: "",
+        reason: "Brand Defective Warranty Return Claim",
+      }));
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        type: category,
+        flowType: "CNR",
+        sourceParty: GIDA_HUB.name,
+        sourcePhone: GIDA_HUB.phone,
+        sourceAddress: GIDA_HUB.address,
+        destinationParty: "",
+        destinationAddress: "",
+        reason: "Direct Outward Stock Delivery",
+      }));
+    }
+  };
+
+  const customerSoldItems = useMemo(() => {
+    if (formData.type !== "Customer Return") return [];
     if (!formData.sourceParty && !formData.sourcePhone && !formData.invoiceNumber) return [];
 
+    const normPhone = formData.sourcePhone?.replace(/\D/g, "");
+    const normName = formData.sourceParty?.trim().toLowerCase();
+    const normInv = formData.invoiceNumber?.trim().toLowerCase();
+
     const matchedInvoices = invoices.filter((inv: any) => {
-      if (formData.invoiceNumber && inv.invoiceNumber?.toLowerCase() === formData.invoiceNumber.toLowerCase()) return true;
-      if (formData.sourcePhone && inv.customerPhone && inv.customerPhone.replace(/\D/g, '') === formData.sourcePhone.replace(/\D/g, '')) return true;
-      if (formData.sourceParty && inv.customerName && inv.customerName.toLowerCase().includes(formData.sourceParty.toLowerCase())) return true;
+      if (normInv && inv.invoiceNumber?.toLowerCase() === normInv) return true;
+      if (normPhone && normPhone.length >= 10 && inv.customerPhone?.replace(/\D/g, "") === normPhone) return true;
+      if (normName && inv.customerName && inv.customerName.toLowerCase().includes(normName)) return true;
       return false;
     });
 
-    const products: any[] = [];
+    const prods: any[] = [];
     matchedInvoices.forEach((inv: any) => {
       (inv.items || []).forEach((it: any, itIdx: number) => {
-        products.push({
-          uniqueId: `${inv.invoiceNumber}-${itIdx}`,
+        const serial = it.serialNumber || it.serialImei || it.batchNumber || "";
+        prods.push({
+          uniqueId: `${inv.invoiceNumber || 'INV'}-${itIdx}-${serial || it.name || itIdx}`,
           invoiceNumber: inv.invoiceNumber,
           invoiceDate: inv.date || inv.createdAt,
           customerName: inv.customerName,
           customerPhone: inv.customerPhone,
-          customerAddress: inv.customerAddress || inv.placeOfSupply || "",
+          customerAddress: inv.customerAddress || inv.placeOfSupply || "Gorakhpur, UP",
           itemName: it.itemName || it.name,
           vpCode: it.vpCode || it.itemCode || "",
-          itemCode: it.itemCode || "",
-          hsn: it.hsnCode || it.hsn || "8517",
-          serialImei: it.serialNumber || it.serialImei || it.batchNumber || "",
+          hsn: it.hsnCode || it.hsn || "85287217",
+          serialImei: serial,
           quantity: it.quantity || it.qty || 1,
           unit: it.unit || "PCS",
           rate: it.rate || it.price || 0,
-          amount: it.amount || it.total || 0,
-          warrantyPlan: it.extendedWarrantyPlan || "",
+          total: it.amount || it.total || 0,
         });
       });
     });
 
-    return products;
-  }, [invoices, formData.sourceParty, formData.sourcePhone, formData.invoiceNumber]);
+    return prods;
+  }, [invoices, formData.type, formData.sourceParty, formData.sourcePhone, formData.invoiceNumber]);
 
-  // Handle selecting a purchased product from the party's history
-  const handleSelectPurchasedProduct = (prod: any) => {
+  const supplierPurchasedItems = useMemo(() => {
+    if (formData.type !== "Supplier Return") return [];
+    if (!formData.destinationParty && !formData.sourceParty) return [];
+
+    const query = (formData.destinationParty || formData.sourceParty || "").toLowerCase();
+
+    const matchedPurchases = purchases.filter((p: any) =>
+      p.supplierName && p.supplierName.toLowerCase().includes(query)
+    );
+
+    const prods: any[] = [];
+    matchedPurchases.forEach((p: any) => {
+      (p.items || []).forEach((it: any, itIdx: number) => {
+        const serials = it.serialNumbers && it.serialNumbers.length > 0 ? it.serialNumbers.join(", ") : "";
+        prods.push({
+          uniqueId: `${p.billNo || 'BILL'}-${itIdx}-${serials || it.name || itIdx}`,
+          billNo: p.billNo,
+          billDate: p.billDate,
+          supplierName: p.supplierName,
+          itemName: it.name,
+          vpCode: it.itemId || "",
+          hsn: it.hsn || "85287217",
+          serialImei: serials,
+          quantity: it.quantity || 1,
+          unit: "PCS",
+          rate: it.rate || 0,
+        });
+      });
+    });
+
+    return prods;
+  }, [purchases, formData.type, formData.destinationParty, formData.sourceParty]);
+
+  const warehouseGidaItems = useMemo(() => {
+    if (formData.type !== "Warehouse Return") return [];
+    return items.map((it: any, idx: number) => ({
+      uniqueId: `${it._id || it.code || 'ITEM'}-${idx}`,
+      itemName: it.name,
+      vpCode: it.vpCode || it.code || "",
+      hsn: it.hsn || it.hsnCode || "85287217",
+      serialImei: it.serialNumber || "",
+      quantity: it.stock || 1,
+      unit: it.unit || "PCS",
+      rate: it.sellingPrice || it.rate || 0,
+      category: it.category || "Electronics",
+    }));
+  }, [items, formData.type]);
+
+  const contextAvailableItems = useMemo(() => {
+    if (formData.type === "Customer Return") return customerSoldItems;
+    if (formData.type === "Supplier Return") return supplierPurchasedItems;
+    if (formData.type === "Warehouse Return") return warehouseGidaItems;
+    return items.map((it: any, idx: number) => ({
+      uniqueId: `${it._id || it.code || 'ITEM'}-${idx}`,
+      itemName: it.name,
+      vpCode: it.vpCode || it.code || "",
+      hsn: it.hsn || "85287217",
+      serialImei: "",
+      quantity: 1,
+      unit: it.unit || "PCS",
+      rate: it.sellingPrice || 0,
+    }));
+  }, [formData.type, customerSoldItems, supplierPurchasedItems, warehouseGidaItems, items]);
+
+  const filteredContextItems = useMemo(() => {
+    let list = contextAvailableItems;
+    if (itemSearchText.trim()) {
+      const q = itemSearchText.toLowerCase();
+      list = list.filter((it: any) =>
+        it.itemName?.toLowerCase().includes(q) ||
+        it.vpCode?.toLowerCase().includes(q) ||
+        it.serialImei?.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [contextAvailableItems, itemSearchText, hsnFilterText, billFilterText]);
+
+  const handleSelectProduct = (prod: any) => {
+    setSelectedProductUniqueId(prod.uniqueId);
     setFormData((prev) => ({
       ...prev,
-      invoiceNumber: prod.invoiceNumber || prev.invoiceNumber,
       itemName: prod.itemName,
-      vpCode: prod.vpCode,
+      vpCode: prod.vpCode || prev.vpCode,
       hsn: prod.hsn || prev.hsn,
       serialImei: prod.serialImei || prev.serialImei,
       quantity: String(prod.quantity || 1),
       unit: prod.unit || "PCS",
+      itemPrice: prod.rate ? String(prod.rate) : prev.itemPrice,
+      invoiceNumber: prod.invoiceNumber || prod.billNo || prev.invoiceNumber,
       sourceParty: prod.customerName || prev.sourceParty,
-      sourcePhone: (prod.customerPhone || prev.sourcePhone).replace(/\D/g, ''),
+      sourcePhone: (prod.customerPhone || prev.sourcePhone || "").replace(/\D/g, ""),
       sourceAddress: prod.customerAddress || prev.sourceAddress,
-      reason: `Warranty Return / Service Claim for Bill #${prod.invoiceNumber}`,
     }));
-    toast.success(`Loaded "${prod.itemName}" from Bill #${prod.invoiceNumber}!`);
+    toast.success(`✅ Selected: ${prod.itemName}${prod.serialImei ? ` (SN: ${prod.serialImei})` : ""}`);
   };
 
-  // Handle selecting an invoice from Bill Number search
-  const handleSelectInvoice = (inv: any) => {
-    setBillSearchQuery(inv.invoiceNumber);
+  const handleSelectCustomer = (c: any) => {
+    setSelectedProductUniqueId(null);
     setFormData((prev) => ({
       ...prev,
-      invoiceNumber: inv.invoiceNumber,
-      sourceParty: inv.customerName || prev.sourceParty,
-      sourcePhone: (inv.customerPhone || prev.sourcePhone || "").replace(/\D/g, ''),
-      sourceAddress: inv.customerAddress || inv.placeOfSupply || prev.sourceAddress,
+      sourceParty: c.name,
+      sourcePhone: (c.phone || "").replace(/\D/g, ""),
+      sourceAddress: c.address || c.city || "Gorakhpur, UP",
     }));
-    setShowBillSuggestions(false);
+    setShowPartyDropdown(false);
+    toast.info(`Customer "${c.name}" selected. Sold products loaded below.`);
+  };
 
-    if (inv.items && inv.items.length === 1) {
-      handleSelectPurchasedProduct({
-        ...inv.items[0],
-        invoiceNumber: inv.invoiceNumber,
-        customerName: inv.customerName,
-        customerPhone: inv.customerPhone,
-        customerAddress: inv.customerAddress,
+  const handleSelectSupplier = (s: any) => {
+    setSelectedProductUniqueId(null);
+    setFormData((prev) => ({
+      ...prev,
+      destinationParty: s.name,
+      sourceParty: GIDA_HUB.name,
+      sourceAddress: GIDA_HUB.address,
+    }));
+    setShowPartyDropdown(false);
+    toast.info(`Supplier "${s.name}" selected. Purchased items loaded below.`);
+  };
+
+  const handleToggleFlowType = async (challan: ChallanItem) => {
+    try {
+      const res = await fetch("/api/delivery-challans", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ challanNo: challan.challanNo, action: "toggle-flow" }),
       });
-    } else {
-      toast.info(`Invoice #${inv.invoiceNumber} loaded. Pick an item from the list below.`);
-    }
+      const json = await res.json();
+      if (json.success) {
+        toast.success(`Challan ${challan.challanNo} switched to ${json.data.flowType}!`);
+        fetchChallans();
+      }
+    } catch (e: any) { toast.error("Error updating flow"); }
   };
 
   const filtered = useMemo(() => {
@@ -321,64 +422,44 @@ export default function DeliveryChallanPage() {
         !search ||
         (c.challanNo && c.challanNo.toLowerCase().includes(search.toLowerCase())) ||
         (c.sourceParty && c.sourceParty.toLowerCase().includes(search.toLowerCase())) ||
+        (c.destinationParty && c.destinationParty.toLowerCase().includes(search.toLowerCase())) ||
         (c.itemName && c.itemName.toLowerCase().includes(search.toLowerCase())) ||
         (c.invoiceNumber && c.invoiceNumber.toLowerCase().includes(search.toLowerCase())) ||
-        (c.vpCode && c.vpCode.toLowerCase().includes(search.toLowerCase())) ||
-        (c.serialImei && c.serialImei.toLowerCase().includes(search.toLowerCase()));
+        (c.serialImei && c.serialImei.toLowerCase().includes(search.toLowerCase())) ||
+        (c.vehicleNo && c.vehicleNo.toLowerCase().includes(search.toLowerCase()));
       const matchType = typeFilter === "all" || c.type === typeFilter;
-      const matchDate = isDateInRange(c.date || c.createdAt, dateRange.start, dateRange.end);
-      return matchSearch && matchType && matchDate;
+      const matchFlow = flowFilter === "all" || (c.flowType || "CNR") === flowFilter;
+      const matchDate = isDateInRange(c.date, dateRange.start, dateRange.end);
+      return matchSearch && matchType && matchFlow && matchDate;
     });
-  }, [challans, search, typeFilter, dateRange]);
+  }, [challans, search, typeFilter, flowFilter, dateRange]);
 
   const handleSave = async () => {
-    if (!formData.sourcePhone || formData.sourcePhone.replace(/\D/g, '').length !== 10) {
-      toast.error("Please enter a valid 10-digit source party mobile number");
-      return;
-    }
     if (!formData.sourceParty || !formData.itemName) {
-      toast.error("Please fill Source Party and Item details");
+      toast.error("Please select party and item to issue delivery challan");
       return;
     }
 
     const payload = {
       ...formData,
-      challanNo: `DC-${new Date().getFullYear()}-${String(challans.length + 1).padStart(4, "0")}`,
+      challanNo: `DC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
       quantity: Number(formData.quantity) || 1,
+      itemPrice: Number(formData.itemPrice) || 0,
       status: "dispatched",
+      approvalStatus: "pending",
     };
 
     try {
       const res = await fetch("/api/delivery-challans", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       });
       const json = await res.json();
       if (json.success) {
-        toast.success(`Delivery Challan ${json.data.challanNo} generated!`);
+        toast.success(`🎉 Delivery Challan ${json.data.challanNo} issued!`);
         setIsFormOpen(false);
         fetchChallans();
-        setFormData({
-          type: "Customer Return",
-          invoiceNumber: "",
-          sourceParty: "",
-          sourcePhone: "",
-          sourceAddress: "",
-          destinationParty: "VALUEPLUS Head Warehouse (Gorakhpur)",
-          destinationAddress: "H. NO. 116, NEAR SHANTI MARRIAGE HOUSE DEORIA ROAD, KUNRAGHAT GORAKHPUR",
-          itemName: "",
-          vpCode: "",
-          hsn: "8517",
-          serialImei: "",
-          quantity: "1",
-          unit: "PCS",
-          reason: "Defective Warranty Return",
-          vehicleNo: "",
-          driverName: "",
-          driverPhone: "",
-        });
-        setBillSearchQuery("");
       } else {
         toast.error(json.error || "Failed to create delivery challan");
       }
@@ -394,16 +475,17 @@ export default function DeliveryChallanPage() {
 
   return (
     <PageShell
-      title="Delivery & Return Challan"
-      subtitle="Track goods returned from customers, clients & warehouses back to company base"
+      title="Delivery & Return Challan (GIDA Hub Logistics)"
+      subtitle="Issue transit challans for customer warranty replacements, GIDA warehouse transfers & supplier returns"
       breadcrumbs={[{ label: "Sales" }, { label: "Delivery Challan" }]}
       actions={
-        <Button size="sm" onClick={() => setIsFormOpen(true)}>
-          <Plus className="w-4 h-4 mr-1.5" /> New Delivery Challan
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={() => setIsFormOpen(true)} className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white font-bold shadow-md">
+            <Plus className="w-4 h-4 mr-1.5" /> Issue Delivery Challan
+          </Button>
+        </div>
       }
     >
-      {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="metric-card">
           <div className="flex items-center gap-3">
@@ -412,7 +494,7 @@ export default function DeliveryChallanPage() {
             </div>
             <div>
               <p className="text-2xl font-bold">{challans.length}</p>
-              <p className="text-xs text-muted-foreground">Total Challans</p>
+              <p className="text-xs text-muted-foreground">Total Records</p>
             </div>
           </div>
         </div>
@@ -422,59 +504,71 @@ export default function DeliveryChallanPage() {
               <RotateCcw className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{challans.filter((c) => c.status === "in-transit" || c.status === "dispatched").length}</p>
-              <p className="text-xs text-muted-foreground">In-Transit Returns</p>
+              <p className="text-2xl font-bold">{challans.filter((c) => (c.flowType || "CNR") === "CNR").length}</p>
+              <p className="text-xs text-muted-foreground">CNR (Customer Claims)</p>
+            </div>
+          </div>
+        </div>
+        <div className="metric-card">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-blue-50 flex items-center justify-center text-[#30539C]">
+              <Building2 className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{challans.filter((c) => c.type === "Warehouse Return").length}</p>
+              <p className="text-xs text-muted-foreground">GIDA Warehouse Transfers</p>
             </div>
           </div>
         </div>
         <div className="metric-card">
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-600">
-              <PackageCheck className="w-5 h-5" />
+              <CheckCircle2 className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{challans.filter((c) => c.status === "returned" || c.status === "received").length}</p>
-              <p className="text-xs text-muted-foreground">Returned to Base</p>
-            </div>
-          </div>
-        </div>
-        <div className="metric-card">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-purple-50 flex items-center justify-center text-purple-600">
-              <Building className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{challans.filter((c) => c.type === "Customer Return").length}</p>
-              <p className="text-xs text-muted-foreground">Customer Returns</p>
+              <p className="text-2xl font-bold">{challans.filter((c) => c.approvalStatus === "approved").length}</p>
+              <p className="text-xs text-muted-foreground">Approved & Settled</p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Table Section */}
       <div className="data-table-container">
         <div className="flex flex-wrap items-center gap-3 p-4 border-b">
           <div className="relative flex-1 min-w-48">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
-              placeholder="Search Challan #, Customer, Serial/IMEI, Item..."
+              placeholder="Search Challan #, Customer, GIDA Hub, Item, Serial/IMEI, Vehicle..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9"
             />
           </div>
-          <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger className="w-44">
-              <SelectValue placeholder="Return Type" />
+
+          <Select value={flowFilter} onValueChange={setFlowFilter}>
+            <SelectTrigger className="w-36 font-semibold">
+              <SelectValue placeholder="Flow Type" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Return Types</SelectItem>
-              <SelectItem value="Customer Return">Customer Return</SelectItem>
-              <SelectItem value="Warehouse Return">Warehouse Return</SelectItem>
-              <SelectItem value="Supplier Return">Supplier Return</SelectItem>
-              <SelectItem value="Client Return">Client Return</SelectItem>
+              <SelectItem value="all">All Flows</SelectItem>
+              <SelectItem value="CNR">🔄 CNR Only</SelectItem>
+              <SelectItem value="PR">📦 PR Only</SelectItem>
             </SelectContent>
           </Select>
+
+          <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <SelectTrigger className="w-44 font-semibold">
+              <SelectValue placeholder="Challan Type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              <SelectItem value="Customer Return">Customer Return</SelectItem>
+              <SelectItem value="Warehouse Return">Warehouse Return (GIDA)</SelectItem>
+              <SelectItem value="Supplier Return">Supplier Return</SelectItem>
+              <SelectItem value="Outward Delivery">Outward Delivery</SelectItem>
+            </SelectContent>
+          </Select>
+
           <DateRangeFilter 
             value={dateFilter} 
             onChange={(val, s, e) => {
@@ -491,546 +585,379 @@ export default function DeliveryChallanPage() {
             <thead className="bg-slate-50 border-b">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Challan #</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Return Source → Destination</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Item & Serial / IMEI</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Qty</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Reason / Vehicle</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Date</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Status</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Origin & Destination</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Item & Serial / Defect</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Qty / Value</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Vehicle & Driver</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Flow Mode</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Approval</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {loading ? (
-                <tr>
-                  <td colSpan={8} className="py-12 text-center text-muted-foreground">
-                    Loading...
-                  </td>
-                </tr>
+                <tr><td colSpan={8} className="p-0"><TableShimmer rows={7} cols={8} /></td></tr>
               ) : filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="py-12 text-center text-muted-foreground">
-                    No Delivery Challans found
-                  </td>
-                </tr>
+                <tr><td colSpan={8} className="py-12 text-center text-muted-foreground">No records found.</td></tr>
               ) : (
-                filtered.map((c) => (
-                  <tr key={c._id || c.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-3 font-mono font-bold text-[#3F63AD] cursor-pointer" onClick={() => openPrintSheet(c)}>
-                      {c.challanNo}
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="font-semibold text-foreground">{c.sourceParty}</p>
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        → <span className="font-medium text-slate-700">{c.destinationParty}</span>
-                      </p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="font-bold text-foreground">{c.itemName}</p>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        {c.vpCode && (
-                          <span className="text-[10px] font-mono font-bold text-[#3F63AD] bg-blue-50 px-1 rounded">VP: {c.vpCode}</span>
+                filtered.map((c) => {
+                  const isCNR = (c.flowType || "CNR") === "CNR";
+                  const isApproved = c.approvalStatus === "approved";
+                  return (
+                    <tr key={c._id || c.challanNo} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-3 font-mono font-bold text-[#3F63AD] cursor-pointer" onClick={() => openPrintSheet(c)}>
+                        {c.challanNo}
+                        <span className="block text-[10px] text-slate-400 font-normal">{formatDate(c.date)}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="font-bold text-slate-900">{c.sourceParty}</p>
+                        <p className="text-[11px] text-[#30539C] font-semibold mt-0.5">→ {c.destinationParty}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="font-bold text-slate-900">{c.itemName}</p>
+                        <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                          {c.vpCode && <span className="text-[10px] font-mono font-bold text-[#3F63AD] bg-blue-50 px-1 rounded">VP: {c.vpCode}</span>}
+                          {c.serialImei && <span className="text-[10px] font-mono text-slate-600 bg-slate-100 px-1 rounded">SN: {c.serialImei}</span>}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className="font-bold text-slate-900">{c.quantity} {c.unit}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-xs font-mono font-bold text-slate-800 uppercase">{c.vehicleNo || "GIDA Van"}</p>
+                        <p className="text-[11px] text-slate-500">{c.transporterName}</p>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <div className="inline-flex items-center p-0.5 rounded-lg bg-slate-100 border border-slate-200">
+                          <button
+                            type="button"
+                            onClick={() => !isApproved && handleToggleFlowType(c)}
+                            disabled={isApproved}
+                            className={cn("px-2 py-1 rounded-md text-xs font-extrabold", isCNR ? "bg-amber-500 text-white" : "text-slate-500")}
+                          >
+                            CNR
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => !isApproved && handleToggleFlowType(c)}
+                            disabled={isApproved}
+                            className={cn("px-2 py-1 rounded-md text-xs font-extrabold", !isCNR ? "bg-[#30539C] text-white" : "text-slate-500")}
+                          >
+                            PR
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {isApproved ? (
+                          <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 font-bold text-[10px]">✅ Approved</Badge>
+                        ) : (
+                          <Badge className="bg-amber-100 text-amber-800 border-amber-300 font-bold text-[10px]">⏳ Pending</Badge>
                         )}
-                        {c.serialImei && (
-                          <span className="text-[10px] font-mono text-slate-500">SN: {c.serialImei}</span>
-                        )}
-                        {c.invoiceNumber && (
-                          <span className="text-[10px] font-mono text-emerald-700 bg-emerald-50 px-1 rounded">Bill: #{c.invoiceNumber}</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-center font-bold">
-                      {c.quantity} {c.unit}
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="text-xs font-medium text-foreground">{c.reason}</p>
-                      <p className="text-[11px] text-muted-foreground font-mono">{c.vehicleNo || "—"} ({c.driverName || "Driver"})</p>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground text-xs">{formatDate(c.date)}</td>
-                    <td className="px-4 py-3 text-center">
-                      <Badge variant={STATUS_MAP[c.status as keyof typeof STATUS_MAP]?.variant || "secondary"}>{STATUS_MAP[c.status as keyof typeof STATUS_MAP]?.label || c.status}</Badge>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
+                      </td>
+                      <td className="px-4 py-3 text-center">
                         <Button variant="outline" size="sm" onClick={() => openPrintSheet(c)} className="h-7 px-2 text-[11px] font-semibold border-[#3F63AD]/40 text-[#3F63AD] hover:bg-[#3F63AD] hover:text-white">
                           <Printer className="w-3 h-3 mr-1" /> Sheet
                         </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          className="h-7 w-7 p-0 border-emerald-500 text-emerald-600 hover:bg-emerald-500 hover:text-white"
-                          onClick={() => {
-                            const phone = (c.sourcePhone || c.customerPhone || "").replace(/\D/g, "");
-                            const ph = phone.length === 10 ? `91${phone}` : phone;
-                            const msg = encodeURIComponent(
-                              `*VALUE PLUS / ASHOKA ENTERPRISES*\nDelivery & Return Challan #${c.challanNo}\nType: ${c.type}\nItem: ${c.itemName}\nSerial/IMEI: ${c.serialImei || 'N/A'}\nQty: ${c.quantity} ${c.unit}\nDestination: ${c.destinationParty}\nStatus: ${c.status}\n\nThank you!`
-                            );
-                            window.open(ph ? `https://wa.me/${ph}?text=${msg}` : `https://wa.me/?text=${msg}`, "_blank");
-                          }}
-                          title="Share on WhatsApp"
-                        >
-                          <MessageCircle className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* PREMIUM LANDSCAPE ADD DELIVERY CHALLAN MODAL */}
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto p-0 rounded-2xl shadow-2xl border border-slate-200">
-          {/* Header */}
+        <DialogContent className="max-w-4xl max-h-[94vh] overflow-y-auto p-0 rounded-2xl shadow-2xl border border-slate-200">
           <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-6 rounded-t-2xl flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/20">
                 <Truck className="w-6 h-6 text-[#76C043]" />
               </div>
               <div>
-                <h3 className="text-xl font-bold tracking-tight flex items-center gap-2">
-                  New Delivery / Return Challan
-                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#76C043]/20 text-[#76C043] border border-[#76C043]/30 font-mono font-bold">
-                    RETURN DISPATCH NOTE
-                  </span>
-                </h3>
-                <p className="text-xs text-slate-300 mt-0.5">
-                  M/S ASHOKA ENTERPRISES / VALUE PLUS • Goods dispatch note for customer returns, warranty claims, or inter-warehouse transport
-                </p>
+                <h3 className="text-xl font-bold tracking-tight">Issue Delivery & Return Challan</h3>
+                <p className="text-xs text-slate-300 mt-0.5">GIDA Hub Logistics & Replacement Transit.</p>
               </div>
+            </div>
+            <div className="flex items-center gap-2 bg-white/10 p-1.5 rounded-xl border border-white/15">
+              <button onClick={() => setFormData({ ...formData, flowType: "CNR" })} className={cn("px-3 py-1 rounded-lg text-xs font-black", formData.flowType === "CNR" ? "bg-amber-500 text-white" : "text-slate-300")}>CNR</button>
+              <button onClick={() => setFormData({ ...formData, flowType: "PR" })} className={cn("px-3 py-1 rounded-lg text-xs font-black", formData.flowType === "PR" ? "bg-[#30539C] text-white" : "text-slate-300")}>PR</button>
             </div>
           </div>
-
-          {/* Form Content */}
-          <div className="p-6 space-y-5 bg-slate-50/70">
-            {/* ─── QUICK LOOKUP BY BILL / INVOICE NUMBER (REQ) ─── */}
-            <div className="bg-gradient-to-r from-blue-50/80 via-white to-blue-50/80 p-4 rounded-xl border border-blue-200/80 shadow-sm relative">
-              <div className="flex items-center justify-between mb-2">
-                <Label className="text-xs font-extrabold uppercase tracking-wider text-[#3F63AD] flex items-center gap-1.5">
-                  <Search className="w-3.5 h-3.5" /> Quick Auto-Fill: Search by Bill / Invoice Number
-                </Label>
-                {formData.invoiceNumber && (
-                  <Badge variant="outline" className="text-[10px] font-mono bg-blue-100 text-[#3F63AD] border-blue-300">
-                    Linked to: {formData.invoiceNumber}
-                  </Badge>
-                )}
-              </div>
-              
-              <div className="relative">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <Input 
-                    placeholder="Enter Invoice Number e.g. INV-2026-0001 or Customer Name..."
-                    value={billSearchQuery}
-                    onChange={(e) => {
-                      setBillSearchQuery(e.target.value);
-                      setShowBillSuggestions(true);
-                    }}
-                    onFocus={() => setShowBillSuggestions(true)}
-                    className="pl-9 pr-8 bg-white border-blue-300 font-mono text-xs font-bold text-slate-800 shadow-inner"
-                  />
-                  {billSearchQuery && (
-                    <button 
-                      onClick={() => { setBillSearchQuery(""); setFormData({ ...formData, invoiceNumber: "" }); }}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-
-                {/* Invoices Dropdown Autocomplete */}
-                {showBillSuggestions && invoices.length > 0 && billSearchQuery.trim() && (
-                  <div className="absolute left-0 top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-2xl z-50 overflow-hidden max-h-[220px] flex flex-col">
-                    <div className="p-2 bg-slate-100 text-[11px] font-semibold text-slate-600 border-b flex justify-between">
-                      <span>Matching Invoices</span>
-                      <span>Click to Auto-Fill Challan</span>
-                    </div>
-                    <div className="overflow-y-auto divide-y divide-slate-100">
-                      {invoices
-                        .filter((inv: any) => 
-                          (inv.invoiceNumber && inv.invoiceNumber.toLowerCase().includes(billSearchQuery.toLowerCase())) ||
-                          (inv.customerName && inv.customerName.toLowerCase().includes(billSearchQuery.toLowerCase())) ||
-                          (inv.customerPhone && inv.customerPhone.includes(billSearchQuery))
-                        )
-                        .slice(0, 6)
-                        .map((inv: any) => (
-                          <div
-                            key={inv._id || inv.invoiceNumber}
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              handleSelectInvoice(inv);
-                            }}
-                            className="p-2.5 hover:bg-blue-50/80 cursor-pointer flex items-center justify-between transition-colors text-xs"
-                          >
-                            <div>
-                              <span className="font-bold text-[#3F63AD] font-mono">{inv.invoiceNumber}</span>
-                              <span className="text-slate-700 font-medium ml-2">{inv.customerName}</span>
-                              <span className="text-[10px] text-slate-400 block">{inv.customerPhone} · {formatDate(inv.date)}</span>
-                            </div>
-                            <div className="text-right">
-                              <span className="font-mono font-bold text-slate-900">₹{Number(inv.total || 0).toLocaleString("en-IN")}</span>
-                              <span className="text-[10px] text-emerald-600 block font-semibold">{inv.items?.length || 0} Items</span>
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* ─── SECTION 1: PARTY PARTICULARS (CUSTOMER / SUPPLIER / WAREHOUSE / CLIENT) ─── */}
+          <div className="p-6 space-y-6 bg-slate-50/70">
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-              <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#3F63AD] flex items-center gap-2">
-                <Building className="w-4 h-4 text-[#3F63AD]" /> 1. Return Origin & Destination Parties
-              </h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Return Category *</Label>
-                  <Select value={formData.type} onValueChange={(v) => setFormData({ ...formData, type: v })}>
-                    <SelectTrigger className="bg-slate-50 border-slate-300 focus:ring-2 focus:ring-[#3F63AD]/20 font-semibold"><SelectValue /></SelectTrigger>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-3">
+                <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#3F63AD] flex items-center gap-2">
+                  <UserCheck className="w-4 h-4 text-[#3F63AD]" /> 1. Challan Category & Party Information
+                </h4>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-500">Select Mode:</span>
+                  <Select value={formData.type} onValueChange={(v: any) => handleCategoryChange(v)}>
+                    <SelectTrigger className="h-8 text-xs bg-slate-50 border-slate-300 font-bold w-56"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Customer Return">Customer Return (Warranty/Defect)</SelectItem>
-                      <SelectItem value="Warehouse Return">Warehouse Return (Branch to Hub)</SelectItem>
-                      <SelectItem value="Supplier Return">Supplier Return (Brand Return)</SelectItem>
-                      <SelectItem value="Client Return">Client Return (Exchange/Wrong SKU)</SelectItem>
+                      <SelectItem value="Customer Return">🔄 Customer Return (Sold Items)</SelectItem>
+                      <SelectItem value="Warehouse Return">🏢 Warehouse Return (GIDA Central Hub)</SelectItem>
+                      <SelectItem value="Supplier Return">🏭 Supplier Return (Purchased Items)</SelectItem>
+                      <SelectItem value="Outward Delivery">🚚 Outward Direct Delivery</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">
-                    {formData.type === "Supplier Return" 
-                      ? "Supplier Mobile Number *" 
-                      : formData.type === "Warehouse Return" 
-                      ? "Source Warehouse Mobile *" 
-                      : "Customer Mobile Number *"}
-                  </Label>
-                  <Input
-                    type="text"
-                    maxLength={10}
-                    placeholder="Enter 10-digit mobile number"
-                    value={formData.sourcePhone}
-                    onChange={(e) => setFormData({ ...formData, sourcePhone: e.target.value.replace(/\D/g, '') })}
-                    className="bg-slate-50 border-slate-300 font-mono font-bold text-slate-900"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">
-                    {formData.type === "Supplier Return" 
-                      ? "Supplier Name *" 
-                      : formData.type === "Warehouse Return" 
-                      ? "Source Warehouse Name *" 
-                      : "Customer Name *"}
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      placeholder={
-                        formData.type === "Supplier Return"
-                          ? "e.g. Apple India / Havells"
-                          : formData.type === "Warehouse Return"
-                          ? "e.g. Noida Hub / Gorakhpur Store"
-                          : "e.g. Ajay Tiwari / Mohd Dilshad"
-                      }
-                      value={formData.sourceParty}
-                      onChange={(e) => {
-                        setFormData({ ...formData, sourceParty: e.target.value });
-                        setShowPartySuggestions(true);
-                      }}
-                      onFocus={() => setShowPartySuggestions(true)}
-                      className="bg-slate-50 border-slate-300 font-bold text-slate-900"
-                    />
-
-                    {/* Customer Autocomplete Dropdown */}
-                    {showPartySuggestions && formData.sourceParty.trim() && customers.length > 0 && formData.type === "Customer Return" && (
-                      <div className="absolute left-0 top-full mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-xl z-50 overflow-hidden max-h-[180px] overflow-y-auto">
-                        {customers
-                          .filter((c: any) => c.name?.toLowerCase().includes(formData.sourceParty.toLowerCase()) || c.phone?.includes(formData.sourceParty))
-                          .slice(0, 5)
-                          .map((c: any) => (
-                            <div
-                              key={c._id || c.name}
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                setFormData({
-                                  ...formData,
-                                  sourceParty: c.name,
-                                  sourcePhone: (c.phone || "").replace(/\D/g, ''),
-                                  sourceAddress: c.address || c.city || "",
-                                });
-                                setShowPartySuggestions(false);
-                              }}
-                              className="p-2 hover:bg-slate-50 cursor-pointer flex items-center justify-between text-xs"
-                            >
-                              <span className="font-semibold text-slate-800">{c.name}</span>
-                              <span className="font-mono text-slate-500 text-[11px]">{c.phone}</span>
-                            </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {formData.type === "Customer Return" && (
+                  <>
+                    <div className="space-y-1.5 relative">
+                      <Label className="text-xs font-bold text-slate-800">Select / Search Customer *</Label>
+                      <Input value={formData.sourceParty} onChange={(e) => { setFormData({ ...formData, sourceParty: e.target.value }); setShowPartyDropdown(true); }} className="bg-slate-50 border-slate-300 font-bold" />
+                      {showPartyDropdown && customers.length > 0 && formData.sourceParty.trim() && (
+                        <div className="absolute left-0 top-16 w-full bg-white border-2 border-[#3F63AD] shadow-2xl rounded-xl z-[9999] max-h-48 overflow-y-auto divide-y divide-slate-100 p-1">
+                          {customers.filter((c: any) => c.name?.toLowerCase().includes(formData.sourceParty.toLowerCase())).slice(0, 6).map((c: any, idx: number) => (
+                            <div key={idx} onMouseDown={() => handleSelectCustomer(c)} className="p-2 hover:bg-blue-50 cursor-pointer text-xs font-bold">{c.name}</div>
                           ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-1.5 md:col-span-3">
-                  <Label className="text-xs font-semibold text-slate-700">Destination (Returned Back To Company/Base) *</Label>
-                  <Input
-                    placeholder="e.g. VALUEPLUS Head Warehouse, Gorakhpur"
-                    value={formData.destinationParty}
-                    onChange={(e) => setFormData({ ...formData, destinationParty: e.target.value })}
-                    className="bg-slate-50 border-slate-300 font-semibold"
-                  />
-                </div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-bold text-slate-800">10-Digit Mobile Number *</Label>
+                      <Input maxLength={10} value={formData.sourcePhone} onChange={(e) => setFormData({ ...formData, sourcePhone: e.target.value.replace(/\D/g, "") })} className="bg-slate-50 border-slate-300 font-mono font-bold" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold text-slate-700">Destination (Warehouse Hub)</Label>
+                      <Input value={formData.destinationParty} readOnly className="bg-slate-100 border-slate-300 font-medium text-xs text-slate-700" />
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
-            {/* ─── SECTION 2: PAST PURCHASED PRODUCTS LIST (REQ: AUTO-LIST PRODUCT PURCHASED BY CUSTOMER/PARTY) ─── */}
-            {partyPurchasedItems.length > 0 && (
-              <div className="bg-emerald-50/50 p-4 rounded-xl border border-emerald-200 shadow-sm space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-extrabold uppercase tracking-wider text-emerald-800 flex items-center gap-2">
-                    <PackageCheck className="w-4 h-4 text-emerald-600" />
-                    Previously Purchased Products by {formData.sourceParty || "Customer"} ({partyPurchasedItems.length} found)
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-3">
+                <div className="flex items-center gap-2">
+                  <PackageCheck className="w-4 h-4 text-[#3F63AD]" />
+                  <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#3F63AD]">
+                    2. Available Units for Selection
                   </h4>
-                  <span className="text-[11px] text-emerald-700 font-medium">Click on any item to use for Challan</span>
                 </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <Input placeholder="Filter item / serial..." value={itemSearchText} onChange={(e) => setItemSearchText(e.target.value)} className="h-7 text-xs pl-8 w-40 bg-slate-50 border-slate-300" />
+                  </div>
+                </div>
+              </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 max-h-[220px] overflow-y-auto p-1">
-                  {partyPurchasedItems.map((prod: any) => (
-                    <div 
-                      key={prod.uniqueId}
-                      onClick={() => handleSelectPurchasedProduct(prod)}
-                      className={cn(
-                        "p-3 rounded-lg border text-xs cursor-pointer transition-all flex flex-col justify-between group",
-                        formData.serialImei === prod.serialImei && formData.itemName === prod.itemName
-                          ? "bg-emerald-100/80 border-emerald-400 ring-2 ring-emerald-300"
-                          : "bg-white border-slate-200 hover:border-emerald-400 hover:shadow-md"
-                      )}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="font-bold text-slate-900 group-hover:text-emerald-800">{prod.itemName}</p>
-                          <div className="flex items-center gap-2 mt-1">
-                            {prod.vpCode && (
-                              <Badge variant="outline" className="text-[9px] font-mono px-1 py-0 bg-slate-50">
-                                VP: {prod.vpCode}
-                              </Badge>
-                            )}
-                            {prod.serialImei && (
-                              <span className="text-[10px] font-mono font-bold text-blue-700">
-                                SN/IMEI: {prod.serialImei}
-                              </span>
-                            )}
-                          </div>
+              {filteredContextItems.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-56 overflow-y-auto pr-1">
+                  {filteredContextItems.map((prod: any) => {
+                    const isSelected = selectedProductUniqueId === prod.uniqueId;
+                    return (
+                      <div key={prod.uniqueId} onClick={() => handleSelectProduct(prod)} className={cn("p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-2", isSelected ? "bg-emerald-50 border-emerald-500 ring-2 ring-emerald-400" : "bg-slate-50/70 border-slate-200")}>
+                        <div className="space-y-1 min-w-0">
+                          <p className="font-bold text-xs text-slate-900 truncate">{prod.itemName}</p>
+                          {prod.serialImei && <p className="text-[10px] text-amber-900 font-mono font-bold">SN: {prod.serialImei}</p>}
                         </div>
-                        <Button 
-                          size="sm" 
-                          variant="ghost" 
-                          className="h-6 px-2 text-[10px] font-bold text-emerald-700 bg-emerald-100/50 group-hover:bg-emerald-600 group-hover:text-white"
-                        >
-                          + Select
+                        <Button size="sm" className={cn("h-6 px-2.5 text-[10px] font-bold rounded-lg", isSelected ? "bg-emerald-600 text-white" : "bg-[#3F63AD] text-white")}>
+                          {isSelected ? "✅ Selected" : "Select Unit"}
                         </Button>
                       </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="p-6 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-center">
+                  <p className="text-xs text-slate-600 font-semibold">No products found. Please refine selection.</p>
+                </div>
+              )}
 
-                      <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
-                        <span>Bill: <b className="font-mono text-slate-700">{prod.invoiceNumber}</b> ({formatDate(prod.invoiceDate)})</span>
-                        <span className="font-semibold text-slate-800 font-mono">₹{Number(prod.amount || 0).toLocaleString("en-IN")}</span>
-                      </div>
+              {/* SELECTED ITEM DETAILS CARD & DEFECT INPUT */}
+              {formData.itemName && (
+                <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 p-4 rounded-xl border-2 border-emerald-400 shadow-sm space-y-3 mt-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                      <span className="text-xs font-black uppercase tracking-wider text-emerald-900">
+                        Selected Unit for Delivery Challan
+                      </span>
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
+                    <Badge className="bg-emerald-700 text-white font-mono font-bold text-xs">
+                      {formData.quantity} {formData.unit} · {formData.flowType} Mode
+                    </Badge>
+                  </div>
 
-            {/* ─── SECTION 3: PRODUCT & SERIAL / IMEI PARTICULARS ─── */}
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-              <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#3F63AD] flex items-center gap-2">
-                <FileCheck className="w-4 h-4 text-[#3F63AD]" /> 2. Product & Serial / IMEI Particulars
-              </h4>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="space-y-1.5 md:col-span-2 relative">
-                  <Label className="text-xs font-semibold text-slate-700">Product Name & Model *</Label>
-                  <Input
-                    placeholder="Type to search products..."
-                    value={formData.itemName}
-                    onChange={(e) => {
-                      setFormData({ ...formData, itemName: e.target.value });
-                      setShowItemSuggestions(true);
-                    }}
-                    onFocus={() => setShowItemSuggestions(true)}
-                    className="bg-slate-50 border-slate-300 font-bold text-slate-900"
-                  />
-                  {showItemSuggestions && items.length > 0 && (
-                    <div className="absolute left-0 top-full mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-xl z-50 overflow-hidden max-h-[220px] flex flex-col">
-                      <div className="p-2 bg-slate-100 text-xs font-semibold text-slate-600 border-b">
-                        Catalog Items (Select Item)
-                      </div>
-                      <div className="overflow-y-auto p-1 space-y-1">
-                        {items
-                          .filter((prod) => prod.name.toLowerCase().includes((formData.itemName || "").toLowerCase()) || (prod.vpCode && prod.vpCode.toLowerCase().includes((formData.itemName || "").toLowerCase())))
-                          .map((prod, pIdx) => (
-                            <div
-                              key={pIdx}
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                setFormData({
-                                  ...formData,
-                                  itemName: prod.name,
-                                  vpCode: prod.vpCode || prod.code || "",
-                                  hsn: prod.hsnCode || "8517"
-                                });
-                                setShowItemSuggestions(false);
-                              }}
-                              className="p-2 hover:bg-blue-50 cursor-pointer flex items-center justify-between transition-colors rounded-md text-xs"
-                            >
-                              <div className="flex flex-col">
-                                <span className="font-bold text-slate-800">{prod.name}</span>
-                                <span className="text-[10px] text-slate-500 font-mono">VP Code: {prod.vpCode || prod.code}</span>
-                              </div>
-                              <span className="text-[10px] font-mono text-[#3F63AD]">HSN: {prod.hsnCode || "8517"}</span>
-                            </div>
-                          ))}
-                      </div>
+                  <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+                    <div className="space-y-1 md:col-span-3">
+                      <Label className="text-[11px] font-bold text-slate-700">Product / Model Name *</Label>
+                      <Input
+                        value={formData.itemName}
+                        onChange={(e) => setFormData({ ...formData, itemName: e.target.value })}
+                        className="bg-white border-emerald-300 font-bold text-xs text-slate-900"
+                      />
                     </div>
-                  )}
-                </div>
 
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">VP Code</Label>
-                  <Input
-                    placeholder="VP-ELEC-001"
-                    value={formData.vpCode}
-                    onChange={(e) => setFormData({ ...formData, vpCode: e.target.value })}
-                    className="bg-slate-50 border-slate-300 font-mono text-xs font-bold text-[#3F63AD]"
-                  />
-                </div>
+                    <div className="space-y-1 md:col-span-1">
+                      <Label className="text-[11px] font-semibold text-slate-700">VP Code</Label>
+                      <Input
+                        value={formData.vpCode}
+                        onChange={(e) => setFormData({ ...formData, vpCode: e.target.value })}
+                        className="bg-white border-emerald-300 font-mono text-xs font-bold uppercase"
+                      />
+                    </div>
 
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">HSN Code</Label>
-                  <Input
-                    placeholder="8517"
-                    value={formData.hsn}
-                    onChange={(e) => setFormData({ ...formData, hsn: e.target.value })}
-                    className="bg-slate-50 border-slate-300 font-mono"
-                  />
-                </div>
+                    <div className="space-y-1 md:col-span-1">
+                      <Label className="text-[11px] font-semibold text-slate-700">HSN Code</Label>
+                      <Input
+                        value={formData.hsn}
+                        onChange={(e) => setFormData({ ...formData, hsn: e.target.value })}
+                        className="bg-white border-emerald-300 font-mono text-xs"
+                      />
+                    </div>
 
-                <div className="space-y-1.5 md:col-span-2">
-                  <Label className="text-xs font-semibold text-slate-700">Serial / IMEI No.</Label>
-                  <Input
-                    placeholder="IMEI 359182049182341..."
-                    value={formData.serialImei}
-                    onChange={(e) => setFormData({ ...formData, serialImei: e.target.value })}
-                    className="bg-slate-50 border-slate-300 font-mono font-bold text-slate-900"
-                  />
-                </div>
+                    <div className="space-y-1 md:col-span-1">
+                      <Label className="text-[11px] font-semibold text-slate-700">Quantity</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={formData.quantity}
+                        onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                        className="bg-white border-emerald-300 font-bold text-xs"
+                      />
+                    </div>
 
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Quantity</Label>
-                  <Input
-                    type="number"
-                    value={formData.quantity}
-                    onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
-                    className="bg-slate-50 border-slate-300 font-bold"
-                  />
-                </div>
+                    <div className="space-y-1 md:col-span-2">
+                      <Label className="text-[11px] font-bold text-slate-800">Serial / IMEI Number</Label>
+                      <Input
+                        placeholder="SN / IMEI..."
+                        value={formData.serialImei}
+                        onChange={(e) => setFormData({ ...formData, serialImei: e.target.value })}
+                        className="bg-white border-emerald-300 font-mono text-xs font-bold uppercase"
+                      />
+                    </div>
 
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Unit</Label>
-                  <Select value={formData.unit} onValueChange={(v) => setFormData({ ...formData, unit: v })}>
-                    <SelectTrigger className="bg-slate-50 border-slate-300"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="PCS">PCS</SelectItem>
-                      <SelectItem value="BOX">BOX</SelectItem>
-                      <SelectItem value="SET">SET</SelectItem>
-                      <SelectItem value="PR">PR</SelectItem>
-                      <SelectItem value="UNT">UNT</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                    <div className="space-y-1 md:col-span-2">
+                      <Label className="text-[11px] font-semibold text-slate-700">Estimated Value / Price (₹)</Label>
+                      <Input
+                        type="number"
+                        placeholder="Estimated item value"
+                        value={formData.itemPrice}
+                        onChange={(e) => setFormData({ ...formData, itemPrice: e.target.value })}
+                        className="bg-white border-emerald-300 font-mono text-xs font-bold text-emerald-800"
+                      />
+                    </div>
 
-                <div className="space-y-1.5 md:col-span-4">
-                  <Label className="text-xs font-semibold text-slate-700">Return Reason / Fault Description</Label>
-                  <Input
-                    placeholder="Display flickering / Warranty return claim / Excess stock return"
-                    value={formData.reason}
-                    onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
-                    className="bg-slate-50 border-slate-300 font-medium"
-                  />
+                    <div className="space-y-1 md:col-span-2">
+                      <Label className="text-[11px] font-bold text-rose-700">Defect Description / Fault Notes</Label>
+                      <Input
+                        placeholder="e.g. Display flickering / Dead on Arrival"
+                        value={formData.defectDescription}
+                        onChange={(e) => setFormData({ ...formData, defectDescription: e.target.value })}
+                        className="bg-rose-50/70 border-rose-300 text-xs font-medium text-rose-900"
+                      />
+                    </div>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
-            {/* ─── SECTION 4: TRANSPORT & VEHICLE DETAILS ─── */}
+            {/* ─── SECTION 3: VEHICLE & TRANSPORTATION LOGISTICS ─── */}
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
               <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#3F63AD] flex items-center gap-2">
-                <Truck className="w-4 h-4 text-[#3F63AD]" /> 3. Vehicle & Transport Details
+                <Truck className="w-4 h-4 text-[#3F63AD]" /> 3. Vehicle & Transportation Logistics (GIDA Route)
               </h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Vehicle Reg Number</Label>
-                  <Input
-                    placeholder="UP-53-AT-4921"
-                    value={formData.vehicleNo}
-                    onChange={(e) => setFormData({ ...formData, vehicleNo: e.target.value })}
-                    className="bg-slate-50 border-slate-300 font-mono uppercase"
+                  <Label className="text-xs font-bold text-slate-800">Vehicle Reg Number *</Label>
+                  <Input 
+                    placeholder="e.g. UP-53-ET-8819" 
+                    value={formData.vehicleNo} 
+                    onChange={(e) => setFormData({ ...formData, vehicleNo: e.target.value.toUpperCase() })} 
+                    className="bg-slate-50 border-slate-300 font-mono uppercase font-bold" 
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Driver / Courier Person</Label>
-                  <Input
-                    placeholder="Driver Name"
-                    value={formData.driverName}
-                    onChange={(e) => setFormData({ ...formData, driverName: e.target.value })}
-                    className="bg-slate-50 border-slate-300"
+                  <Label className="text-xs font-semibold text-slate-700">Transporter / Agency Name</Label>
+                  <Input 
+                    placeholder="Value Plus In-House Van" 
+                    value={formData.transporterName} 
+                    onChange={(e) => setFormData({ ...formData, transporterName: e.target.value })} 
+                    className="bg-slate-50 border-slate-300 text-xs" 
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Driver Phone Contact</Label>
-                  <Input
-                    placeholder="+91 98765 43210"
-                    value={formData.driverPhone}
-                    onChange={(e) => setFormData({ ...formData, driverPhone: e.target.value })}
-                    className="bg-slate-50 border-slate-300 font-mono"
+                  <Label className="text-xs font-semibold text-slate-700">Driver / Dispatcher Name</Label>
+                  <Input 
+                    placeholder="Amit Singh" 
+                    value={formData.driverName} 
+                    onChange={(e) => setFormData({ ...formData, driverName: e.target.value })} 
+                    className="bg-slate-50 border-slate-300 text-xs" 
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">Driver Phone Number</Label>
+                  <Input 
+                    placeholder="9140860604" 
+                    value={formData.driverPhone} 
+                    onChange={(e) => setFormData({ ...formData, driverPhone: e.target.value })} 
+                    className="bg-slate-50 border-slate-300 font-mono" 
+                  />
+                </div>
+                <div className="space-y-1.5 md:col-span-2">
+                  <Label className="text-xs font-semibold text-slate-700">E-Way Bill / LR No. (Optional)</Label>
+                  <Input 
+                    placeholder="EWB-94829103984" 
+                    value={formData.ewayBillNo} 
+                    onChange={(e) => setFormData({ ...formData, ewayBillNo: e.target.value })} 
+                    className="bg-slate-50 border-slate-300 font-mono text-xs" 
+                  />
+                </div>
+                <div className="space-y-1.5 md:col-span-2">
+                  <Label className="text-xs font-semibold text-slate-700">Reason for Dispatch / Transit</Label>
+                  <Input 
+                    placeholder="Transit to GIDA Warehouse Hub" 
+                    value={formData.reason} 
+                    onChange={(e) => setFormData({ ...formData, reason: e.target.value })} 
+                    className="bg-slate-50 border-slate-300 text-xs" 
                   />
                 </div>
               </div>
             </div>
           </div>
-
           <div className="bg-slate-100 px-6 py-4 rounded-b-2xl border-t border-slate-200 flex items-center justify-between">
-            <span className="text-xs text-slate-500 font-medium">
-              * Delivery Challan contains no commercial sale value and is issued for return/transit only.
-            </span>
+            <span className="text-xs text-slate-500 font-medium">* Non-commercial transit document.</span>
             <div className="flex items-center gap-3">
               <Button variant="outline" onClick={() => setIsFormOpen(false)} className="px-5">
                 Cancel
               </Button>
               <Button onClick={handleSave} className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white px-6 font-bold shadow-lg shadow-[#3F63AD]/25">
-                <CheckCircle2 className="w-4 h-4 mr-1.5" /> Issue Delivery Challan
+                <CheckCircle2 className="w-4 h-4 mr-1.5" /> Issue Delivery Challan ({formData.flowType})
               </Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* PRINTABLE DELIVERY CHALLAN INVOICE / SHEET MODAL */}
+      {/* ─── OFFICIAL INVOICE-STYLE PRINTABLE DELIVERY CHALLAN SHEET MODAL ─── */}
       <Dialog open={isPrintOpen} onOpenChange={setIsPrintOpen}>
-        <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto p-0 rounded-2xl border-none">
+        <DialogContent className="max-w-4xl max-h-[94vh] overflow-y-auto p-0 rounded-2xl border-none shadow-2xl">
           {selectedChallan && (
-            <div className="bg-slate-100 p-4">
-              {/* TOP ACTION BAR */}
-              <div className="flex items-center justify-between bg-white px-6 py-3 rounded-xl shadow-sm mb-4 border no-print">
+            <div className="bg-slate-200 p-4 md:p-6 print:p-0 print:bg-white text-slate-900 font-sans">
+              
+              {/* TOP ACTION BAR (HIDDEN IN PRINT) */}
+              <div className="max-w-[860px] mx-auto mb-4 bg-white p-3.5 rounded-xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-3 print:hidden">
                 <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-[#76C043]" />
-                  <span className="font-bold text-sm text-slate-800">
-                    Delivery Challan Sheet — {selectedChallan.challanNo}
+                  <span className="text-xs font-mono font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-md border">
+                    Challan No: <span className="text-[#30539C] font-black">{selectedChallan.challanNo}</span>
                   </span>
+                  <Badge className={cn("text-xs font-bold font-mono px-2 py-0.5", selectedChallan.flowType === "PR" ? "bg-[#30539C] text-white" : "bg-amber-500 text-white")}>
+                    {selectedChallan.flowType || "CNR"} Mode
+                  </Badge>
+                  {selectedChallan.approvalStatus === "approved" && (
+                    <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 font-bold text-xs">
+                      ✅ Approved
+                    </Badge>
+                  )}
                 </div>
+
                 <div className="flex items-center gap-2">
                   <Button 
                     variant="outline" 
@@ -1039,163 +966,199 @@ export default function DeliveryChallanPage() {
                       const phone = (selectedChallan.sourcePhone || selectedChallan.customerPhone || "").replace(/\D/g, "");
                       const ph = phone.length === 10 ? `91${phone}` : phone;
                       const msg = encodeURIComponent(
-                        `*VALUE PLUS / ASHOKA ENTERPRISES*\nDelivery & Return Challan #${selectedChallan.challanNo}\nType: ${selectedChallan.type}\nItem: ${selectedChallan.itemName} ${selectedChallan.vpCode ? `(VP: ${selectedChallan.vpCode})` : ''}\nSerial/IMEI: ${selectedChallan.serialImei || 'N/A'}\nQty: ${selectedChallan.quantity} ${selectedChallan.unit}\nDestination: ${selectedChallan.destinationParty}\nStatus: ${selectedChallan.status}\n\nThank you for choosing Value Plus! For support call 9140860604.`
+                        `*VALUE PLUS / ASHOKA ENTERPRISES*\nDelivery & Return Challan #${selectedChallan.challanNo}\nFlow Mode: ${selectedChallan.flowType || 'CNR'}\nItem: ${selectedChallan.itemName}\nSerial: ${selectedChallan.serialImei || 'N/A'}\nQty: ${selectedChallan.quantity} ${selectedChallan.unit}\nDestination: ${selectedChallan.destinationParty}\nStatus: ${selectedChallan.status}\n\nThank you!`
                       );
                       window.open(ph ? `https://wa.me/${ph}?text=${msg}` : `https://wa.me/?text=${msg}`, "_blank");
                     }} 
-                    className="gap-1.5 text-emerald-600 border-emerald-200 bg-emerald-50 hover:bg-emerald-600 hover:text-white"
+                    className="gap-1.5 text-emerald-600 border-emerald-200 bg-emerald-50 hover:bg-emerald-600 hover:text-white text-xs font-bold"
                   >
                     <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => window.print()} className="gap-1.5">
-                    <Printer className="w-4 h-4" /> Print
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => window.print()} 
+                    className="gap-1.5 border-slate-300 text-slate-800 text-xs font-bold shadow-xs"
+                  >
+                    <Printer className="w-3.5 h-3.5" /> Print Challan
                   </Button>
-                  <Button size="sm" onClick={() => window.print()} className="bg-[#3F63AD] text-white gap-1.5">
-                    <Download className="w-4 h-4" /> Download PDF
+                  <Button 
+                    size="sm" 
+                    onClick={() => window.print()} 
+                    className="bg-[#30539C] hover:bg-[#203a70] text-white text-xs font-bold gap-1.5 shadow-sm"
+                  >
+                    <Download className="w-3.5 h-3.5" /> Download PDF
                   </Button>
                 </div>
               </div>
 
-              {/* PRINTABLE CHALLAN CONTAINER */}
-              <div className="bg-white rounded-xl shadow-xl p-8 max-w-3xl mx-auto border border-slate-200 text-slate-800 relative isolation-isolate overflow-hidden" id="challan-printable-sheet">
+              {/* ─── OFFICIAL VALUE PLUS TAX-INVOICE STYLE DELIVERY CHALLAN CONTAINER ─── */}
+              <div className="max-w-[860px] mx-auto bg-white border border-slate-400 p-8 shadow-xl print:border-none print:shadow-none print:p-0 print:m-0 text-[11px] leading-tight">
                 
-                {/* WATERMARK */}
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-5 -rotate-12 z-0">
-                  <span className="text-8xl font-black uppercase tracking-widest text-[#76C043]">RETURN CHALLAN</span>
+                {/* 1. TOP HEADER: OFFICIAL VALUE PLUS BRANDING */}
+                <div className="flex flex-col items-center justify-center pb-2 border-b border-slate-300">
+                  <div className="flex items-center text-3xl font-black tracking-tight">
+                    <span className="text-[#30539C]">VALUE</span>
+                    <span className="text-[#76C043]">PLUS</span>
+                  </div>
+                  <p className="text-[10px] text-slate-500 tracking-wider mt-0.5">plug into great experience |</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="h-[1px] w-6 bg-slate-400" />
+                    <span className="text-xs font-bold text-slate-800 tracking-wider">— रिश्ता विश्वास का —</span>
+                    <span className="h-[1px] w-6 bg-slate-400" />
+                  </div>
                 </div>
 
-                {/* HEADER WITH SIDEBAR LOGO */}
-                <div className="flex justify-between items-start border-b-2 border-[#3F63AD] pb-5 relative z-10">
-                  <div className="flex items-center gap-4">
-                    {/* VALUEPLUS SIDEBAR BRAND LOGO */}
-                    <div className="bg-[#1B2537] px-4 py-2.5 rounded-xl shadow-md flex flex-col items-center justify-center border border-white/10 flex-shrink-0">
-                      <div className="flex items-center text-[22px] font-black tracking-tight leading-none">
-                        <span className="text-white">VALUE</span>
-                        <span className="text-[#76C043]">PLUS</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 mt-1 opacity-90">
-                        <div className="h-[1px] w-3 bg-white/70" />
-                        <span className="text-white text-[9.5px] font-medium tracking-wide">रिश्ता विश्वास का</span>
-                        <div className="h-[1px] w-3 bg-white/70" />
-                      </div>
-                    </div>
-
-                    <div>
-                      <h2 className="text-xl font-bold text-[#3F63AD]">VALUEPLUS / ASHOKA ENTERPRISES</h2>
-                      <p className="text-xs text-slate-500 font-medium">Authorised Electronics & Home Appliances Showroom</p>
-                      <p className="text-[11px] text-slate-600 mt-1">H. NO. 116, NEAR SHANTI MARRIAGE HOUSE DEORIA ROAD, KUNRAGHAT GORAKHPUR</p>
-                      <p className="text-[11px] text-slate-600">GSTIN: 09ANHPJ7242D1Z2 · Ph: 9140860604</p>
-                    </div>
-                  </div>
-
-                  <div className="text-right">
-                    <span className="inline-block bg-[#1B2537] text-white text-xs font-black px-3 py-1.5 rounded-md tracking-wider uppercase mb-2">
-                      DELIVERY & RETURN CHALLAN
+                {/* 2. TITLE & META BAR (IDENTICAL TO INVOICE) */}
+                <div className="flex items-center justify-between py-2 border-b border-slate-400 font-bold">
+                  <span className="text-xs flex items-center gap-1.5">
+                    DELIVERY & RETURN CHALLAN
+                    <span className="text-[10px] text-slate-600 font-normal">
+                      ({selectedChallan.flowType === "PR" ? "Purchase / Vendor Return Note" : "Customer Replacement / Warranty Transit"})
                     </span>
-                    <table className="text-xs ml-auto">
-                      <tbody>
-                        <tr><td className="text-slate-500 pr-3">Challan No:</td><td className="font-bold font-mono text-[#3F63AD]">{selectedChallan.challanNo}</td></tr>
-                        <tr><td className="text-slate-500 pr-3">Date:</td><td className="font-bold">{formatDate(selectedChallan.date)}</td></tr>
-                        <tr><td className="text-slate-500 pr-3">Return Type:</td><td className="font-bold">{selectedChallan.type}</td></tr>
-                        {selectedChallan.invoiceNumber && (
-                          <tr><td className="text-slate-500 pr-3">Invoice Ref:</td><td className="font-bold font-mono text-blue-700">{selectedChallan.invoiceNumber}</td></tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                  </span>
+                  <span className="text-xs font-mono">
+                    Challan No : <span className="text-black font-black">{selectedChallan.challanNo}</span>
+                  </span>
+                  <span className="text-xs">
+                    Dated : <span className="font-mono">{formatDate(selectedChallan.date)}</span>
+                  </span>
                 </div>
 
-                {/* PARTIES BLOCK */}
-                <div className="grid grid-cols-2 gap-6 my-6 border-b pb-6 text-xs relative z-10">
-                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                    <p className="font-bold text-[#3F63AD] uppercase text-[10px] tracking-wider mb-1.5">DISPATCHED FROM (SOURCE):</p>
-                    <p className="font-bold text-sm text-slate-900">{selectedChallan.sourceParty}</p>
+                {/* 3. CONSIGNOR (ORIGIN) & CONSIGNEE (DESTINATION) DETAILS */}
+                <div className="grid grid-cols-12 border-b border-slate-400 py-2.5 gap-3">
+                  {/* Left: Dispatch Origin / Showroom or Customer */}
+                  <div className="col-span-6 pr-2 border-r border-slate-300 space-y-0.5">
+                    <p className="text-[10px] font-black uppercase text-[#30539C] mb-1">DISPATCH FROM (ORIGIN / SENDER)</p>
+                    <p className="font-bold text-xs text-slate-900">{selectedChallan.sourceParty}</p>
                     {selectedChallan.sourcePhone && (
-                      <p className="text-slate-500 font-mono text-[11px] mt-0.5">Ph: {selectedChallan.sourcePhone}</p>
+                      <p className="text-slate-700 font-mono">Mobile / Phone: <b>{selectedChallan.sourcePhone}</b></p>
                     )}
-                    <p className="text-slate-600 mt-1 leading-relaxed">{selectedChallan.sourceAddress}</p>
+                    <p className="text-slate-600">{selectedChallan.sourceAddress || "Gorakhpur, Uttar Pradesh (09)"}</p>
+                    <p className="text-slate-600">State: <b>Uttar Pradesh (09)</b></p>
                   </div>
 
-                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                    <p className="font-bold text-[#3F63AD] uppercase text-[10px] tracking-wider mb-1.5">DELIVERED TO (DESTINATION):</p>
-                    <p className="font-bold text-sm text-slate-900">{selectedChallan.destinationParty}</p>
-                    <p className="text-slate-600 mt-1 leading-relaxed">{selectedChallan.destinationAddress}</p>
+                  {/* Right: Dispatch Destination / GIDA Central Hub */}
+                  <div className="col-span-6 pl-1 space-y-0.5">
+                    <p className="text-[10px] font-black uppercase text-[#76C043] mb-1">DISPATCH TO (DESTINATION / RECEIVER)</p>
+                    <p className="font-bold text-xs text-slate-900">{selectedChallan.destinationParty}</p>
+                    <p className="text-slate-600">{selectedChallan.destinationAddress || GIDA_HUB.address}</p>
+                    <p className="text-slate-600">Destination Hub: <b>GIDA Central Warehouse & Logistics</b></p>
+                    {selectedChallan.invoiceNumber && (
+                      <p className="text-emerald-700 font-mono font-bold mt-1">
+                        Original Invoice Ref: #{selectedChallan.invoiceNumber}
+                      </p>
+                    )}
                   </div>
                 </div>
 
-                {/* ITEMS TABLE */}
-                <div className="my-4 relative z-10">
-                  <table className="w-full text-xs border-collapse">
+                {/* 4. ITEMS TABLE (INVOICE STRUCTURE) */}
+                <div className="py-2">
+                  <table className="w-full text-left border-collapse border border-slate-400">
                     <thead>
-                      <tr className="bg-[#3F63AD] text-white text-left uppercase text-[10px] tracking-wider">
-                        <th className="p-2.5 rounded-l-md">#</th>
-                        <th className="p-2.5">Item Description</th>
-                        <th className="p-2.5">VP Code</th>
-                        <th className="p-2.5">HSN</th>
-                        <th className="p-2.5">Serial / IMEI Number</th>
-                        <th className="p-2.5 text-center">Qty</th>
-                        <th className="p-2.5 rounded-r-md text-right">Reason for Return</th>
+                      <tr className="bg-slate-100 text-slate-800 text-[10px] font-bold uppercase border-b border-slate-400">
+                        <th className="p-1.5 text-center border-r border-slate-400 w-8">#</th>
+                        <th className="p-1.5 border-r border-slate-400">Description of Goods / Defective Unit</th>
+                        <th className="p-1.5 text-center border-r border-slate-400 w-20">HSN/SAC</th>
+                        <th className="p-1.5 text-center border-r border-slate-400 w-14">Qty</th>
+                        <th className="p-1.5 text-center border-r border-slate-400 w-14">UOM</th>
+                        <th className="p-1.5 text-right border-r border-slate-400 w-24">Est. Rate</th>
+                        <th className="p-1.5 text-right w-24">Est. Amount</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-200">
+                    <tbody className="divide-y divide-slate-300">
                       <tr>
-                        <td className="p-3 font-bold">1</td>
-                        <td className="p-3">
-                          <p className="font-bold text-slate-900">{selectedChallan.itemName}</p>
-                          {selectedChallan.invoiceNumber && (
-                            <span className="text-[10px] text-blue-700 font-mono">From Bill: #{selectedChallan.invoiceNumber}</span>
+                        <td className="p-2 text-center font-mono font-bold border-r border-slate-400">1</td>
+                        <td className="p-2 border-r border-slate-400">
+                          <p className="font-bold text-slate-900 text-xs">{selectedChallan.itemName}</p>
+                          <div className="flex flex-wrap items-center gap-2 mt-0.5 text-[10px] text-slate-600 font-mono">
+                            {selectedChallan.vpCode && (
+                              <span>VP Code: <b>{selectedChallan.vpCode}</b></span>
+                            )}
+                            {selectedChallan.serialImei && (
+                              <span className="bg-slate-100 px-1 py-0.2 rounded border text-slate-800">
+                                Serial / IMEI: <b>{selectedChallan.serialImei}</b>
+                              </span>
+                            )}
+                          </div>
+                          {selectedChallan.defectDescription && (
+                            <p className="text-[10px] text-rose-700 italic mt-1 bg-rose-50 p-1 rounded border border-rose-200">
+                              <b>Defect / Fault Reported:</b> {selectedChallan.defectDescription}
+                            </p>
                           )}
                         </td>
-                        <td className="p-3 font-mono font-bold text-[#3F63AD]">{selectedChallan.vpCode || "—"}</td>
-                        <td className="p-3 font-mono">{selectedChallan.hsn}</td>
-                        <td className="p-3 font-mono font-semibold text-[#3F63AD]">{selectedChallan.serialImei || "—"}</td>
-                        <td className="p-3 text-center font-bold">{selectedChallan.quantity} {selectedChallan.unit}</td>
-                        <td className="p-3 text-right font-medium text-slate-700">{selectedChallan.reason}</td>
+                        <td className="p-2 text-center font-mono border-r border-slate-400">{selectedChallan.hsn || "85287217"}</td>
+                        <td className="p-2 text-center font-bold border-r border-slate-400">{selectedChallan.quantity}</td>
+                        <td className="p-2 text-center border-r border-slate-400">{selectedChallan.unit || "PCS"}</td>
+                        <td className="p-2 text-right font-mono border-r border-slate-400">
+                          {selectedChallan.itemPrice ? `₹${Number(selectedChallan.itemPrice).toLocaleString("en-IN")}` : "0.00"}
+                        </td>
+                        <td className="p-2 text-right font-mono font-bold text-slate-900">
+                          {selectedChallan.itemPrice ? `₹${(Number(selectedChallan.itemPrice) * Number(selectedChallan.quantity)).toLocaleString("en-IN")}` : "0.00"}
+                        </td>
                       </tr>
                     </tbody>
+                    <tfoot>
+                      <tr className="bg-slate-50 font-bold border-t border-slate-400 text-slate-900">
+                        <td colSpan={3} className="p-1.5 text-right border-r border-slate-400 uppercase text-[10px]">
+                          Total Quantity & Non-Commercial Value:
+                        </td>
+                        <td className="p-1.5 text-center font-mono border-r border-slate-400">{selectedChallan.quantity}</td>
+                        <td className="p-1.5 text-center border-r border-slate-400">{selectedChallan.unit || "PCS"}</td>
+                        <td className="p-1.5 text-right border-r border-slate-400 font-mono">—</td>
+                        <td className="p-1.5 text-right font-mono text-emerald-800 font-black">
+                          {selectedChallan.itemPrice ? `₹${(Number(selectedChallan.itemPrice) * Number(selectedChallan.quantity)).toLocaleString("en-IN")}` : "₹0.00"}
+                        </td>
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
 
-                {/* VEHICLE & TRANSPORT DETAILS */}
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 my-6 text-xs grid grid-cols-3 gap-4 relative z-10">
-                  <div>
-                    <span className="text-slate-500 block text-[10px] uppercase font-bold">Vehicle Reg No.</span>
-                    <span className="font-mono font-bold text-slate-900 text-sm">{selectedChallan.vehicleNo}</span>
+                {/* 5. VEHICLE & TRANSPORTATION LOGISTICS PARTICULARS */}
+                <div className="grid grid-cols-12 border border-slate-400 my-2 bg-slate-50 text-[10px]">
+                  <div className="col-span-3 p-2 border-r border-slate-300">
+                    <span className="text-slate-500 uppercase font-bold block">Vehicle Number:</span>
+                    <span className="font-mono font-bold text-slate-900 text-xs uppercase">{selectedChallan.vehicleNo || "UP-53-ET-8819"}</span>
                   </div>
-                  <div>
-                    <span className="text-slate-500 block text-[10px] uppercase font-bold">Driver / Courier Person</span>
-                    <span className="font-bold text-slate-900">{selectedChallan.driverName}</span>
+                  <div className="col-span-3 p-2 border-r border-slate-300">
+                    <span className="text-slate-500 uppercase font-bold block">Transporter / Route:</span>
+                    <span className="font-bold text-slate-800">{selectedChallan.transporterName || "Value Plus GIDA Logistics Van"}</span>
                   </div>
-                  <div>
-                    <span className="text-slate-500 block text-[10px] uppercase font-bold">Contact Phone</span>
-                    <span className="font-mono text-slate-900">{selectedChallan.driverPhone}</span>
+                  <div className="col-span-3 p-2 border-r border-slate-300">
+                    <span className="text-slate-500 uppercase font-bold block">Driver & Contact:</span>
+                    <span className="font-bold text-slate-800">{selectedChallan.driverName || "AMIT SINGH"}</span>
+                    {selectedChallan.driverPhone && <span className="font-mono text-slate-600 block">Ph: {selectedChallan.driverPhone}</span>}
+                  </div>
+                  <div className="col-span-3 p-2">
+                    <span className="text-slate-500 uppercase font-bold block">Transit Reason / E-Way:</span>
+                    <span className="font-bold text-[#30539C]">{selectedChallan.reason || "Transit to GIDA Warehouse Hub"}</span>
+                    {selectedChallan.ewayBillNo && <span className="font-mono text-slate-600 block">E-Way: {selectedChallan.ewayBillNo}</span>}
                   </div>
                 </div>
 
-                {/* DECLARATION & SIGNATURES */}
-                <div className="mt-8 pt-6 border-t border-slate-300 relative z-10 space-y-8 text-xs">
-                  <p className="text-[11px] text-slate-500 italic">
-                    * Declaration: This Delivery Challan is issued for stock transport/return purposes only. The goods mentioned herein do not involve any commercial sale transaction value.
+                {/* 6. STATUTORY NON-COMMERCIAL DECLARATION & TERMS */}
+                <div className="border border-slate-400 p-2 text-[9.5px] text-slate-600 space-y-1 bg-white mb-4">
+                  <p className="font-bold text-slate-800 uppercase tracking-wide">
+                    DECLARATION (SUPPLY NOT FOR COMMERCIAL SALE / TRANSIT CHALLAN):
                   </p>
-
-                  <div className="flex justify-between items-end pt-6">
-                    <div className="text-center">
-                      <div className="w-36 border-t border-slate-400 pt-1 text-slate-600">Dispatched By Signature</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="w-36 border-t border-slate-400 pt-1 text-slate-600">Transporter Signature</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="w-44 border-t border-slate-400 pt-1 font-bold text-slate-900">
-                        Authorized Receiver<br />
-                        <span className="text-[10px] text-slate-500 font-normal">for Valueplus Technologies</span>
-                      </div>
-                    </div>
-                  </div>
+                  <p>
+                    1. This Delivery Challan is issued under GST Rules for transit of defective/replacement goods between showroom, customer, and GIDA Central Logistics Hub.
+                  </p>
+                  <p>
+                    2. No commercial sale or tax liability is incurred on this transit. Goods remain the property of Value Plus / Customer under claim settlement.
+                  </p>
                 </div>
 
-                <div className="mt-6 pt-3 border-t text-center text-[10px] text-slate-400">
-                  System Generated Delivery Challan · Powered by <b>VALUEPLUS ERP</b>
+                {/* 7. DUAL SIGNATURE BOXES (OFFICIAL INVOICE STYLE) */}
+                <div className="grid grid-cols-2 gap-8 pt-6 border-t border-slate-400 text-xs">
+                  <div className="text-center pt-8 border-t border-dashed border-slate-400">
+                    <p className="font-bold text-slate-900">Receiver / Customer / Driver Signature</p>
+                    <p className="text-[9.5px] text-slate-500 mt-0.5">Goods Received in Stated Condition</p>
+                  </div>
+                  <div className="text-center pt-8 border-t border-dashed border-slate-400">
+                    <p className="font-bold text-slate-900">For VALUEPLUS / ASHOKA ENTERPRISES</p>
+                    <p className="text-[9.5px] text-slate-500 mt-0.5">Authorised Signatory / Store Seal</p>
+                  </div>
                 </div>
               </div>
             </div>

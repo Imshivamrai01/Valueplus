@@ -9,10 +9,27 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const type = searchParams.get("type");
+    const warehouse = searchParams.get("warehouse") || searchParams.get("location");
     
     await connectToDatabase();
     
-    const query = type ? { type } : { type: { $ne: "sales-order" } };
+    const query: any = type ? { type } : { type: { $ne: "sales-order" } };
+
+    if (warehouse && warehouse !== "all") {
+      const isAshoka = warehouse.toLowerCase().includes("ashoka") || warehouse.toLowerCase().includes("kunraghat") || warehouse === "VP-KUN";
+      if (!isAshoka) {
+        query.$or = [
+          { warehouse: { $regex: new RegExp(`^${warehouse.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, "i") } },
+          { branchName: { $regex: new RegExp(`^${warehouse.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, "i") } },
+        ];
+      } else {
+        query.$or = [
+          { warehouse: { $exists: false } },
+          { warehouse: "" },
+          { warehouse: { $regex: /ashoka|kunraghat/i } }
+        ];
+      }
+    }
     
     const invoices = await Invoice.find(query).sort({ createdAt: -1 });
     return NextResponse.json({ success: true, data: invoices });
@@ -243,12 +260,71 @@ export async function POST(req: Request) {
         }
       }
 
-      // 5. Update Estimate Status if linked
+      // 5. Update Estimate Status & Auto-Attribute Sale to Salesperson
       if (body.linkedEstimateNumber) {
-        await Estimate.findOneAndUpdate(
-          { estimateNumber: body.linkedEstimateNumber },
-          { status: "Converted" }
-        );
+        const matchedEst = await Estimate.findOne({ estimateNumber: body.linkedEstimateNumber });
+        if (matchedEst) {
+          matchedEst.status = "Converted";
+          matchedEst.convertedInvoiceNumber = invoice.invoiceNumber;
+          await matchedEst.save();
+
+          if ((!invoice.salesExecutive || invoice.salesExecutive === "Admin" || invoice.salesExecutive === "Store Staff") && (matchedEst.salesperson || matchedEst.salesExecutive)) {
+            invoice.salesExecutive = matchedEst.salesperson || matchedEst.salesExecutive;
+            invoice.createdBy = matchedEst.salesperson || matchedEst.salesExecutive;
+            await invoice.save();
+          }
+        }
+      } else {
+        const phoneDigits = (invoice.customerPhone || "").replace(/\D/g, "");
+        if (phoneDigits && phoneDigits.length >= 10) {
+          const matchedEst = await Estimate.findOne({
+            customerPhone: { $regex: phoneDigits.slice(-10) },
+            status: { $ne: "Converted" }
+          });
+          if (matchedEst) {
+            matchedEst.status = "Converted";
+            matchedEst.convertedInvoiceNumber = invoice.invoiceNumber;
+            await matchedEst.save();
+
+            if ((!invoice.salesExecutive || invoice.salesExecutive === "Admin" || invoice.salesExecutive === "Store Staff") && (matchedEst.salesperson || matchedEst.salesExecutive)) {
+              invoice.salesExecutive = matchedEst.salesperson || matchedEst.salesExecutive;
+              invoice.createdBy = matchedEst.salesperson || matchedEst.salesExecutive;
+              await invoice.save();
+            }
+          }
+        }
+      }
+
+      // 6. Auto-Convert matching Walk-in/CRM Leads upon Customer Purchase
+      if (invoice.type !== "credit-note") {
+        try {
+          const Lead = (await import("@/models/Lead")).default;
+          const phoneDigits = (invoice.customerPhone || "").replace(/\D/g, "");
+          const leadFilter: any = {
+            status: { $in: ["New", "Contacted", "Interested", "Follow-up"] },
+          };
+
+          if (phoneDigits && phoneDigits.length >= 10) {
+            leadFilter.mobile = { $regex: phoneDigits.slice(-10) };
+          } else if (invoice.customerName && invoice.customerName !== "Cash Customer" && invoice.customerName !== "Cash Guest") {
+            leadFilter.customerName = { $regex: new RegExp(`^${invoice.customerName.trim()}$`, "i") };
+          }
+
+          const matchedLeads = await Lead.find(leadFilter);
+          for (const lead of matchedLeads) {
+            lead.status = "Converted";
+            lead.convertedInvoiceNumber = invoice.invoiceNumber;
+            lead.timeline.push({
+              date: new Date(),
+              action: `Auto-Converted on Invoice #${invoice.invoiceNumber}`,
+              notes: `Customer completed purchase of ₹${Number(invoice.total || invoice.netAmount || 0).toLocaleString("en-IN")}. Billed by ${invoice.salesExecutive || "Sales Team"}.`,
+              staff: invoice.salesExecutive || "Sales Team",
+            });
+            await lead.save();
+          }
+        } catch (leadErr) {
+          console.warn("Notice: Auto-lead conversion:", leadErr);
+        }
       }
 
       return NextResponse.json({ success: true, data: invoice });
@@ -270,11 +346,56 @@ export async function PUT(req: Request) {
       return NextResponse.json({ success: false, error: "Invoice number is required for update" }, { status: 400 });
     }
 
-    const updatedInvoice = await Invoice.findOneAndUpdate({ invoiceNumber: body.invoiceNumber }, body, { new: true });
-    
-    if (!updatedInvoice) {
+    const existingInvoice = await Invoice.findOne({ invoiceNumber: body.invoiceNumber });
+    if (!existingInvoice) {
       return NextResponse.json({ success: false, error: "Invoice not found" }, { status: 404 });
     }
+
+    // Special handler for clearing Due / Settlement from Dashboard
+    if (body.action === "clear-due" || body.dueClearedMode) {
+      const clearedAmount = existingInvoice.balanceAmount > 0 ? existingInvoice.balanceAmount : (body.clearedAmount || existingInvoice.total);
+      
+      existingInvoice.paidAmount = existingInvoice.total;
+      existingInvoice.balanceAmount = 0;
+      existingInvoice.status = "paid";
+      existingInvoice.dueClearedAt = new Date();
+      existingInvoice.dueClearedMode = body.dueClearedMode || "Cash";
+      existingInvoice.dueClearedBy = body.dueClearedBy || "Counter Staff";
+      existingInvoice.dueClearedNotes = body.dueClearedNotes || "Due fully settled and cleared";
+      existingInvoice.dueClearedTxnId = body.dueClearedTxnId || `CLR-${Date.now()}`;
+      
+      const saved = await existingInvoice.save();
+
+      // Deduct from customer's outstanding balance
+      if (existingInvoice.customerId && clearedAmount > 0) {
+        await Customer.findByIdAndUpdate(existingInvoice.customerId, {
+          $inc: { outstandingBalance: -clearedAmount }
+        });
+      }
+
+      // Record Payment Transaction
+      try {
+        const PaymentTransaction = (await import("@/models/PaymentTransaction")).default;
+        await PaymentTransaction.create({
+          transactionId: `TXN-DUE-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          partyId: existingInvoice.customerId,
+          partyType: "Customer",
+          partyName: existingInvoice.customerName,
+          amount: clearedAmount,
+          paymentMode: body.dueClearedMode || "Cash",
+          date: new Date().toISOString().split("T")[0],
+          referenceId: existingInvoice.invoiceNumber,
+          notes: `Due balance cleared for Invoice #${existingInvoice.invoiceNumber} via ${body.dueClearedMode || "Cash"}. Txn/Ref: ${body.dueClearedTxnId || "N/A"}`,
+          type: "received"
+        });
+      } catch (txErr) {
+        console.warn("Notice: PaymentTransaction log for due clearance:", txErr);
+      }
+
+      return NextResponse.json({ success: true, message: "Due settled and cleared successfully", data: saved });
+    }
+
+    const updatedInvoice = await Invoice.findOneAndUpdate({ invoiceNumber: body.invoiceNumber }, body, { new: true });
 
     return NextResponse.json({ success: true, message: "Invoice updated successfully", data: updatedInvoice });
   } catch (error: any) {

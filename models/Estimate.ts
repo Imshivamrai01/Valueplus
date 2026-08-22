@@ -53,6 +53,7 @@ const EstimateSchema = new Schema<IEstimate>(
     taxTotal: { type: Number, default: 0 },
     total: { type: Number, required: true },
     notes: { type: String },
+    convertedInvoiceNumber: { type: String },
   },
   { timestamps: true, collection: "estimates" }
 );

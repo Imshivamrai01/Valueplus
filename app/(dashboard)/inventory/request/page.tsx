@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 
 export default function StockRequestPage() {
   const queryClient = useQueryClient();
@@ -203,7 +204,7 @@ export default function StockRequestPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {isLoading ? <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">Loading...</td></tr> : filtered.map((row: any) => (
+            {isLoading ? <tr><td colSpan={4} className="p-0"><TableShimmer rows={6} cols={4} /></td></tr> : filtered.map((row: any) => (
               <tr key={row._id} className="hover:bg-slate-50/50">
                 <td className="px-4 py-3 font-medium text-[#3F63AD]">{row.requestNumber}</td>
                 <td className="px-4 py-3">{format(new Date(row.date), "dd MMM, yyyy")}</td>

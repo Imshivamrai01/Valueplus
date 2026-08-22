@@ -6,6 +6,7 @@ export interface IDeliveryChallan extends Document {
   invoiceNumber?: string;
   sourceParty: string;
   sourceAddress: string;
+  sourcePhone?: string;
   destinationParty: string;
   destinationAddress: string;
   customerPhone?: string;
@@ -15,12 +16,22 @@ export interface IDeliveryChallan extends Document {
   serialImei: string;
   quantity: number;
   unit: string;
+  itemPrice?: number;
+  defectDescription?: string;
   financeDoId?: string;
   reason: string;
   date: Date;
   vehicleNo: string;
+  transporterName?: string;
   driverName: string;
   driverPhone: string;
+  ewayBillNo?: string;
+  flowType?: "CNR" | "PR";
+  approvalStatus?: "pending" | "approved" | "rejected";
+  approvedAt?: Date;
+  approvedBy?: string;
+  creditNoteRef?: string;
+  debitNoteRef?: string;
   status: "dispatched" | "in-transit" | "delivered" | "returned" | "received";
   remarks?: string;
 }
@@ -31,11 +42,12 @@ const DeliveryChallanSchema = new Schema<IDeliveryChallan>(
     type: {
       type: String,
       enum: ["Outward Delivery", "Customer Return", "Warehouse Return", "Supplier Return", "Client Return"],
-      default: "Outward Delivery",
+      default: "Customer Return",
     },
     invoiceNumber: { type: String, index: true },
     sourceParty: { type: String, default: "M/S ASHOKA ENTERPRISES" },
     sourceAddress: { type: String, default: "H. NO. 116, NEAR SHANTI MARRIAGE HOUSE DEORIA ROAD, KUNRAGHAT GORAKHPUR" },
+    sourcePhone: { type: String, default: "" },
     destinationParty: { type: String, required: true },
     destinationAddress: { type: String, default: "" },
     customerPhone: { type: String, default: "" },
@@ -43,14 +55,34 @@ const DeliveryChallanSchema = new Schema<IDeliveryChallan>(
     vpCode: { type: String, default: "" },
     hsn: { type: String, default: "" },
     serialImei: { type: String, default: "" },
-    quantity: { type: Number, required: true, min: 1 },
+    quantity: { type: Number, required: true, min: 1, default: 1 },
     unit: { type: String, default: "PCS" },
+    itemPrice: { type: Number, default: 0 },
+    defectDescription: { type: String, default: "" },
     financeDoId: { type: String, default: "" },
-    reason: { type: String, default: "" },
+    reason: { type: String, default: "Defective Replacement / Return" },
     date: { type: Date, default: Date.now },
     vehicleNo: { type: String, default: "" },
+    transporterName: { type: String, default: "" },
     driverName: { type: String, default: "" },
     driverPhone: { type: String, default: "" },
+    ewayBillNo: { type: String, default: "" },
+    flowType: {
+      type: String,
+      enum: ["CNR", "PR"],
+      default: "CNR",
+      index: true,
+    },
+    approvalStatus: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+      index: true,
+    },
+    approvedAt: { type: Date },
+    approvedBy: { type: String, default: "" },
+    creditNoteRef: { type: String, default: "" },
+    debitNoteRef: { type: String, default: "" },
     status: {
       type: String,
       enum: ["dispatched", "in-transit", "delivered", "returned", "received"],

@@ -1,5 +1,21 @@
 import mongoose, { Schema, Document, Model } from "mongoose";
 
+export interface IEmiInstallment {
+  installmentNumber: number; // 1, 2, 3...
+  dueDate: string; // YYYY-MM-DD
+  amount: number;
+  status: "Pending" | "Paid" | "Overdue" | "Bounced";
+  paidDate?: string;
+  paymentChannel?: "Shop Counter" | "Bank Auto-Debit";
+  paymentMode?: "Cash" | "UPI" | "Card" | "Bank Transfer" | "NACH Auto-Debit" | "e-Mandate" | "ECS";
+  collectedBy?: string;
+  bankRef?: string;
+  receiptNumber?: string;
+  bounceReason?: string;
+  penaltyAmount?: number;
+  notes?: string;
+}
+
 export interface IFinanceTransaction extends Document {
   financeProvider: string; // "Bajaj Finance Limited" | "HDB Financial" | "IDFC First" | "TVS Credit" | "Kotak" | "Other"
   customerName: string;
@@ -42,6 +58,13 @@ export interface IFinanceTransaction extends Document {
   totalDeductions: number;
   netDisbursement: number;
   
+  // EMI Schedule & Ledger Lifecycle
+  tenureMonths: number;
+  monthlyEmiAmount: number;
+  totalPaidEmiAmount: number;
+  balanceDueAmount: number;
+  emiSchedule: IEmiInstallment[];
+
   // Verification and disbursement workflow
   approvalStatus: "Pending" | "Under Review" | "Approved" | "Disbursed" | "Reconciled";
   uploadedPdfUrl?: string;
@@ -54,6 +77,29 @@ export interface IFinanceTransaction extends Document {
   remarks?: string;
   deliveryInstructions?: string;
 }
+
+const EmiInstallmentSchema = new Schema<IEmiInstallment>({
+  installmentNumber: { type: Number, required: true },
+  dueDate: { type: String, required: true },
+  amount: { type: Number, required: true },
+  status: {
+    type: String,
+    enum: ["Pending", "Paid", "Overdue", "Bounced"],
+    default: "Pending",
+  },
+  paidDate: { type: String },
+  paymentChannel: {
+    type: String,
+    enum: ["Shop Counter", "Bank Auto-Debit"],
+  },
+  paymentMode: { type: String },
+  collectedBy: { type: String },
+  bankRef: { type: String },
+  receiptNumber: { type: String },
+  bounceReason: { type: String },
+  penaltyAmount: { type: Number, default: 0 },
+  notes: { type: String, default: "" },
+}, { _id: false });
 
 const FinanceTransactionSchema = new Schema<IFinanceTransaction>(
   {
@@ -96,6 +142,13 @@ const FinanceTransactionSchema = new Schema<IFinanceTransaction>(
     customerDownPayment: { type: Number, default: 0 },
     totalDeductions: { type: Number, default: 0 },
     netDisbursement: { type: Number, required: true },
+
+    // EMI Tracking
+    tenureMonths: { type: Number, default: 8 },
+    monthlyEmiAmount: { type: Number, default: 0 },
+    totalPaidEmiAmount: { type: Number, default: 0 },
+    balanceDueAmount: { type: Number, default: 0 },
+    emiSchedule: { type: [EmiInstallmentSchema], default: [] },
 
     approvalStatus: {
       type: String,

@@ -1,9 +1,10 @@
 "use client";
 
-import { Bell, Search, Settings, Sun, Moon, ChevronDown, User, LogOut, Sparkles, Wifi, WifiOff, RefreshCw, CloudUpload, CheckCircle2 } from "lucide-react";
+import { Bell, Search, Settings, Sun, Moon, ChevronDown, User, LogOut, Sparkles, Wifi, WifiOff, RefreshCw, CloudUpload, CheckCircle2, Power } from "lucide-react";
 import { useState, useEffect } from "react";
-import { signOut } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
+import Link from "next/link";
 import { useOfflineSync } from "@/components/shared/offline-sync-provider";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,31 +23,34 @@ const INITIAL_NOTIFICATIONS = [
 ];
 
 export function Topnav() {
+  const { data: session } = useSession();
+  const userName = session?.user?.name || "Admin User";
+  const userEmail = session?.user?.email || "admin@valueplus.in";
+  const userRole = (((session?.user as any)?.role || "superadmin") as string).toUpperCase();
+  const initialLetter = (userName[0] || "A").toUpperCase();
+
   const { isOnline, pendingCount, isSyncing, syncNow } = useOfflineSync();
-  const [notifications, setNotifications] = useState(INITIAL_NOTIFICATIONS);
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const [approvalsList, setApprovalsList] = useState<any[]>([]);
+  const [pendingApprovalsCount, setPendingApprovalsCount] = useState(0);
 
-  // Simulate incoming notifications
+  // Poll live approvals
   useEffect(() => {
-    const interval = setInterval(() => {
-      setNotifications(prev => {
-        const newNotif = {
-          id: Date.now(),
-          title: "System Update",
-          desc: "New data sync completed automatically.",
-          time: "Just now",
-          read: false
-        };
-        return [newNotif, ...prev].slice(0, 10); // Keep max 10
-      });
-    }, 45000); // Every 45 seconds
-
+    const fetchPending = async () => {
+      try {
+        const res = await fetch("/api/approvals?status=pending");
+        const json = await res.json();
+        if (json.success) {
+          setApprovalsList(json.data || []);
+          setPendingApprovalsCount(json.pendingCount || 0);
+        }
+      } catch (e) {
+        console.error("Failed to fetch approvals in topnav", e);
+      }
+    };
+    fetchPending();
+    const interval = setInterval(fetchPending, 12000);
     return () => clearInterval(interval);
   }, []);
-
-  const markAllRead = () => {
-    setNotifications(notifications.map(n => ({ ...n, read: true })));
-  };
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -79,9 +83,16 @@ export function Topnav() {
   }, [searchQuery]);
 
   return (
-    <header className="fixed top-0 right-0 left-64 h-16 bg-white/90 backdrop-blur-xl border-b border-black/[0.04] z-30 flex items-center justify-between px-6 shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition-all">
+    <header className="fixed top-0 right-0 left-0 md:left-64 h-16 bg-white/90 backdrop-blur-xl border-b border-black/[0.04] z-30 flex items-center justify-between px-3 sm:px-6 shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition-all">
+      {/* Mobile Brand Logo */}
+      <div className="flex md:hidden items-center mr-2 shrink-0">
+        <Link href="/dashboard" className="flex items-center gap-1.5 bg-[#30539C] text-white px-2.5 py-1 rounded-xl shadow-xs">
+          <span className="font-black text-xs tracking-tight">VALUE<span className="text-[#76C043]">PLUS</span></span>
+        </Link>
+      </div>
+
       {/* Omni Search Bar */}
-      <div className="relative flex-1 max-w-md mr-4">
+      <div className="relative flex-1 max-w-md mr-2 sm:mr-4">
         <div className="relative">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
@@ -166,36 +177,85 @@ export function Topnav() {
             <span>Cloud Synced</span>
           </div>
         )}
-        {/* Notifications */}
+        {/* Notifications / Super Admin Approvals */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button className="relative w-10 h-10 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition-colors">
               <Bell className="w-5 h-5" />
-              {unreadCount > 0 && (
-                <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
+              {pendingApprovalsCount > 0 && (
+                <span className="absolute top-1.5 right-1.5 min-w-[18px] h-[18px] px-1 bg-red-600 text-white text-[10px] font-black rounded-full border-2 border-white flex items-center justify-center animate-pulse">
+                  {pendingApprovalsCount}
+                </span>
               )}
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-80 rounded-xl">
-            <div className="flex items-center justify-between px-4 py-2 border-b">
-              <p className="font-semibold text-sm">Notifications</p>
-              <button onClick={markAllRead} className="text-[10px] font-medium text-[#30539C] hover:underline">Mark all as read</button>
+          <DropdownMenuContent align="end" className="w-88 rounded-2xl shadow-2xl p-0 overflow-hidden border-slate-200">
+            <div className="bg-slate-900 text-white px-4 py-3 flex items-center justify-between">
+              <div>
+                <p className="font-bold text-sm">Store Incharge Activity Queue</p>
+                <p className="text-[11px] text-slate-300">
+                  {pendingApprovalsCount} {pendingApprovalsCount === 1 ? "request" : "requests"} pending Super Admin review
+                </p>
+              </div>
+              <Link
+                href="/admin/approvals"
+                className="text-[11px] font-bold text-amber-400 hover:underline flex items-center gap-1"
+              >
+                View All →
+              </Link>
             </div>
-            <div className="max-h-[300px] overflow-y-auto">
-              {notifications.map((n) => (
-                <div key={n.id} className={cn("p-3 hover:bg-slate-50 border-b last:border-0 cursor-pointer transition-colors", !n.read && "bg-slate-50/50")}>
-                  <div className="flex items-start gap-3">
-                    {!n.read && <div className="w-1.5 h-1.5 rounded-full bg-[#30539C] mt-1.5 flex-shrink-0" />}
-                    <div className={cn("flex-1", n.read && "pl-3.5")}>
-                      <p className="text-sm font-medium text-foreground">{n.title}</p>
-                      <p className="text-xs text-slate-500 mt-0.5">{n.desc}</p>
-                      <p className="text-[10px] text-slate-400 mt-1">{n.time}</p>
+            
+            <div className="max-h-[340px] overflow-y-auto divide-y">
+              {approvalsList.length === 0 ? (
+                <div className="p-6 text-center text-slate-400">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-1.5 opacity-60" />
+                  <p className="text-xs font-bold text-slate-700">No Pending Approvals</p>
+                  <p className="text-[11px] text-slate-400">All branch incharge activities are up-to-date.</p>
+                </div>
+              ) : (
+                approvalsList.slice(0, 5).map((act) => (
+                  <div key={act.activityId} className="p-3 hover:bg-slate-50 transition-colors bg-amber-500/5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 font-bold text-[9.5px] uppercase">
+                            {act.activityType?.replace("_", " ")}
+                          </span>
+                          <span className="text-[10px] font-mono text-slate-400">{act.activityId}</span>
+                        </div>
+                        <p className="text-xs font-bold text-slate-900 mt-1">{act.title}</p>
+                        <p className="text-[11px] text-slate-600 line-clamp-1">{act.description}</p>
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          📍 {act.storeName} • {act.storeInchargeName}
+                        </p>
+                      </div>
+                      {act.amount > 0 && (
+                        <p className="text-xs font-bold font-mono text-emerald-700 shrink-0">
+                          ₹{Number(act.amount).toLocaleString("en-IN")}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="mt-2 pt-2 border-t flex items-center justify-end gap-1.5">
+                      <Link href="/admin/approvals">
+                        <Button size="sm" className="h-6 px-2 text-[10px] font-bold bg-[#30539C] hover:bg-[#203a70] text-white">
+                          Review & Authorize →
+                        </Button>
+                      </Link>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
-            {/* View all button removed as requested */}
+
+            <div className="bg-slate-50 px-3 py-2 border-t text-center">
+              <Link
+                href="/admin/approvals"
+                className="text-xs font-bold text-[#30539C] hover:underline"
+              >
+                Open Full Super Admin Approvals Center
+              </Link>
+            </div>
           </DropdownMenuContent>
         </DropdownMenu>
 
@@ -205,37 +265,50 @@ export function Topnav() {
 
         <div className="w-px h-6 bg-slate-200 mx-1"></div>
 
+        {/* Direct 1-Click Logout Button */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => signOut({ callbackUrl: "/login" })}
+          className="h-8 px-2.5 text-xs font-bold text-rose-600 border-rose-200 bg-rose-50 hover:bg-rose-100 hover:text-rose-700 transition-all flex items-center gap-1.5 shadow-2xs"
+          title="Sign out / Logout of Value Plus ERP"
+        >
+          <LogOut className="w-3.5 h-3.5" />
+          <span className="hidden md:inline">Logout</span>
+        </Button>
+
         {/* Profile */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-3 pl-2 pr-1 py-1 rounded-full hover:bg-slate-100 transition-colors text-left border border-transparent hover:border-slate-200">
+            <button className="flex items-center gap-2.5 pl-2 pr-1 py-1 rounded-full hover:bg-slate-100 transition-colors text-left border border-transparent hover:border-slate-200">
               <div className="flex flex-col items-end">
-                <span className="text-sm font-semibold text-slate-800 leading-none">Admin User</span>
-                <span className="text-[10px] text-slate-500 font-medium mt-1">Super Admin</span>
+                <span className="text-xs font-bold text-slate-800 leading-none truncate max-w-[120px]">{userName}</span>
+                <span className="text-[9.5px] text-[#30539C] font-semibold mt-0.5">{userRole}</span>
               </div>
-              <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-[#30539C] to-[#4A75CD] flex items-center justify-center text-white font-bold shadow-inner">
-                A
+              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#30539C] to-[#4A75CD] flex items-center justify-center text-white font-bold text-xs shadow-inner">
+                {initialLetter}
               </div>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56 rounded-xl">
+          <DropdownMenuContent align="end" className="w-56 rounded-xl shadow-xl">
             <DropdownMenuLabel className="font-normal p-3">
               <div className="flex flex-col space-y-1">
-                <p className="text-sm font-semibold text-foreground">Admin User</p>
-                <p className="text-xs text-slate-500">admin@valueplus.in</p>
+                <p className="text-sm font-bold text-foreground leading-none">{userName}</p>
+                <p className="text-xs text-slate-500 truncate">{userEmail}</p>
+                <span className="inline-block mt-1 w-fit text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-blue-100 text-[#30539C]">
+                  {userRole}
+                </span>
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="cursor-pointer py-2">
-              <User className="mr-2 h-4 w-4 text-slate-500" />
-              <span>Profile Settings</span>
+            <DropdownMenuItem asChild className="cursor-pointer py-2">
+              <Link href="/settings/profile" className="flex items-center w-full">
+                <User className="mr-2 h-4 w-4 text-slate-500" />
+                <span>Company & Profile Settings</span>
+              </Link>
             </DropdownMenuItem>
-            {/* <DropdownMenuItem className="cursor-pointer py-2">
-              <Settings className="mr-2 h-4 w-4 text-slate-500" />
-              <span>Preferences</span>
-            </DropdownMenuItem> */}
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => signOut({ callbackUrl: '/login' })} className="cursor-pointer py-2 text-red-600 focus:text-red-600 focus:bg-red-50">
+            <DropdownMenuItem onClick={() => signOut({ callbackUrl: '/login' })} className="cursor-pointer py-2 text-rose-600 focus:text-rose-700 focus:bg-rose-50 font-semibold">
               <LogOut className="mr-2 h-4 w-4" />
               <span>Log out</span>
             </DropdownMenuItem>

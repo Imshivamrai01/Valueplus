@@ -46,8 +46,11 @@ import {
 } from "@/components/ui/dialog";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 import { formatCurrency, downloadCSV, formatDate } from "@/lib/utils";
+import { BrandLogo } from "@/components/shared/brand-logo";
+import { useBranch } from "@/context/BranchContext";
 
 export default function StockFlowPage() {
+  const { activeLocation } = useBranch();
   const [search, setSearch] = useState("");
   const [brandFilter, setBrandFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -59,12 +62,13 @@ export default function StockFlowPage() {
 
   // 1. Fetch Stock Flow API
   const { data, isLoading, refetch, isFetching } = useQuery({
-    queryKey: ["stock-flow", brandFilter, categoryFilter, statusFilter],
+    queryKey: ["stock-flow", brandFilter, categoryFilter, statusFilter, activeLocation?.name],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (brandFilter !== "all") params.append("brand", brandFilter);
       if (categoryFilter !== "all") params.append("category", categoryFilter);
       if (statusFilter !== "all") params.append("status", statusFilter);
+      if (activeLocation?.name) params.append("warehouse", activeLocation.name);
 
       const res = await fetch(`/api/inventory/stock-flow?${params.toString()}`);
       const json = await res.json();
@@ -387,20 +391,22 @@ export default function StockFlowPage() {
                   return (
                     <tr key={item._id || item.code} className="hover:bg-slate-50/80 transition-colors">
                       {/* 1. PRODUCT DETAILS */}
-                      <td className="px-4 py-3 max-w-[280px]">
-                        <div className="font-bold text-slate-900 text-xs leading-snug line-clamp-2">
-                          {item.name}
-                        </div>
-                        <div className="flex items-center gap-1.5 mt-1">
-                          <span className="font-mono font-bold text-[10px] text-[#3F63AD] bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
-                            {item.vpCode || item.code}
-                          </span>
-                          <span className="text-[10px] font-semibold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
-                            {item.brand}
-                          </span>
-                          <span className="text-[10px] text-slate-500">
-                            {item.category}
-                          </span>
+                      <td className="px-4 py-3 max-w-[320px]">
+                        <div className="flex items-center gap-2.5">
+                          <BrandLogo name={item.brand} size="sm" className="w-8 h-8 rounded-lg shadow-none" />
+                          <div className="min-w-0 flex-1">
+                            <div className="font-bold text-slate-900 text-xs leading-snug line-clamp-1">
+                              {item.name}
+                            </div>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span className="font-mono font-bold text-[10px] text-[#3F63AD] bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200">
+                                {item.vpCode || item.code}
+                              </span>
+                              <span className="text-[10px] text-slate-500 font-medium truncate">
+                                {item.category}
+                              </span>
+                            </div>
+                          </div>
                         </div>
                       </td>
 

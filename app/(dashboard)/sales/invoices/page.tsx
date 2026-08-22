@@ -28,6 +28,8 @@ import { getOfflineInvoices, OfflineInvoice } from "@/lib/offline-storage";
 import { useOfflineSync } from "@/components/shared/offline-sync-provider";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 import { WifiOff, RefreshCw, CloudUpload } from "lucide-react";
+import { useSession } from "next-auth/react";
+import Link from "next/link";
 
 const STATUSES = ["paid", "pending", "overdue", "partial", "cancelled", "draft", "offline"] as const;
 
@@ -75,11 +77,22 @@ function SalesInvoicesContent() {
   const [activeSuggestRow, setActiveSuggestRow] = useState<number | null>(null);
   const [invoiceToDelete, setInvoiceToDelete] = useState<string | null>(null);
 
+  const { data: session } = useSession();
+  const userRole = ((session?.user as any)?.role || "admin").toLowerCase();
+  const currentUserName = session?.user?.name || "Staff Member";
+  const isSuperAdminOrAdmin = userRole === "admin" || userRole === "superadmin" || userRole === "manager" || userRole === "cashier" || userRole === "accountant";
+  const isSalesperson = !isSuperAdminOrAdmin;
+
   useEffect(() => {
     if (searchParams.get("new") === "true") {
-      setIsBillingFormOpen(true);
+      if (isSalesperson) {
+        toast.info("Sales staff can generate Commercial Estimates & Quotations. Redirecting to Estimates...");
+        router.push("/sales/estimates?new=true");
+      } else {
+        setIsBillingFormOpen(true);
+      }
     }
-  }, [searchParams]);
+  }, [searchParams, isSalesperson, router]);
 
   // CRM Ledger States
   const [isCustomerLedgerOpen, setIsCustomerLedgerOpen] = useState(false);
@@ -194,12 +207,42 @@ function SalesInvoicesContent() {
           <Button variant="outline" size="sm" onClick={() => downloadCSV(allInvoices.map(i => ({ ...i })), "invoices.csv")} className="h-9">
             <Download className="w-4 h-4 mr-1.5" /> Export
           </Button>
-          <Button size="sm" onClick={() => setIsBillingFormOpen(true)} className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white font-bold shadow-md h-9">
-            <Plus className="w-4 h-4 mr-1.5" /> New Invoice Billing
-          </Button>
+          {!isSalesperson ? (
+            <Button size="sm" onClick={() => setIsBillingFormOpen(true)} className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white font-bold shadow-md h-9">
+              <Plus className="w-4 h-4 mr-1.5" /> New Invoice Billing
+            </Button>
+          ) : (
+            <Button 
+              size="sm" 
+              onClick={() => router.push("/sales/estimates?new=true")} 
+              className="bg-[#76C043] hover:bg-[#60a82c] text-slate-950 font-black shadow-md h-9"
+            >
+              <Plus className="w-4 h-4 mr-1.5" /> + Create Estimate
+            </Button>
+          )}
         </>
       }
     >
+      {isSalesperson && (
+        <div className="bg-amber-50/90 border border-amber-200 text-amber-900 px-4 py-3 rounded-xl mb-4 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-start sm:items-center gap-2.5">
+            <span className="text-lg">ℹ️</span>
+            <div>
+              <p className="font-bold text-amber-950">Sales Staff View: Tax Invoice Billing is managed by Store Cashier / Admin Desk.</p>
+              <p className="text-amber-800 text-[11px] mt-0.5">
+                As a Salesperson, you can prepare customer quotations at <Link href="/sales/estimates" className="underline font-bold text-amber-950 hover:text-blue-700">Sales &gt; Estimates</Link>. When the Cashier bills the customer, it will automatically count toward your sales & incentives.
+              </p>
+            </div>
+          </div>
+          <Button 
+            size="sm" 
+            onClick={() => router.push("/sales/estimates?new=true")} 
+            className="bg-[#76C043] hover:bg-[#60a82c] text-slate-950 font-bold text-xs h-7.5 px-3 self-start sm:self-auto shrink-0"
+          >
+            Create Estimate
+          </Button>
+        </div>
+      )}
       <Tabs defaultValue="customers" className="w-full">
         <TabsList className="mb-6 grid w-full max-w-md grid-cols-2">
           <TabsTrigger value="customers">Customers Ledger & Billing</TabsTrigger>

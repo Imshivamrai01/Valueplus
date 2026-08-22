@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/shared/date-range-filter";
+import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 
 export default function ReceivePaymentPage() {
   const [search, setSearch] = useState("");
@@ -133,7 +134,7 @@ export default function ReceivePaymentPage() {
             <tbody className="divide-y divide-slate-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-slate-500 font-medium">Loading payments...</td>
+                  <td colSpan={6} className="p-0"><TableShimmer rows={6} cols={6} /></td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
