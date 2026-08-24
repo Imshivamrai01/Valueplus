@@ -5,7 +5,7 @@ import Supplier from "@/models/Supplier";
 export async function GET() {
   try {
     await connectToDatabase();
-    const suppliers = await Supplier.find({}).sort({ createdAt: -1 });
+    const suppliers = await Supplier.find({}).sort({ createdAt: -1 }).lean();
     return NextResponse.json({ success: true, data: suppliers });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

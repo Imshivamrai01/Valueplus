@@ -5,7 +5,71 @@ import Warehouse from "@/models/Warehouse";
 export async function GET() {
   try {
     await connectToDatabase();
-    const warehouses = await Warehouse.find({}).sort({ createdAt: -1 });
+    // Clean up any legacy generic dummy entries
+    await Warehouse.deleteMany({ name: { $in: ["Showroom", "Godown", "Main Warehouse"] } });
+
+    let warehouses = await Warehouse.find({}).sort({ createdAt: 1 }).lean();
+    
+    if (!warehouses || warehouses.length === 0) {
+      const defaultWarehouses = [
+        {
+          name: "Ashoka Enterprises (Kunraghat Showroom)",
+          code: "VP-KUN",
+          address: "H. No. 116, Near Shanti Marriage House, Deoria Rd, Kunraghat",
+          city: "Gorakhpur",
+          state: "Uttar Pradesh",
+          pincode: "273008",
+          contactPerson: "Shivam Rai (Store Head)",
+          phone: "+91 9140860604",
+          email: "kunraghat@valueplus.com",
+          status: "active",
+          isDefault: true,
+        },
+        {
+          name: "Value Plus (Deoria Road Branch)",
+          code: "VP-DEO",
+          address: "Deoria Bypass Road, Near AIIMS, Gorakhpur",
+          city: "Gorakhpur",
+          state: "Uttar Pradesh",
+          pincode: "273010",
+          contactPerson: "Branch Incharge",
+          phone: "+91 9876543210",
+          email: "deoria.road@valueplus.com",
+          status: "active",
+          isDefault: false,
+        },
+        {
+          name: "Gorakhpur Central Godown & Logistics Hub",
+          code: "GDN-MAIN",
+          address: "Plot 42, Transport Nagar Central Logistics Hub, Gorakhpur",
+          city: "Gorakhpur",
+          state: "Uttar Pradesh",
+          pincode: "273016",
+          contactPerson: "Ram Kumar (Godown Incharge)",
+          phone: "+91 9876543211",
+          email: "central.godown@valueplus.com",
+          status: "active",
+          isDefault: false,
+        },
+        {
+          name: "GIDA Industrial Area Godown",
+          code: "GDN-GIDA",
+          address: "Sector 13, GIDA Industrial Area, Gorakhpur",
+          city: "Gorakhpur",
+          state: "Uttar Pradesh",
+          pincode: "273209",
+          contactPerson: "Suresh Yadav (Logistics Manager)",
+          phone: "+91 9876543212",
+          email: "gida.godown@valueplus.com",
+          status: "active",
+          isDefault: false,
+        }
+      ];
+
+      await Warehouse.insertMany(defaultWarehouses);
+      warehouses = await Warehouse.find({}).sort({ createdAt: 1 }).lean();
+    }
+
     return NextResponse.json({ success: true, data: warehouses });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

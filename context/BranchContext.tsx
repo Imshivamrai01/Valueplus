@@ -32,11 +32,11 @@ export const DEFAULT_BRANCHES: BranchOrGodown[] = [
   },
   {
     id: "godown-main",
-    name: "Gorakhpur Central Godown & Logistics Hub",
+    name: "Godown",
     code: "GDN-MAIN",
     type: "warehouse",
     city: "Gorakhpur",
-    address: "Plot 42, Transport Nagar, Gorakhpur",
+    address: "Plot 42, Transport Nagar Central Logistics Godown, Gorakhpur",
   },
   {
     id: "godown-industrial",
@@ -70,45 +70,59 @@ export function BranchProvider({ children }: { children: React.ReactNode }) {
   const [locations, setLocations] = useState<BranchOrGodown[]>(DEFAULT_BRANCHES);
   const [activeLocation, setActiveLocationState] = useState<BranchOrGodown>(DEFAULT_BRANCHES[0]);
 
-  // Load from localStorage or API on mount
-  useEffect(() => {
-    // Try fetching live warehouses from API to merge
-    fetch("/api/warehouses")
-      .then((res) => res.json())
-      .then((json) => {
-        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
-          const apiLocations: BranchOrGodown[] = json.data.map((w: any) => ({
-            id: w._id || w.id || w.code,
-            name: w.name,
-            code: w.code || "WH-01",
-            type: (w.name?.toLowerCase().includes("godown") || w.name?.toLowerCase().includes("warehouse")) ? "warehouse" : "showroom",
-            city: w.city || "Gorakhpur",
-            address: w.address || "",
-            isDefault: !!w.isDefault,
-          }));
-
-          const merged = [...DEFAULT_BRANCHES];
-          apiLocations.forEach((apiLoc) => {
-            if (!merged.some((m) => m.name.toLowerCase() === apiLoc.name.toLowerCase())) {
-              merged.push(apiLoc);
-            }
-          });
-          setLocations(merged);
-        }
-      })
-      .catch((err) => {
-        console.warn("Notice loading warehouses from API:", err);
-      });
-
+  const refreshLocations = async () => {
     try {
-      const saved = localStorage.getItem("vp_active_location");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        setActiveLocationState(parsed);
+      const res = await fetch("/api/warehouses");
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+        const apiLocations: BranchOrGodown[] = json.data.map((w: any) => ({
+          id: w._id || w.id || w.code,
+          name: w.name,
+          code: w.code || "WH-01",
+          type: (w.name?.toLowerCase().includes("godown") || w.name?.toLowerCase().includes("warehouse") || w.name?.toLowerCase().includes("gida") || w.name?.toLowerCase().includes("logistics")) ? "warehouse" : "showroom",
+          city: w.city || "Gorakhpur",
+          address: w.address || "",
+          isDefault: !!w.isDefault,
+        }));
+
+        setLocations(apiLocations);
+
+        // Update active location safely
+        const saved = typeof window !== "undefined" ? localStorage.getItem("vp_active_location") : null;
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            const matched = apiLocations.find(l => l.name.toLowerCase() === parsed.name?.toLowerCase() || l.id === parsed.id);
+            if (matched) {
+              setActiveLocationState(matched);
+            } else {
+              const def = apiLocations.find(l => l.isDefault) || apiLocations[0];
+              setActiveLocationState(def);
+            }
+          } catch (e) {
+            setActiveLocationState(apiLocations[0]);
+          }
+        } else {
+          const def = apiLocations.find(l => l.isDefault) || apiLocations[0];
+          setActiveLocationState(def);
+        }
       }
-    } catch (e) {
-      console.warn("Failed to load saved location from storage:", e);
+    } catch (err) {
+      console.warn("Notice loading warehouses from API:", err);
     }
+  };
+
+  useEffect(() => {
+    refreshLocations();
+
+    const handleUpdate = () => {
+      refreshLocations();
+    };
+
+    window.addEventListener("erp-warehouses-updated", handleUpdate);
+    return () => {
+      window.removeEventListener("erp-warehouses-updated", handleUpdate);
+    };
   }, []);
 
   const setActiveLocation = (loc: BranchOrGodown) => {

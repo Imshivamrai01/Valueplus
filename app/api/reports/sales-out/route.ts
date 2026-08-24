@@ -54,7 +54,7 @@ export async function GET(req: Request) {
       filter.customerName = { $regex: customer, $options: "i" };
     }
     
-    const invoices = await Invoice.find(filter).sort({ date: -1, createdAt: -1 });
+    const invoices = await Invoice.find(filter).sort({ date: -1, createdAt: -1 }).lean();
     
     // Map strictly to required columns: Due, Date, Amount, Bill Number, Customer Name, plus enhanced columns
     const reportData = invoices.map((inv) => ({

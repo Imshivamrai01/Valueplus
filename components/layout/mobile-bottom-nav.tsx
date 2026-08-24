@@ -126,7 +126,7 @@ export function MobileBottomNav() {
   return (
     <>
       {/* ─── FLOATING NATIVE MOBILE BOTTOM NAVIGATION BAR ─────────────────── */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 pointer-events-auto">
+      <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 pointer-events-auto print:hidden">
         <div className="mx-3 mb-3 bg-[#1B2537]/90 backdrop-blur-2xl border border-white/15 rounded-3xl shadow-[0_12px_32px_rgba(0,0,0,0.4)] px-2 py-1.5 flex items-center justify-around">
           {tabs.map((tab, idx) => {
             if (tab.isFab) {

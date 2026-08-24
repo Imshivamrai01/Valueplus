@@ -6,7 +6,7 @@ import Item from "@/models/Item";
 export async function GET() {
   try {
     await connectToDatabase();
-    const journals = await StockJournal.find({}).sort({ createdAt: -1 });
+    const journals = await StockJournal.find({}).sort({ createdAt: -1 }).lean();
     return NextResponse.json({ success: true, data: journals });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

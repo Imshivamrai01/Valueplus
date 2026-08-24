@@ -1,7 +1,7 @@
 "use client";
 import { PageShell } from "@/components/shared/page-shell";
 import { Button } from "@/components/ui/button";
-import { Plus, Warehouse, MapPin, Phone, X } from "lucide-react";
+import { Plus, Warehouse, MapPin, Phone, X, Package, ShoppingBag, Store, Building2, ArrowRight } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -11,8 +11,10 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { INDIA_STATES, INDIA_STATES_AND_DISTRICTS } from "@/lib/data/locations";
 import { MetricCardsShimmer, Skeleton } from "@/components/shared/shimmer-skeleton";
+import { useRouter } from "next/navigation";
 
 export default function WarehousesPage() {
+  const router = useRouter();
   const [warehouses, setWarehouses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -20,9 +22,9 @@ export default function WarehousesPage() {
     name: "",
     code: "",
     address: "",
-    city: "Mumbai",
-    state: "Maharashtra",
-    pincode: "",
+    city: "Gorakhpur",
+    state: "Uttar Pradesh",
+    pincode: "273008",
     contact: "",
     phone: "",
   });
@@ -43,16 +45,19 @@ export default function WarehousesPage() {
     fetchWarehouses();
   }, []);
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this warehouse?")) return;
+  const handleDelete = async (id: string, name: string) => {
+    if (!confirm(`Are you sure you want to delete location "${name}"?`)) return;
     try {
       const res = await fetch(`/api/warehouses?id=${id}`, { method: "DELETE" });
       const json = await res.json();
       if (json.success) {
-        toast.success(json.message || "Warehouse deleted successfully");
+        toast.success(json.message || "Location deleted successfully");
         fetchWarehouses();
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("erp-warehouses-updated"));
+        }
       } else {
-        toast.error(json.error || "Failed to delete warehouse");
+        toast.error(json.error || "Failed to delete location");
       }
     } catch (error) {
       toast.error("An error occurred while deleting");
@@ -68,10 +73,10 @@ export default function WarehousesPage() {
     const newWh = {
       code: formData.code || `WH-${formData.city.substring(0, 3).toUpperCase()}`,
       name: formData.name,
-      address: formData.address || "Industrial Area",
+      address: formData.address || "Gorakhpur, Uttar Pradesh",
       city: formData.city,
       state: formData.state,
-      pincode: formData.pincode || "000000",
+      pincode: formData.pincode || "273001",
       contactPerson: formData.contact || "Store Manager",
       phone: formData.phone.startsWith("+91") ? formData.phone : `+91 ${formData.phone}`,
       email: formData.name.replace(/\s+/g, '').toLowerCase() + "@valueplus.com",
@@ -90,6 +95,9 @@ export default function WarehousesPage() {
         toast.success(`Warehouse "${json.data.name}" added successfully!`);
         setIsFormOpen(false);
         fetchWarehouses();
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("erp-warehouses-updated"));
+        }
       } else {
         toast.error(json.error || "Failed to add warehouse");
       }
@@ -99,8 +107,21 @@ export default function WarehousesPage() {
   };
 
   return (
-    <PageShell title="Warehouses & Outlets" subtitle={`${warehouses.length} active locations`} breadcrumbs={[{ label: "Masters" }, { label: "Warehouses" }]}
-      actions={<Button size="sm" onClick={() => setIsFormOpen(true)}><Plus className="w-4 h-4 mr-1.5" /> Add Warehouse</Button>}>
+    <PageShell 
+      title="Warehouses & Showroom Outlets" 
+      subtitle={`${warehouses.length} registered locations (Showrooms & Central Godowns)`} 
+      breadcrumbs={[{ label: "Masters" }, { label: "Warehouses" }]}
+      actions={
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => router.push("/purchase/entries?action=create")}>
+            <ShoppingBag className="w-4 h-4 mr-1.5 text-[#3F63AD]" /> Inward Purchase Entry
+          </Button>
+          <Button size="sm" onClick={() => setIsFormOpen(true)}>
+            <Plus className="w-4 h-4 mr-1.5" /> Add Location / Godown
+          </Button>
+        </div>
+      }
+    >
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {loading ? (
           Array.from({ length: 4 }).map((_, i) => (
@@ -116,44 +137,75 @@ export default function WarehousesPage() {
               <Skeleton className="h-4 w-3/4" />
             </div>
           ))
-        ) : warehouses.map(wh => (
-          <div key={wh._id || wh.id} className="metric-card">
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl bg-[#3F63AD]/10 flex items-center justify-center">
-                  <Warehouse className="w-5 h-5 text-[#3F63AD]" />
+        ) : warehouses.map(wh => {
+          const isGodown = wh.name?.toLowerCase().includes("godown") || wh.name?.toLowerCase().includes("warehouse") || wh.name?.toLowerCase().includes("gida") || wh.name?.toLowerCase().includes("logistics");
+          return (
+            <div key={wh._id || wh.id} className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition-all space-y-4">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${isGodown ? 'bg-purple-100/70 text-purple-700' : 'bg-blue-100/70 text-[#3F63AD]'}`}>
+                    {isGodown ? <Building2 className="w-6 h-6" /> : <Store className="w-6 h-6" />}
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-900 text-base leading-snug">{wh.name}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-xs font-mono font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">{wh.code}</span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isGodown ? 'bg-purple-50 text-purple-800 border border-purple-200' : 'bg-blue-50 text-blue-800 border border-blue-200'}`}>
+                        {isGodown ? "Central Godown & Hub" : "Showroom Outlet"}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-semibold text-foreground">{wh.name}</p>
-                  <p className="text-xs font-mono text-muted-foreground">{wh.code}</p>
+                <div className="flex items-center gap-1.5">
+                  {wh.isDefault && <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 text-[10px] font-bold">Primary</Badge>}
+                  <Badge variant="success" className="text-[10px]">Active</Badge>
                 </div>
               </div>
-              <div className="flex items-center gap-1.5">
-                {wh.isDefault && <Badge variant="info">Default</Badge>}
-                <Badge variant="success">Active</Badge>
+
+              <div className="space-y-1.5 text-xs text-slate-600 bg-slate-50/70 p-3 rounded-xl border border-slate-100">
+                <div className="flex items-start gap-2">
+                  <MapPin className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-slate-400" />
+                  <span>{wh.address}, {wh.city}, {wh.state} - {wh.pincode}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Phone className="w-3.5 h-3.5 flex-shrink-0 text-slate-400" />
+                  <span>{wh.contactPerson || wh.contact || "Store Head"} · <a href={`tel:${wh.phone}`} className="text-blue-600 hover:underline font-bold">{wh.phone}</a></span>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="h-8 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50"
+                    onClick={() => router.push("/masters/items")}
+                  >
+                    <Package className="w-3.5 h-3.5 mr-1 text-[#3F63AD]" /> View Stock Items
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    className="h-8 text-xs font-bold bg-[#3F63AD] hover:bg-[#325191] text-white"
+                    onClick={() => router.push("/purchase/entries?action=create")}
+                  >
+                    <ShoppingBag className="w-3.5 h-3.5 mr-1 text-white" /> Inward Stock
+                  </Button>
+                </div>
+
+                {!wh.isDefault && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-8 text-xs text-rose-500 hover:text-rose-700 hover:bg-rose-50" 
+                    onClick={() => handleDelete(wh._id || wh.id, wh.name)}
+                  >
+                    Delete
+                  </Button>
+                )}
               </div>
             </div>
-            <div className="space-y-1.5 text-sm">
-              <div className="flex items-start gap-2 text-muted-foreground">
-                <MapPin className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-                <span>{wh.address}, {wh.city}, {wh.state} - {wh.pincode}</span>
-              </div>
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Phone className="w-3.5 h-3.5 flex-shrink-0" />
-                <span>{wh.contactPerson || wh.contact} · <a href={`tel:${wh.phone}`} className="text-blue-600 hover:underline font-medium">{wh.phone}</a></span>
-              </div>
-            </div>
-            <div className="mt-4 pt-4 border-t flex items-center justify-between">
-              <div>
-                <p className="text-2xl font-bold text-foreground">{wh.items || 0}</p>
-                <p className="text-xs text-muted-foreground">Total SKUs</p>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => handleDelete(wh._id || wh.id)}>Delete</Button>
-              </div>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>

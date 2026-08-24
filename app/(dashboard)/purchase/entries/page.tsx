@@ -9,7 +9,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Label } from "@/components/ui/label";
 import { Plus, Search, ClipboardList, Trash2, AlertTriangle, MoreHorizontal, XCircle, Printer, Download, Eye } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -33,7 +34,11 @@ interface PurchaseEntryItem {
   status: "paid" | "pending" | "partial" | "overdue";
 }
 
-export default function PurchaseEntriesPage() {
+function PurchaseEntriesContent() {
+  const searchParams = useSearchParams();
+  const actionParam = searchParams?.get("action");
+  const newParam = searchParams?.get("new");
+
   const queryClient = useQueryClient();
   const { data: entries = [], isLoading: loading } = useQuery({
     queryKey: ["purchase-entries"],
@@ -59,6 +64,12 @@ export default function PurchaseEntriesPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [entryToDelete, setEntryToDelete] = useState<string | null>(null);
   const [billToPrint, setBillToPrint] = useState<any | null>(null);
+
+  useEffect(() => {
+    if (actionParam === "create" || newParam === "true" || actionParam === "new") {
+      setIsFormOpen(true);
+    }
+  }, [actionParam, newParam]);
 
   const deleteMutation = useMutation({
     mutationFn: async (billNo: string) => {
@@ -242,5 +253,13 @@ export default function PurchaseEntriesPage() {
         billData={billToPrint}
       />
     </PageShell>
+  );
+}
+
+export default function PurchaseEntriesPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-xs font-bold text-slate-500">Loading Purchase Inward Entries...</div>}>
+      <PurchaseEntriesContent />
+    </Suspense>
   );
 }

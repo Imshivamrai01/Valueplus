@@ -176,3 +176,27 @@ export async function PUT(req: Request) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+export async function DELETE(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const serialNumber = searchParams.get("serialNumber");
+    const id = searchParams.get("id");
+
+    await connectToDatabase();
+
+    if (id) {
+      await SerialNumber.findByIdAndDelete(id);
+      return NextResponse.json({ success: true, message: "Serial number deleted" });
+    }
+
+    if (serialNumber) {
+      await SerialNumber.findOneAndDelete({ serialNumber });
+      return NextResponse.json({ success: true, message: "Serial number deleted" });
+    }
+
+    return NextResponse.json({ success: false, error: "Serial number or ID is required" }, { status: 400 });
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}

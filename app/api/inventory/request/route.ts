@@ -5,7 +5,7 @@ import StockRequest from "@/models/StockRequest";
 export async function GET() {
   try {
     await connectToDatabase();
-    const requests = await StockRequest.find({}).sort({ createdAt: -1 });
+    const requests = await StockRequest.find({}).sort({ createdAt: -1 }).lean();
     return NextResponse.json({ success: true, data: requests });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

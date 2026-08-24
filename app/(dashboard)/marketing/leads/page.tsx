@@ -52,6 +52,34 @@ export default function LeadsPipelinePage() {
     },
   });
 
+  const { data: rawUsers = [] } = useQuery({
+    queryKey: ["staffListForLeads"],
+    queryFn: async () => {
+      const res = await fetch("/api/users");
+      const json = await res.json();
+      return json.success && Array.isArray(json.data) ? json.data : [];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Strictly filter for Salesmen, Sales Executives, and Brand Promoters
+  const salesmenList = React.useMemo(() => {
+    return rawUsers.filter((u: any) => {
+      const role = (u.role || u.designation || "").toLowerCase();
+      const isExcluded = role === "admin" || role === "superadmin" || role === "manager" || role === "hr" || role === "accounts" || role === "warehouse";
+      if (isExcluded && !u.assignedBrand) return false;
+      return (
+        role.includes("sales") ||
+        role.includes("salesman") ||
+        role.includes("salesperson") ||
+        role.includes("executive") ||
+        role.includes("isd") ||
+        role.includes("promoter") ||
+        Boolean(u.assignedBrand)
+      );
+    });
+  }, [rawUsers]);
+
   const createLeadMutation = useMutation({
     mutationFn: async (payload: any) => {
       const res = await fetch("/api/crm/leads", {
@@ -432,13 +460,14 @@ export default function LeadsPipelinePage() {
                 <select
                   value={leadForm.assignedStaff}
                   onChange={(e) => setLeadForm({ ...leadForm, assignedStaff: e.target.value })}
-                  className="mt-1 w-full h-9 rounded-md border border-input bg-white px-2 py-1 text-xs font-medium shadow-xs focus:outline-none"
+                  className="mt-1 w-full h-9 rounded-md border border-input bg-white px-2 py-1 text-xs font-bold shadow-xs focus:outline-none"
                 >
-                  <option value="Amit Singh">Amit Singh</option>
-                  <option value="Rahul Verma">Rahul Verma</option>
-                  <option value="Priya Sharma">Priya Sharma</option>
-                  <option value="Pooja Gupta">Pooja Gupta</option>
-                  <option value="Sales Team">Sales Team</option>
+                  <option value="Sales Team">👥 All Sales Team</option>
+                  {salesmenList.map((s: any) => (
+                    <option key={s._id || s.name} value={s.name}>
+                      👤 {s.name} {s.assignedBrand ? `(🏷️ ${s.assignedBrand} Rep)` : `(${s.role || "Salesman"})`}
+                    </option>
+                  ))}
                 </select>
               </div>
 

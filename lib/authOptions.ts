@@ -125,6 +125,26 @@ const DEFAULT_SEEDED_ACCOUNTS = [
     assignedWarehouseName: "Gorakhpur Central Godown & Logistics Hub",
     status: "active",
   },
+  {
+    name: "Ramesh Yadav",
+    email: "driver@valueplus.in",
+    username: "driver",
+    password: "driver123",
+    role: "driver",
+    mobile: "9876543210",
+    designation: "Delivery & Courier Executive",
+    monthlySalary: 18000,
+    salaryType: "Fixed",
+    salaryPaymentDay: 7,
+    advanceBalance: 2500,
+    monthlyAdvanceDeduction: 1000,
+    vehicleNumber: "UP53 BT 4589",
+    drivingLicenseNo: "DL-UP53-2024-88992",
+    idProofType: "Driving License",
+    idProofNumber: "DL-UP53-2024-88992",
+    assignedWarehouseName: "Gorakhpur Central Godown & Logistics Hub",
+    status: "active",
+  },
 ];
 
 export const authOptions: NextAuthOptions = {
@@ -191,7 +211,8 @@ export const authOptions: NextAuthOptions = {
             (user.role === "warehouse" && (inputPassword === "warehouse123" || inputPassword === "123456")) ||
             (user.role === "accounts" && (inputPassword === "accounts123" || inputPassword === "123456")) ||
             (user.role === "hr" && (inputPassword === "hr123" || inputPassword === "123456")) ||
-            (user.role === "supplier" && (inputPassword === "supplier123" || inputPassword === "123456"))
+            (user.role === "supplier" && (inputPassword === "supplier123" || inputPassword === "123456")) ||
+            (user.role === "driver" && (inputPassword === "driver123" || inputPassword === "123456"))
           ) {
             isMatch = true;
           }

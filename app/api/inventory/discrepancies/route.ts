@@ -13,7 +13,7 @@ export async function GET(req: Request) {
     const filter: any = {};
     if (status && status !== "all") filter.status = status;
     
-    const discrepancies = await StockDiscrepancy.find(filter).sort({ createdAt: -1 });
+    const discrepancies = await StockDiscrepancy.find(filter).sort({ createdAt: -1 }).lean();
     return NextResponse.json({ success: true, data: discrepancies });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

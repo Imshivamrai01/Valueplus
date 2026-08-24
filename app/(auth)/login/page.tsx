@@ -56,36 +56,31 @@ export default function LoginPage() {
       if (res?.error) {
         setError("Login failed: " + res.error);
       } else if (res?.ok) {
-        window.location.href = "/dashboard";
+        if (username.toLowerCase().includes("driver")) {
+          window.location.href = "/driver/deliveries";
+        } else {
+          window.location.href = "/dashboard";
+        }
       } else {
-        setError("Unknown error: " + JSON.stringify(res));
+        setError("Invalid credentials");
       }
-    } catch (err) {
-      setError("Something went wrong");
+    } catch {
+      setError("An unexpected error occurred");
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex">
-      {/* Left Panel */}
-      <div className="hidden lg:flex lg:w-[55%] bg-[#1a2744] flex-col relative overflow-hidden">
-        {/* Background decorations */}
-        <div className="absolute inset-0">
-          <div className="absolute top-0 right-0 w-96 h-96 bg-[#3F63AD]/20 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl" />
-          <div className="absolute bottom-0 left-0 w-80 h-80 bg-[#76C043]/10 rounded-full translate-y-1/2 -translate-x-1/2 blur-3xl" />
-          <div className="absolute top-1/2 left-1/2 w-64 h-64 bg-[#3F63AD]/10 rounded-full -translate-x-1/2 -translate-y-1/2 blur-2xl" />
-        </div>
+    <div className="min-h-screen flex bg-background">
+      {/* Left branding panel - hidden on mobile */}
+      <div className="hidden lg:flex lg:w-1/2 relative bg-[#1B2537] overflow-hidden">
+        {/* Background gradient overlay */}
+        <div className="absolute inset-0 bg-gradient-to-br from-[#1B2537] via-[#243552] to-[#1B2537]" />
 
-        {/* Grid pattern */}
-        <div
-          className="absolute inset-0 opacity-5"
-          style={{
-            backgroundImage: "linear-gradient(rgba(255,255,255,.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.1) 1px, transparent 1px)",
-            backgroundSize: "40px 40px",
-          }}
-        />
+        {/* Decorative elements */}
+        <div className="absolute -top-40 -left-40 w-96 h-96 rounded-full bg-[#3F63AD]/20 blur-3xl" />
+        <div className="absolute -bottom-40 -right-40 w-96 h-96 rounded-full bg-[#76C043]/15 blur-3xl" />
 
         <div className="relative z-10 flex flex-col h-full p-12 justify-between">
           {/* Top Branding */}
@@ -145,63 +140,53 @@ export default function LoginPage() {
             </motion.div>
           </div>
 
-          {/* Stats */}
-          <div className="grid grid-cols-3 gap-4 mt-8">
-            {[
-              { value: "10K+", label: "Businesses" },
-              { value: "₹500Cr+", label: "Processed" },
-              { value: "99.9%", label: "Uptime" },
-            ].map((stat) => (
-              <div key={stat.label} className="bg-white/5 border border-white/10 rounded-xl p-3 text-center">
-                <p className="text-2xl font-bold text-[#76C043]">{stat.value}</p>
-                <p className="text-slate-400 text-xs mt-0.5">{stat.label}</p>
-              </div>
-            ))}
-          </div>
+          {/* Footer note */}
+          <p className="text-slate-400 text-sm">
+            © 2026 ValuePlus ERP. Enterprise Grade Security & Reliability.
+          </p>
         </div>
       </div>
 
-      {/* Right Panel — Login Form */}
-      <div className="flex-1 flex items-center justify-center bg-[#F8FAFC] p-8">
+      {/* Right form panel */}
+      <div className="flex-1 flex flex-col justify-center items-center p-4 sm:p-8 bg-slate-50/50">
         <motion.div
-          initial={{ opacity: 0, y: 16 }}
+          initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="w-full max-w-md"
+          className="w-full max-w-[430px]"
         >
-          {/* Mobile logo */}
-          <div className="flex lg:hidden items-center justify-center mb-8">
-            <ValuePlusBrand dark size="large" />
+          {/* Mobile Logo */}
+          <div className="lg:hidden flex flex-col items-center mb-6">
+            <ValuePlusBrand size="large" dark />
           </div>
 
-          {/* Card */}
-          <div className="bg-white rounded-2xl border border-border shadow-xl p-8">
-            <div className="mb-8">
-              <h2 className="text-2xl font-bold text-foreground">Welcome back</h2>
-              <p className="text-muted-foreground mt-1.5">Sign in to your ERP account</p>
+          <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xl p-5 sm:p-8">
+            <div className="mb-6 text-center sm:text-left">
+              <h2 className="text-2xl font-black text-slate-900 tracking-tight">Welcome back</h2>
+              <p className="text-xs sm:text-sm text-slate-500 mt-1">Sign in to your Value Plus account</p>
             </div>
 
-            <form onSubmit={handleLogin} className="space-y-5">
+            <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-1.5">
-                <Label htmlFor="username">Username</Label>
+                <Label htmlFor="username" className="text-xs font-bold text-slate-700">Username / Email / Phone</Label>
                 <Input
                   id="username"
                   type="text"
-                  placeholder="Enter your username"
+                  placeholder="e.g. driver@valueplus.in or 9876543210"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
                   autoComplete="username"
-                  className="h-11"
+                  className="h-11 rounded-xl text-xs font-semibold bg-slate-50/50"
                 />
               </div>
 
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="password">Password</Label>
+                  <Label htmlFor="password" className="text-xs font-bold text-slate-700">Password</Label>
                   <button
                     type="button"
-                    className="text-xs text-[#3F63AD] hover:underline font-medium"
+                    className="text-[11px] text-[#3F63AD] hover:underline font-semibold"
                   >
                     Forgot password?
                   </button>
@@ -215,12 +200,12 @@ export default function LoginPage() {
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     autoComplete="current-password"
-                    className="h-11 pr-10"
+                    className="h-11 pr-10 rounded-xl text-xs font-semibold bg-slate-50/50"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -228,24 +213,22 @@ export default function LoginPage() {
               </div>
 
               {/* Remember me */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 pt-0.5">
                 <Checkbox
                   id="remember"
                   checked={rememberMe}
                   onCheckedChange={(v) => setRememberMe(v as boolean)}
                 />
-                <Label htmlFor="remember" className="font-normal cursor-pointer">
+                <Label htmlFor="remember" className="text-xs font-medium text-slate-600 cursor-pointer">
                   Remember me for 30 days
                 </Label>
               </div>
 
               {/* Error */}
               {error && (
-                <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700 flex items-center gap-2">
-                  <div className="w-4 h-4 rounded-full bg-red-200 flex items-center justify-center flex-shrink-0">
-                    <span className="text-red-700 text-[10px] font-bold">!</span>
-                  </div>
-                  {error}
+                <div className="bg-red-50 border border-red-200 rounded-xl px-3.5 py-2.5 text-xs text-red-700 flex items-center gap-2">
+                  <span className="w-4 h-4 rounded-full bg-red-200 flex items-center justify-center font-bold text-[10px] text-red-700 flex-shrink-0">!</span>
+                  <span>{error}</span>
                 </div>
               )}
 
@@ -254,7 +237,7 @@ export default function LoginPage() {
                 type="submit"
                 disabled={isLoading}
                 size="lg"
-                className="w-full gap-2"
+                className="w-full gap-2 rounded-xl h-11 bg-[#30539C] hover:bg-[#203E78] text-white font-bold text-sm shadow-md"
               >
                 {isLoading ? (
                   <>
@@ -271,19 +254,20 @@ export default function LoginPage() {
             </form>
 
             {/* 1-Click Role Quick Login */}
-            <div className="mt-6 p-4 bg-slate-50 rounded-2xl border border-slate-200">
-              <div className="flex items-center justify-between mb-2.5">
+            <div className="mt-5 p-3.5 bg-slate-50/80 rounded-2xl border border-slate-200">
+              <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-1.5">
                   <Lock className="w-3.5 h-3.5 text-[#3F63AD]" />
-                  <p className="text-xs font-bold text-slate-800 uppercase tracking-wide">Quick Role Login</p>
+                  <p className="text-[11px] font-black text-slate-800 uppercase tracking-wide">Quick Role Login</p>
                 </div>
-                <span className="text-[10px] text-slate-400 font-medium">Click any role to autofill & login</span>
+                <span className="text-[9.5px] text-slate-400 font-medium">Click to autofill</span>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-2 gap-1.5">
                 {[
                   { role: "👑 Super Admin", id: "admin@valueplus.in", pass: "admin123" },
                   { role: "🏬 Store Incharge", id: "storeincharge@valueplus.in", pass: "store123" },
+                  { role: "🚚 Delivery Boy", id: "driver@valueplus.in", pass: "driver123" },
                   { role: "👔 Sales Executive", id: "salesman@valueplus.in", pass: "salesman123" },
                   { role: "💳 POS Cashier", id: "cashier@valueplus.in", pass: "cashier123" },
                   { role: "🏢 Godown Manager", id: "warehouse@valueplus.in", pass: "warehouse123" },
@@ -298,10 +282,14 @@ export default function LoginPage() {
                       setUsername(item.id);
                       setPassword(item.pass);
                     }}
-                    className="flex flex-col items-start p-2 rounded-xl bg-white hover:bg-blue-50 border border-slate-200 hover:border-[#3F63AD]/50 transition-all text-left group shadow-xs"
+                    className="w-full overflow-hidden text-left p-2 rounded-xl bg-white hover:bg-blue-50 border border-slate-200/90 hover:border-[#3F63AD] transition-all shadow-2xs group"
                   >
-                    <span className="text-[11px] font-bold text-slate-800 group-hover:text-[#3F63AD]">{item.role}</span>
-                    <span className="text-[10px] text-slate-400 font-mono mt-0.5">{item.id}</span>
+                    <span className="text-[10.5px] font-bold text-slate-800 group-hover:text-[#3F63AD] truncate block leading-tight">
+                      {item.role}
+                    </span>
+                    <span className="text-[9px] text-slate-400 font-mono truncate block mt-0.5">
+                      {item.id}
+                    </span>
                   </button>
                 ))}
               </div>

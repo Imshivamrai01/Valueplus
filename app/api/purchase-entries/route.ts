@@ -17,7 +17,7 @@ export async function GET(req: Request) {
     
     const query = type ? { type } : { type: { $ne: "debit-note" } }; // Default to entries if no type specified
     
-    const entries = await PurchaseEntry.find(query).sort({ createdAt: -1 });
+    const entries = await PurchaseEntry.find(query).sort({ createdAt: -1 }).lean();
     return NextResponse.json({ success: true, data: entries });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -29,13 +29,26 @@ export async function POST(req: Request) {
     const body = await req.json();
     await connectToDatabase();
 
-    // Determine sequence number if not provided
+    // Determine sequence number or validate uniqueness
     let newBillNo = body.billNo;
     if (!newBillNo) {
       const isDebitNote = body.type === "debit-note";
       const count = await PurchaseEntry.countDocuments({ type: isDebitNote ? "debit-note" : "entry" });
       const prefix = isDebitNote ? "DN-2026-" : "BILL-2026-";
       newBillNo = `${prefix}${String(count + 1).padStart(4, "0")}`;
+    } else {
+      const cleanBill = String(newBillNo).trim();
+      const escapedBill = cleanBill.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const existingEntry = await PurchaseEntry.findOne({
+        billNo: { $regex: new RegExp(`^${escapedBill}$`, "i") },
+        type: body.type === "debit-note" ? "debit-note" : { $ne: "debit-note" }
+      });
+      if (existingEntry) {
+        return NextResponse.json({
+          success: false,
+          error: `Purchase Bill #${cleanBill} already exists in the system (Supplier: ${existingEntry.supplierName}). Every purchase entry must have a unique bill number.`
+        }, { status: 400 });
+      }
     }
 
     const payload = {
@@ -112,10 +125,21 @@ export async function POST(req: Request) {
             existingItem = await Item.findOne({ name: { $regex: new RegExp(`^${item.name.trim()}$`, "i") } });
           }
 
+          const targetWarehouse = body.warehouse || "Ashoka Enterprises (Kunraghat Showroom)";
+          const isGodownTarget = targetWarehouse.toLowerCase().includes("godown") || targetWarehouse.toLowerCase().includes("warehouse") || targetWarehouse.toLowerCase().includes("gida") || targetWarehouse.toLowerCase().includes("logistics");
+
           if (existingItem) {
-            // Update existing product stock & purchase rate
+            // Update existing product stock & purchase rate based on Showroom vs Godown target
+            const incPayload: any = {};
+            if (isGodownTarget) {
+              incPayload.godownStock = qtyImpact;
+            } else {
+              incPayload.showroomStock = qtyImpact;
+              incPayload.currentStock = qtyImpact;
+            }
+
             await Item.findByIdAndUpdate(existingItem._id, {
-              $inc: { currentStock: qtyImpact },
+              $inc: incPayload,
               $set: { purchasePrice: rate > 0 ? rate : existingItem.purchasePrice }
             });
           } else if (item.name && qtyImpact > 0) {
@@ -137,7 +161,10 @@ export async function POST(req: Request) {
               sellingPrice: sellPrice,
               mrp: mrpVal,
               openingStock: 0,
-              currentStock: qtyImpact,
+              showroomStock: isGodownTarget ? 0 : qtyImpact,
+              godownStock: isGodownTarget ? qtyImpact : 0,
+              currentStock: isGodownTarget ? 0 : qtyImpact,
+              warehouse: targetWarehouse,
               reorderLevel: 5,
               status: "active"
             });
@@ -162,7 +189,7 @@ export async function POST(req: Request) {
                       status: body.type === "debit-note" ? "RETURNED" : "AVAILABLE",
                       purchaseEntryId: entry._id.toString(),
                       price: rate,
-                      warehouse: existingItem?.warehouse || "Main Store - Gorakhpur",
+                      warehouse: targetWarehouse,
                     },
                     $push: {
                       history: {

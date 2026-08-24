@@ -2,21 +2,26 @@
 
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useSession } from "next-auth/react";
 import { PageShell } from "@/components/shared/page-shell";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { 
   Users, Plus, Search, Phone, ArrowRight, CheckCircle2, 
-  MessageSquare, Sparkles, Clock, Calendar, HelpCircle
+  MessageSquare, Sparkles, Clock, Calendar, HelpCircle,
+  Tag, RefreshCw, FileText, ShoppingCart
 } from "lucide-react";
 import { toast } from "sonner";
 
 export default function WalkInQueriesPage() {
   const queryClient = useQueryClient();
+  const { data: session } = useSession();
+  const currentUserName = session?.user?.name || "Store Staff";
+
   const [searchTerm, setSearchTerm] = useState("");
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
 
@@ -27,12 +32,41 @@ export default function WalkInQueriesPage() {
     interestedProduct: "",
     category: "Electronics",
     budget: 0,
-    staff: "Amit Singh",
+    staff: currentUserName,
     notes: "",
     followUpDate: "",
   });
 
-  const { data: queries = [], isLoading } = useQuery({
+  // Fetch real registered users/salesmen from MongoDB
+  const { data: rawUsers = [] } = useQuery({
+    queryKey: ["staffListForQueries"],
+    queryFn: async () => {
+      const res = await fetch("/api/users");
+      const json = await res.json();
+      return json.success && Array.isArray(json.data) ? json.data : [];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Strictly filter for Salesmen, Sales Executives, and Brand Promoters
+  const salesmenList = React.useMemo(() => {
+    return rawUsers.filter((u: any) => {
+      const role = (u.role || u.designation || "").toLowerCase();
+      const isExcluded = role === "admin" || role === "superadmin" || role === "manager" || role === "hr" || role === "accounts" || role === "warehouse";
+      if (isExcluded && !u.assignedBrand) return false;
+      return (
+        role.includes("sales") ||
+        role.includes("salesman") ||
+        role.includes("salesperson") ||
+        role.includes("executive") ||
+        role.includes("isd") ||
+        role.includes("promoter") ||
+        Boolean(u.assignedBrand)
+      );
+    });
+  }, [rawUsers]);
+
+  const { data: queries = [], isLoading, refetch } = useQuery({
     queryKey: ["walkInQueries"],
     queryFn: async () => {
       const res = await fetch("/api/crm/walk-in");
@@ -63,7 +97,7 @@ export default function WalkInQueriesPage() {
         interestedProduct: "",
         category: "Electronics",
         budget: 0,
-        staff: "Amit Singh",
+        staff: currentUserName,
         notes: "",
         followUpDate: "",
       });
@@ -94,54 +128,67 @@ export default function WalkInQueriesPage() {
     (q.customerName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
     (q.mobile || "").includes(searchTerm) ||
     (q.interestedProduct || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (q.reason || "").toLowerCase().includes(searchTerm.toLowerCase())
+    (q.reason || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (q.staff || "").toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
     <PageShell
-      title="Walk-in Customer Queries"
-      description="Record showroom visitor enquiries, reasons for store visit, product interest, and convert to sales leads."
-    >
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <div className="relative flex-1 min-w-[260px] max-w-md">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <Input
-              placeholder="Search visitor name, phone, product..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9 bg-slate-50 border-slate-300 text-xs"
-            />
-          </div>
-
-          <Button
-            onClick={() => setIsNewModalOpen(true)}
-            className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white text-xs font-bold"
-          >
-            <Plus className="w-3.5 h-3.5 mr-1.5" /> Log Walk-in Visitor
+      title="Customer Walk-in Queries & Enquiries"
+      description="Track showroom visitors, capture interested product enquiries, and assign sales representatives."
+      breadcrumbs={[
+        { label: "CRM & Customer Service", href: "/marketing/walk-in" },
+        { label: "Customer Queries" },
+      ]}
+      actions={
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => refetch()}>
+            <RefreshCw className="w-4 h-4 mr-1.5" /> Refresh
+          </Button>
+          <Button onClick={() => setIsNewModalOpen(true)} size="sm" className="bg-[#30539C] hover:bg-[#1E3A8A] text-white font-bold">
+            <Plus className="w-4 h-4 mr-1.5" /> Log Customer Query
           </Button>
         </div>
+      }
+    >
+      <div className="space-y-4">
+        {/* Top Filter and Search Bar */}
+        <div className="flex items-center justify-between gap-4">
+          <div className="relative w-full max-w-sm">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Input
+              placeholder="Search by customer, phone, product, or sales staff..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-9 text-xs h-9 bg-white"
+            />
+          </div>
+          <div className="text-xs text-slate-500 font-medium">
+            Total Queries: <span className="font-bold text-slate-800">{filtered.length}</span>
+          </div>
+        </div>
 
+        {/* Queries Table */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <table className="w-full text-xs text-left">
-            <thead className="bg-slate-50 border-b text-slate-700 uppercase font-bold">
+            <thead className="bg-slate-50 border-b text-slate-700 uppercase font-bold text-[10.5px]">
               <tr>
                 <th className="p-3">Date & Time</th>
                 <th className="p-3">Customer</th>
                 <th className="p-3">Visit Reason</th>
                 <th className="p-3">Interested Product</th>
                 <th className="p-3">Budget</th>
-                <th className="p-3">Attended By</th>
+                <th className="p-3">Attended Sales Staff</th>
                 <th className="p-3">Follow-up</th>
                 <th className="p-3 text-center">Status</th>
                 <th className="p-3 text-right">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 font-medium">
               {isLoading ? (
-                <tr><td colSpan={9} className="p-6 text-center text-slate-500">Loading queries...</td></tr>
+                <tr><td colSpan={9} className="p-6 text-center text-slate-500">Loading customer queries...</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={9} className="p-6 text-center text-slate-500">No walk-in queries logged today.</td></tr>
+                <tr><td colSpan={9} className="p-10 text-center text-slate-500">No walk-in queries found. Click &quot;Log Customer Query&quot; to add one.</td></tr>
               ) : (
                 filtered.map((q: any) => (
                   <tr key={q._id} className="hover:bg-slate-50 transition-colors">
@@ -164,7 +211,11 @@ export default function WalkInQueriesPage() {
                     <td className="p-3 font-mono font-bold text-[#76C043]">
                       {q.budget > 0 ? `₹${q.budget.toLocaleString("en-IN")}` : "Flexible"}
                     </td>
-                    <td className="p-3 text-slate-700">{q.staff}</td>
+                    <td className="p-3">
+                      <span className="px-2 py-0.5 rounded text-[11px] font-bold font-mono inline-flex items-center gap-1 border bg-blue-50 text-blue-800 border-blue-200">
+                        👤 {q.staff}
+                      </span>
+                    </td>
                     <td className="p-3 text-slate-600 font-mono text-[11px]">{q.followUpDate || "—"}</td>
                     <td className="p-3 text-center">
                       <Badge className={q.status === "Converted to Lead" ? "bg-purple-100 text-purple-800" : "bg-blue-100 text-blue-800"}>
@@ -193,75 +244,132 @@ export default function WalkInQueriesPage() {
         </div>
       </div>
 
-      {/* NEW WALK-IN MODAL */}
+      {/* ─── MODAL: LOG CUSTOMER QUERY ──────────────── */}
       <Dialog open={isNewModalOpen} onOpenChange={setIsNewModalOpen}>
-        <DialogContent className="max-w-md p-6 rounded-2xl">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-base font-bold flex items-center gap-2 text-slate-900">
-              <Users className="w-4 h-4 text-[#3F63AD]" /> Log Walk-in Customer Enquiry
+              <Users className="w-4 h-4 text-[#3F63AD]" /> Log Customer Walk-in Query
             </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Record visitor requirement and assign to a sales executive.
+            </DialogDescription>
           </DialogHeader>
+          
           <div className="space-y-3 text-xs pt-2">
             <div>
-              <Label>Customer Name *</Label>
-              <Input placeholder="Visitor name" value={form.customerName} onChange={(e) => setForm({ ...form, customerName: e.target.value })} className="mt-1 bg-slate-50" />
+              <Label className="font-bold">Customer Name *</Label>
+              <Input 
+                placeholder="e.g. Rajesh Gupta" 
+                value={form.customerName} 
+                onChange={(e) => setForm({ ...form, customerName: e.target.value })} 
+                className="mt-1 bg-slate-50" 
+              />
             </div>
             <div>
-              <Label>Mobile Number (10 digits) *</Label>
-              <Input maxLength={10} placeholder="Mobile number" value={form.mobile} onChange={(e) => setForm({ ...form, mobile: e.target.value })} className="mt-1 bg-slate-50 font-mono" />
+              <Label className="font-bold">Mobile Number (10 digits) *</Label>
+              <Input 
+                maxLength={10} 
+                placeholder="e.g. 9876543210" 
+                value={form.mobile} 
+                onChange={(e) => setForm({ ...form, mobile: e.target.value })} 
+                className="mt-1 bg-slate-50 font-mono" 
+              />
             </div>
             <div>
-              <Label>Visit Reason *</Label>
+              <Label className="font-bold">Visit Reason *</Label>
               <Select value={form.reason} onValueChange={(v) => setForm({ ...form, reason: v })}>
                 <SelectTrigger className="mt-1 bg-slate-50"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Product Enquiry">Product Enquiry</SelectItem>
-                  <SelectItem value="Purchase">Purchase</SelectItem>
-                  <SelectItem value="Price Enquiry">Price Enquiry</SelectItem>
-                  <SelectItem value="Exchange">Exchange Old Unit</SelectItem>
+                  <SelectItem value="Purchase">Purchase / Buying</SelectItem>
+                  <SelectItem value="Price Enquiry">Price & Offer Comparison</SelectItem>
+                  <SelectItem value="Exchange">Exchange Old Appliance</SelectItem>
                   <SelectItem value="Warranty">Warranty Support</SelectItem>
                   <SelectItem value="Service">Service / Repair</SelectItem>
-                  <SelectItem value="Finance">Consumer Finance Enquiry</SelectItem>
-                  <SelectItem value="Complaint">Complaint</SelectItem>
+                  <SelectItem value="Finance">Consumer Finance / EMI</SelectItem>
                   <SelectItem value="Other">Other</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <Label>Category</Label>
+                <Label className="font-bold">Category</Label>
                 <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
                   <SelectTrigger className="mt-1 bg-slate-50"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Electronics">Electronics (TV/Audio)</SelectItem>
                     <SelectItem value="Mobile">Mobile Phones</SelectItem>
-                    <SelectItem value="Appliances">Home Appliances</SelectItem>
+                    <SelectItem value="Appliances">Home Appliances (AC/Fridge)</SelectItem>
                     <SelectItem value="IT">Laptops & IT</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div>
-                <Label>Budget Estimate (₹)</Label>
-                <Input type="number" placeholder="e.g. 25000" value={form.budget || ""} onChange={(e) => setForm({ ...form, budget: Number(e.target.value) })} className="mt-1 bg-slate-50 font-mono" />
+                <Label className="font-bold">Budget Estimate (₹)</Label>
+                <Input 
+                  type="number" 
+                  placeholder="e.g. 25000" 
+                  value={form.budget || ""} 
+                  onChange={(e) => setForm({ ...form, budget: Number(e.target.value) })} 
+                  className="mt-1 bg-slate-50 font-mono" 
+                />
               </div>
             </div>
             <div>
-              <Label>Interested Product / Model *</Label>
-              <Input placeholder="e.g. Lloyd 43 inch Smart TV / iPhone 15" value={form.interestedProduct} onChange={(e) => setForm({ ...form, interestedProduct: e.target.value })} className="mt-1 bg-slate-50 font-semibold" />
+              <Label className="font-bold">Interested Product / Model *</Label>
+              <Input 
+                placeholder="e.g. Haier 1.5 Ton 5 Star Split AC / iPhone 15" 
+                value={form.interestedProduct} 
+                onChange={(e) => setForm({ ...form, interestedProduct: e.target.value })} 
+                className="mt-1 bg-slate-50 font-semibold" 
+              />
             </div>
             <div>
-              <Label>Follow-up Date (Optional)</Label>
-              <Input type="date" value={form.followUpDate} onChange={(e) => setForm({ ...form, followUpDate: e.target.value })} className="mt-1 bg-slate-50" />
+              <Label className="font-bold">Follow-up Date (Optional)</Label>
+              <Input 
+                type="date" 
+                value={form.followUpDate} 
+                onChange={(e) => setForm({ ...form, followUpDate: e.target.value })} 
+                className="mt-1 bg-slate-50" 
+              />
             </div>
+
+            {/* DYNAMIC SALESMAN / STAFF DROPDOWN */}
             <div>
-              <Label>Attended By Sales Staff</Label>
-              <Input value={form.staff} onChange={(e) => setForm({ ...form, staff: e.target.value })} className="mt-1 bg-slate-50" />
+              <Label className="font-bold text-slate-800">Attended By Sales Staff *</Label>
+              <Select 
+                value={form.staff} 
+                onValueChange={(v) => setForm({ ...form, staff: v })}
+              >
+                <SelectTrigger className="mt-1 bg-slate-50 font-medium">
+                  <SelectValue placeholder="-- Select Salesman / Staff --" />
+                </SelectTrigger>
+                <SelectContent className="max-h-60">
+                  {salesmenList.length === 0 ? (
+                    <SelectItem value={currentUserName}>
+                      👤 {currentUserName} (Sales Representative)
+                    </SelectItem>
+                  ) : (
+                    salesmenList.map((s: any) => (
+                      <SelectItem key={s._id || s.name} value={s.name}>
+                        👤 {s.name} {s.assignedBrand ? `(🏷️ ${s.assignedBrand} Rep)` : `(${s.role || "Salesman"})`}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
             </div>
           </div>
+
           <DialogFooter className="mt-4">
             <Button variant="ghost" onClick={() => setIsNewModalOpen(false)}>Cancel</Button>
-            <Button onClick={() => createMutation.mutate(form)} disabled={createMutation.isPending} className="bg-[#3F63AD] text-white font-bold">
-              Save Entry
+            <Button 
+              onClick={() => createMutation.mutate(form)} 
+              disabled={createMutation.isPending || !form.customerName || !form.mobile || !form.interestedProduct} 
+              className="bg-[#30539C] hover:bg-[#1E3A8A] text-white font-bold"
+            >
+              {createMutation.isPending ? "Saving..." : "Save Entry"}
             </Button>
           </DialogFooter>
         </DialogContent>

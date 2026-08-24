@@ -5,7 +5,7 @@ import BillOfMaterial from "@/models/BillOfMaterial";
 export async function GET() {
   try {
     await connectToDatabase();
-    const boms = await BillOfMaterial.find({}).sort({ createdAt: -1 });
+    const boms = await BillOfMaterial.find({}).sort({ createdAt: -1 }).lean();
     return NextResponse.json({ success: true, data: boms });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

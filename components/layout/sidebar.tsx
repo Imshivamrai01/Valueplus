@@ -86,6 +86,7 @@ const ROLE_DISPLAY_NAMES: Record<string, { label: string; bg: string; text: stri
   supplier: { label: "SUPPLIER PORTAL", bg: "bg-orange-500/20 border-orange-400/40", text: "text-orange-300" },
   manager: { label: "STORE INCHARGE / ADMIN", bg: "bg-teal-500/20 border-teal-400/40", text: "text-teal-300" },
   sales: { label: "SALES EXECUTIVE", bg: "bg-emerald-500/20 border-emerald-400/40", text: "text-emerald-300" },
+  driver: { label: "COURIER & DELIVERY BOY", bg: "bg-amber-500/20 border-amber-400/40", text: "text-amber-300" },
 };
 
 export function Sidebar() {
@@ -122,7 +123,7 @@ export function Sidebar() {
   }).filter(Boolean) as typeof NAV_GROUPS;
 
   return (
-    <aside className="hidden md:flex fixed left-0 top-0 z-40 h-screen w-64 flex-col bg-[#30539C] shadow-[4px_0_24px_rgba(48,83,156,0.15)] border-r border-white/10">
+    <aside className="hidden md:flex fixed left-0 top-0 z-40 h-screen w-64 flex-col bg-[#30539C] shadow-[4px_0_24px_rgba(48,83,156,0.15)] border-r border-white/10 print:hidden">
       {/* Brand Header */}
       <div className="flex items-center justify-center px-4 h-20 border-b border-white/10 bg-black/5 flex-shrink-0">
         <ValuePlusBrand />

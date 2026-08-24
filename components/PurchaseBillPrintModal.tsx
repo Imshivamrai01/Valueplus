@@ -17,6 +17,7 @@ import {
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { printElement } from "@/lib/printUtility";
 
 function numberToWordsIndian(num: number): string {
   const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ', 'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ', 'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];
@@ -68,43 +69,61 @@ export function PurchaseBillPrintModal({ isOpen, onClose, billData }: PurchaseBi
 
   if (!billData) return null;
 
-  const subtotal = Number(billData.subtotal || billData.amount || 0);
-  const gst = Number(billData.gst || billData.totalTax || 0);
-  const total = Number(billData.total || billData.totalAmount || (subtotal + gst));
-  const paid = Number(billData.paid || 0);
-  const balance = Number(billData.balance ?? (total - paid));
-
   const items = Array.isArray(billData.items) && billData.items.length > 0
     ? billData.items
     : [
         {
           name: billData.itemName || "Inward Goods / Electronic Appliance Supplies",
           quantity: billData.quantity || 1,
-          rate: subtotal || total,
-          gstRate: 18,
+          rate: Number(billData.rate || billData.subtotal || billData.total || 0),
+          gstRate: Number(billData.gstRate || 18),
           hsnCode: "8528",
         }
       ];
 
+  // Calculate dynamic totals from items so it never displays ₹0 when items are present
+  const computedTaxableSubtotal = items.reduce((sum: number, line: any) => {
+    const qty = Number(line.quantity || line.qty || 1);
+    const rate = Number(line.rate || line.purchasePrice || line.price || 0);
+    return sum + (qty * rate);
+  }, 0);
+
+  const computedGst = items.reduce((sum: number, line: any) => {
+    const qty = Number(line.quantity || line.qty || 1);
+    const rate = Number(line.rate || line.purchasePrice || line.price || 0);
+    const gstRate = Number(line.gstRate ?? line.taxRate ?? 18);
+    return sum + ((qty * rate * gstRate) / 100);
+  }, 0);
+
+  const subtotal = Number(billData.subtotal) > 0 ? Number(billData.subtotal) : (Number(billData.taxableAmount) > 0 ? Number(billData.taxableAmount) : computedTaxableSubtotal);
+  const gst = Number(billData.gst) > 0 ? Number(billData.gst) : (Number(billData.totalTax) > 0 ? Number(billData.totalTax) : computedGst);
+  const total = Number(billData.total) > 0 ? Number(billData.total) : (Number(billData.totalAmount) > 0 ? Number(billData.totalAmount) : (subtotal + gst));
+  const paid = Number(billData.paid ?? (billData.status === "paid" ? total : 0));
+  const balance = Number(billData.balance ?? Math.max(0, total - paid));
+
   const handlePrint = () => {
-    window.print();
+    if (printRef.current) {
+      printElement(printRef.current, `PurchaseInvoice_${billData.billNo || billData.billNumber || "ValuePlus"}`);
+    } else {
+      window.print();
+    }
   };
 
   const handleWhatsAppShare = () => {
-    const text = `*PURCHASE INWARD BILL - VALUE PLUS*\nBill No: ${billData.billNo || billData.billNumber}\nSupplier: ${billData.supplierName}\nDate: ${billData.billDate || billData.date || "Today"}\nTotal Amount: ${formatCurrency(total)}\nStatus: ${billData.status || "Paid"}\nThank you!`;
+    const text = `*PURCHASE INWARD VOUCHER - VALUE PLUS*\nBill No: ${billData.billNo || billData.billNumber}\nSupplier: ${billData.supplierName}\nDate: ${billData.billDate || billData.date || "Today"}\nTotal Amount: ${formatCurrency(total)}\nStatus: ${billData.status || "Paid"}\nThank you!`;
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[95vh] p-0 overflow-y-auto border-none shadow-2xl rounded-2xl print:m-0 print:p-0 print:max-w-none print:shadow-none">
+      <DialogContent className="max-w-4xl max-h-[96vh] p-0 overflow-y-auto border-none shadow-2xl rounded-2xl print:m-0 print:p-0 print:max-w-none print:shadow-none print:bg-white">
         {/* Top Floating Action Bar (Hidden during Print) */}
-        <div className="sticky top-0 z-50 bg-slate-900 text-white px-6 py-3.5 flex items-center justify-between shadow-md print:hidden">
-          <div className="flex items-center gap-2">
-            <span className="font-mono font-bold text-xs bg-[#76C043] text-white px-2 py-0.5 rounded">
+        <div className="sticky top-0 z-50 bg-[#1B2537] text-white px-6 py-3.5 flex items-center justify-between shadow-md print:hidden border-b border-white/10">
+          <div className="flex items-center gap-2.5">
+            <span className="font-mono font-black text-xs bg-[#76C043] text-white px-2.5 py-1 rounded-md shadow-xs">
               {billData.billNo || billData.billNumber || "BILL-001"}
             </span>
-            <span className="text-sm font-semibold text-slate-200">
+            <span className="text-sm font-bold text-slate-100">
               Supplier Purchase Invoice Voucher
             </span>
           </div>
@@ -113,9 +132,9 @@ export function PurchaseBillPrintModal({ isOpen, onClose, billData }: PurchaseBi
             <Button
               size="sm"
               onClick={handlePrint}
-              className="bg-[#76C043] hover:bg-[#62a634] text-white font-bold h-8 text-xs px-3 shadow-md"
+              className="bg-[#30539C] hover:bg-[#203a70] text-white font-bold h-8 text-xs px-3.5 shadow-sm flex items-center gap-1.5"
             >
-              <Printer className="w-3.5 h-3.5 mr-1.5" />
+              <Printer className="w-3.5 h-3.5" />
               Print / Save PDF
             </Button>
             <Button
@@ -141,97 +160,79 @@ export function PurchaseBillPrintModal({ isOpen, onClose, billData }: PurchaseBi
         {/* ─── PRINTABLE BILL CONTAINER ──────────────────────────────── */}
         <div 
           ref={printRef}
-          className="p-8 bg-white text-slate-900 font-sans text-xs leading-relaxed space-y-6 print:p-6"
+          className="p-8 bg-white text-slate-900 font-sans text-xs leading-tight space-y-4 print:p-0 print:m-0"
         >
-          {/* Header Brand & Company Info */}
-          <div className="border-b-2 border-slate-900 pb-5">
-            <div className="flex justify-between items-start">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-2xl font-black tracking-tight text-slate-900">
-                    M/S ASHOKA ENTERPRISES
-                  </h1>
-                  <span className="bg-[#3F63AD] text-white text-[11px] font-black px-2 py-0.5 rounded tracking-wide">
-                    VALUE PLUS
-                  </span>
-                </div>
-                <p className="text-xs text-slate-600 font-medium mt-1">
-                  Authorised Multi-Brand Electronics, Appliances & Mobile Distributor
-                </p>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  H. No. 116, Near Shanti Marriage House, Deoria Road, Kunraghat, Gorakhpur, UP – 273008
-                </p>
-                <div className="flex flex-wrap items-center gap-4 text-[11px] text-slate-700 font-semibold mt-1.5">
-                  <span>GSTIN: <b className="font-mono text-slate-900">09ANHPJ7242D1Z2</b></span>
-                  <span>•</span>
-                  <span>PAN: <b className="font-mono text-slate-900">ANHPJ7242D</b></span>
-                  <span>•</span>
-                  <span>Phone: <b className="text-slate-900">9140860604</b></span>
-                </div>
-              </div>
-
-              <div className="text-right">
-                <div className="inline-block bg-slate-100 border border-slate-300 rounded-lg p-3 text-right">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                    DOCUMENT TYPE
-                  </span>
-                  <span className="text-sm font-black text-slate-900 block">
-                    PURCHASE INWARD BILL
-                  </span>
-                  <span className="text-xs font-mono font-bold text-[#3F63AD] block mt-0.5">
-                    {billData.billNo || billData.billNumber}
-                  </span>
-                </div>
-              </div>
+          {/* TOP HEADER: BRAND LOGO */}
+          <div className="flex flex-col items-center justify-center pb-2 border-b border-slate-300">
+            <div className="flex items-center text-3xl font-black tracking-tight">
+              <span className="text-[#30539C]">VALUE</span>
+              <span className="text-[#76C043]">PLUS</span>
+            </div>
+            <p className="text-[10px] text-slate-500 tracking-wider mt-0.5">plug into great experience |</p>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="h-[1px] w-6 bg-slate-400" />
+              <span className="text-xs font-bold text-slate-800 tracking-wider font-hindi">— रिश्ता विश्वास का —</span>
+              <span className="h-[1px] w-6 bg-slate-400" />
             </div>
           </div>
 
-          {/* Supplier & Bill Metadata Strip */}
-          <div className="grid grid-cols-2 gap-6 bg-slate-50/80 p-4 rounded-xl border border-slate-200">
-            {/* Left: Supplier Details */}
-            <div className="space-y-1">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                SUPPLIER (BILL FROM)
-              </span>
-              <h3 className="text-sm font-bold text-slate-900">
-                {billData.supplierName || "Authorised Supplier Partner"}
-              </h3>
-              {billData.supplierPhone && (
-                <p className="text-slate-600 text-xs">
-                  Mobile / Phone: <span className="font-mono font-semibold">{billData.supplierPhone}</span>
-                </p>
-              )}
-              <p className="text-slate-500 text-[11px]">
-                Inward Store Location: <span className="font-semibold text-slate-800">Main Store / Gorakhpur Central Hub</span>
+          {/* DOCUMENT TITLE & META ROW */}
+          <div className="flex items-center justify-between py-2 border-b border-slate-400 font-bold">
+            <span className="text-xs text-slate-900 font-black uppercase tracking-wide">
+              PURCHASE INWARD INVOICE VOUCHER <span className="font-normal text-[10px] text-slate-600">(Goods Receipt Note)</span>
+            </span>
+            <span className="text-xs font-mono">
+              Voucher / Bill No: <span className="text-[#30539C] font-black">{billData.billNo || billData.billNumber}</span>
+            </span>
+            <span className="text-xs">Dated: <span className="font-mono">{formatDate(billData.billDate || billData.date || new Date())}</span></span>
+          </div>
+
+          {/* COMPANY & STORE LOCATION DETAILS */}
+          <div className="grid grid-cols-12 border-b border-slate-400 py-2 gap-2 text-[10px]">
+            <div className="col-span-6 pr-2">
+              <p className="font-black text-xs text-slate-900">M/S ASHOKA ENTERPRISES (VALUE PLUS)</p>
+              <p className="text-slate-700 uppercase mt-0.5">H. NO. 116, NEAR SHANTI MARRIAGE HOUSE DEORIA ROAD, KUNRAGHAT GORAKHPUR, UP – 273008</p>
+              <p className="text-slate-800 mt-1">
+                Ph: <span className="font-mono font-bold">9140860604</span> · Web: <span className="font-mono">www.valueplus.in</span>
               </p>
             </div>
 
-            {/* Right: Bill Dates & Linked References */}
-            <div className="space-y-1 text-right">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                INVOICE & DATES
-              </span>
-              <p className="text-xs text-slate-700">
-                Bill Date: <b className="text-slate-900">{formatDate(billData.billDate || billData.date || new Date())}</b>
+            <div className="col-span-6 pl-2 border-l border-slate-300 space-y-0.5">
+              <p><span className="font-semibold">GSTIN :</span> <span className="font-mono font-bold">09ANHPJ7242D1Z2</span></p>
+              <p><span className="font-semibold">State :</span> Uttar Pradesh(09)</p>
+              <p><span className="font-semibold">PAN :</span> <span className="font-mono font-bold">ANHPJ7242D</span></p>
+              <p><span className="font-semibold">Inward Destination :</span> <span className="font-bold text-[#30539C]">{billData.warehouse || "Ashoka Enterprises (Kunraghat Showroom)"}</span></p>
+            </div>
+          </div>
+
+          {/* SUPPLIER & PAYMENT META STRIP (3 COLUMNS) */}
+          <div className="grid grid-cols-12 border-b border-slate-400 text-[10px] divide-x divide-slate-400">
+            {/* Col 1: Supplier */}
+            <div className="col-span-5 p-2 space-y-1">
+              <p className="font-bold border-b pb-0.5 uppercase text-slate-800">Supplier (Billed From)</p>
+              <p className="font-black text-xs text-slate-900">{billData.supplierName || "Authorized Supplier Partner"}</p>
+              <p className="text-slate-700">
+                Mobile / Phone: <span className="font-mono font-bold">{billData.supplierPhone || "N/A"}</span>
               </p>
-              {billData.dueDate && (
-                <p className="text-xs text-slate-700">
-                  Payment Due Date: <b className="text-slate-900">{formatDate(billData.dueDate)}</b>
-                </p>
-              )}
-              {billData.linkedPoNo && (
-                <p className="text-xs text-slate-700">
-                  Linked PO #: <b className="font-mono text-amber-700">{billData.linkedPoNo}</b>
-                </p>
-              )}
-              <p className="text-xs text-slate-700">
-                Payment Status:{" "}
-                <span className={`inline-block px-2 py-0.2 rounded font-bold uppercase text-[10px] ${
+            </div>
+
+            {/* Col 2: PO References */}
+            <div className="col-span-4 p-2 space-y-1">
+              <p className="font-bold border-b pb-0.5 uppercase text-slate-800">Voucher & PO Reference</p>
+              <p>Linked PO No: <span className="font-mono font-bold text-amber-800">{billData.linkedPoNo || "Direct Inward"}</span></p>
+              <p>Due Date: <span className="font-mono font-semibold">{billData.dueDate ? formatDate(billData.dueDate) : "Immediate / On Delivery"}</span></p>
+            </div>
+
+            {/* Col 3: Payment Status */}
+            <div className="col-span-3 p-2 space-y-1 text-right">
+              <p className="font-bold border-b pb-0.5 uppercase text-slate-800 text-left">Status</p>
+              <p className="text-xs">
+                <span className={`inline-block px-2 py-0.5 rounded font-black uppercase text-[10px] ${
                   billData.status === "paid" 
                     ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
                     : "bg-amber-100 text-amber-800 border border-amber-300"
                 }`}>
-                  {billData.status || "Pending"}
+                  {billData.status || "Paid"}
                 </span>
               </p>
             </div>
@@ -315,22 +316,30 @@ export function PurchaseBillPrintModal({ isOpen, onClose, billData }: PurchaseBi
             </div>
 
             {/* Right: Calculations */}
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-1.5 text-xs">
               <div className="flex justify-between text-slate-600">
                 <span>Taxable Subtotal:</span>
                 <span className="font-mono font-bold text-slate-800">{formatCurrency(subtotal)}</span>
               </div>
               <div className="flex justify-between text-slate-600">
-                <span>Total GST Input Tax:</span>
-                <span className="font-mono font-bold text-slate-800">{formatCurrency(gst)}</span>
+                <span>CGST Input Tax (9%):</span>
+                <span className="font-mono font-bold text-slate-800">{formatCurrency(gst / 2)}</span>
               </div>
-              <div className="border-t border-slate-300 pt-2 flex justify-between text-sm font-black text-slate-900">
+              <div className="flex justify-between text-slate-600">
+                <span>SGST Input Tax (9%):</span>
+                <span className="font-mono font-bold text-slate-800">{formatCurrency(gst / 2)}</span>
+              </div>
+              <div className="flex justify-between text-slate-700 font-semibold border-t border-slate-200 pt-1">
+                <span>Total GST Input:</span>
+                <span className="font-mono font-bold text-slate-900">{formatCurrency(gst)}</span>
+              </div>
+              <div className="border-t-2 border-slate-400 pt-2 flex justify-between text-sm font-black text-slate-900">
                 <span>Grand Total:</span>
-                <span className="font-mono text-[#3F63AD] text-base">{formatCurrency(total)}</span>
+                <span className="font-mono text-[#30539C] text-base">{formatCurrency(total)}</span>
               </div>
               {paid > 0 && (
                 <div className="flex justify-between text-xs text-emerald-700 pt-1">
-                  <span>Amount Paid:</span>
+                  <span>Amount Paid / Settled:</span>
                   <span className="font-mono font-bold">{formatCurrency(paid)}</span>
                 </div>
               )}

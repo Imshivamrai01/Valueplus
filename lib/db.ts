@@ -24,13 +24,18 @@ export async function connectToDatabase(): Promise<typeof mongoose> {
   }
 
   if (!cached?.promise) {
-    const opts = {
+    const opts: mongoose.ConnectOptions = {
       bufferCommands: false,
       dbName: "valueplus",
+      maxPoolSize: 50,
+      minPoolSize: 10,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+      connectTimeoutMS: 10000,
+      family: 4, // IPv4 first for faster DNS resolution
     };
 
     cached!.promise = mongoose.connect(MONGODB_URI, opts).then((mongooseInstance) => {
-      console.log("Connected to MongoDB database: valueplus");
       return mongooseInstance;
     });
   }

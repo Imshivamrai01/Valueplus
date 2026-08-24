@@ -26,6 +26,8 @@ export interface IItem extends Document {
   mrp: number;
   openingStock: number;
   currentStock: number;
+  showroomStock?: number;
+  godownStock?: number;
   reorderLevel: number;
   warehouse: string;
   status: "active" | "inactive";
@@ -63,6 +65,8 @@ const ItemSchema = new Schema<IItem>(
     mrp: { type: Number, required: true },
     openingStock: { type: Number, default: 0 },
     currentStock: { type: Number, default: 0 },
+    showroomStock: { type: Number, default: 0 },
+    godownStock: { type: Number, default: 0 },
     reorderLevel: { type: Number, default: 5 },
     warehouse: { type: String, default: "" },
     status: { type: String, enum: ["active", "inactive"], default: "active" },
@@ -75,8 +79,11 @@ const ItemSchema = new Schema<IItem>(
   { timestamps: true, collection: "items" }
 );
 
-if (mongoose.models.Item) {
-  delete mongoose.models.Item;
-}
-const Item: Model<IItem> = mongoose.model<IItem>("Item", ItemSchema);
+ItemSchema.index({ currentStock: -1, name: 1 });
+ItemSchema.index({ category: 1, brand: 1 });
+ItemSchema.index({ code: 1 });
+ItemSchema.index({ vpCode: 1 });
+ItemSchema.index({ status: 1, warehouse: 1 });
+
+const Item: Model<IItem> = mongoose.models.Item || mongoose.model<IItem>("Item", ItemSchema);
 export default Item;

@@ -9,11 +9,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { 
   Plus, Trash2, ClipboardList, FileMinus, ShoppingBag, Phone, UserCheck, UserPlus, X, 
-  AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Barcode, ShieldAlert, Sparkles, ArrowRight
+  AlertCircle, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Barcode, ShieldAlert, Sparkles, ArrowRight,
+  Store, Building2, Lock, Warehouse as WarehouseIcon
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useSession } from "next-auth/react";
+import { useBranch } from "@/context/BranchContext";
 import { PurchaseBillPrintModal } from "@/components/PurchaseBillPrintModal";
 
 function formatCurrency(val: number) {
@@ -30,8 +33,41 @@ interface PurchaseCreationModalProps {
 
 export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preloadedItem, preloadedItems }: PurchaseCreationModalProps) {
   const queryClient = useQueryClient();
+  const { data: session } = useSession();
+  const { activeLocation, locations } = useBranch();
+
+  const userRole = ((session?.user as any)?.role || "admin").toLowerCase();
+  const isSuperAdmin = userRole === "admin" || (session?.user as any)?.assignedWarehouseName === "ALL" || (session?.user as any)?.canSwitchWarehouse;
+  const userAssignedBranch = (session?.user as any)?.assignedWarehouseName || activeLocation?.name || "Ashoka Enterprises (Kunraghat Showroom)";
+
   const [currentMode, setCurrentMode] = useState<"entry" | "debit-note" | "order">(mode);
   const [createdBillToPrint, setCreatedBillToPrint] = useState<any | null>(null);
+
+  const { data: dbWarehouses = [] } = useQuery({
+    queryKey: ["warehouses"],
+    queryFn: async () => {
+      const res = await fetch("/api/warehouses");
+      const json = await res.json();
+      return json.success ? json.data : [];
+    }
+  });
+
+  // Combined list of all available Showrooms and Godowns
+  const allLocationsList = useMemo(() => {
+    const list: Array<{ name: string; type: string; code: string }> = [];
+    const source = dbWarehouses.length > 0 ? dbWarehouses : locations;
+    source.forEach((loc: any) => {
+      const isG = loc.name?.toLowerCase().includes("godown") || loc.name?.toLowerCase().includes("warehouse") || loc.name?.toLowerCase().includes("gida");
+      if (!list.some(x => x.name.toLowerCase() === loc.name.toLowerCase())) {
+        list.push({
+          name: loc.name,
+          type: isG ? "Central Godown" : "Showroom / Store",
+          code: loc.code || "WH"
+        });
+      }
+    });
+    return list;
+  }, [dbWarehouses, locations]);
 
   const { data: suppliers = [] } = useQuery({
     queryKey: ["suppliers"],
@@ -42,10 +78,34 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
     }
   });
 
-  // Sync mode prop & preloaded item with local state when modal opens
+  const [form, setForm] = useState({
+    billNo: "",
+    billDate: new Date().toISOString().split("T")[0],
+    warehouse: userAssignedBranch,
+    supplierName: "",
+    supplierPhone: "",
+    supplierId: "" as string,
+    linkedPoNo: "",
+    items: [] as Array<{
+      id: string;
+      itemId: string;
+      name: string;
+      quantity: number;
+      rate: number;
+      gstRate: number;
+      serialNumbers: string[];
+      showSerials?: boolean;
+    }>,
+  });
+
+  const prevIsOpenRef = React.useRef(false);
+
+  // Sync mode prop & preloaded item with local state only when modal transitions to open
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !prevIsOpenRef.current) {
       setCurrentMode(mode);
+      const defaultWh = userAssignedBranch || "Ashoka Enterprises (Kunraghat Showroom)";
+
       if (preloadedItem || (preloadedItems && preloadedItems.length > 0)) {
         const itemsToLoad = preloadedItems && preloadedItems.length > 0 ? preloadedItems : [preloadedItem];
         const firstItem = itemsToLoad[0];
@@ -57,11 +117,14 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
 
         const supplierName = matchedSupplier?.name || (firstItem.brand ? `${firstItem.brand} India Distribution` : "Authorized Electronics Distributor");
 
-        setForm(prev => ({
-          ...prev,
+        setForm({
+          billNo: "",
+          billDate: new Date().toISOString().split("T")[0],
+          warehouse: defaultWh,
           supplierName: supplierName,
           supplierPhone: matchedSupplier?.phone || "9876543210",
           supplierId: matchedSupplier?._id || "auto",
+          linkedPoNo: "",
           items: itemsToLoad.map((it: any) => {
             const reorderQty = Math.max(1, (Number(it.reorderLevel || 5) * 2) - Number(it.currentStock || 0));
             const purRate = Number(it.purchasePrice || it.rate || (it.sellingPrice ? it.sellingPrice * 0.82 : 1000));
@@ -76,10 +139,16 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
               showSerials: false,
             };
           })
+        });
+      } else {
+        setForm(prev => ({
+          ...prev,
+          warehouse: isSuperAdmin ? (prev.warehouse || defaultWh) : defaultWh
         }));
       }
     }
-  }, [isOpen, mode, preloadedItem, preloadedItems, suppliers]);
+    prevIsOpenRef.current = isOpen;
+  }, [isOpen, mode, preloadedItem, preloadedItems, userAssignedBranch, isSuperAdmin]);
 
   const { data: catalogItems = [] } = useQuery({
     queryKey: ["items"],
@@ -108,25 +177,6 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
     }
   });
 
-  const [form, setForm] = useState({
-    billNo: "",
-    billDate: new Date().toISOString().split("T")[0],
-    supplierName: "",
-    supplierPhone: "",
-    supplierId: "" as string,
-    linkedPoNo: "",
-    items: [] as Array<{
-      id: string;
-      itemId: string;
-      name: string;
-      quantity: number;
-      rate: number;
-      gstRate: number;
-      serialNumbers: string[];
-      showSerials?: boolean;
-    }>,
-  });
-
   const [supplierLookupStatus, setSupplierLookupStatus] = useState<"idle" | "existing" | "new">("idle");
 
   // Get active pending POs for the selected supplier
@@ -137,6 +187,15 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
       po.status !== "received"
     );
   }, [purchaseOrders, form.supplierName]);
+
+  const isDuplicateBillNo = useMemo(() => {
+    if (!form.billNo || currentMode === "order") return false;
+    const clean = form.billNo.trim().toLowerCase();
+    return purchaseEntries.some((e: any) => 
+      (e.billNo || e.billNumber || "").trim().toLowerCase() === clean && 
+      e.type === (currentMode === "debit-note" ? "debit-note" : "entry")
+    );
+  }, [form.billNo, currentMode, purchaseEntries]);
 
   const handleSupplierPhoneLookup = (phone: string) => {
     const cleanPhone = phone.replace(/\D/g, '');
@@ -360,6 +419,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
       const payload: any = {
         type: currentMode,
         billNo: form.billNo,
+        warehouse: form.warehouse || userAssignedBranch,
         supplierName: form.supplierName,
         supplierPhone: form.supplierPhone,
         supplierId: form.supplierId,
@@ -442,6 +502,11 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
     }
     if (!form.supplierName) {
       toast.error("Please enter or select a supplier name");
+      return;
+    }
+
+    if (isDuplicateBillNo) {
+      toast.error(`Purchase Bill #${form.billNo} already exists in the system! Each purchase entry must have a unique bill number.`);
       return;
     }
 
@@ -583,12 +648,23 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-1.5">
-                <Label className="text-xs text-slate-600">{isOrder ? "Purchase Order No." : "Bill / Inward No."}</Label>
+                <Label className="text-xs text-slate-600 flex items-center justify-between">
+                  <span>{isOrder ? "Purchase Order No." : "Bill / Inward No. *"}</span>
+                  {isDuplicateBillNo && <span className="text-[10px] text-rose-600 font-bold">ALREADY EXISTS!</span>}
+                </Label>
                 <Input
                   value={form.billNo}
                   onChange={(e) => setForm({ ...form, billNo: e.target.value })}
-                  className="bg-slate-50 font-mono text-sm font-bold text-[#3F63AD]"
+                  className={cn(
+                    "bg-slate-50 font-mono text-sm font-bold",
+                    isDuplicateBillNo ? "border-rose-500 text-rose-700 bg-rose-50/50 ring-1 ring-rose-200" : "text-[#3F63AD]"
+                  )}
                 />
+                {isDuplicateBillNo && (
+                  <p className="text-[10px] text-rose-600 font-bold flex items-center gap-1 mt-0.5">
+                    <AlertTriangle className="w-3 h-3" /> Bill #{form.billNo} already recorded! Must be unique.
+                  </p>
+                )}
               </div>
 
               <div className="space-y-1.5">
@@ -599,6 +675,53 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
                   onChange={(e) => setForm({ ...form, billDate: e.target.value })}
                   className="bg-slate-50 text-sm"
                 />
+              </div>
+
+              {/* Target Inward Destination (Showroom / Godown) */}
+              <div className="space-y-1.5">
+                <Label className="text-xs text-slate-600 flex items-center justify-between">
+                  <span className="flex items-center gap-1 font-semibold text-slate-700">
+                    <Store className="w-3.5 h-3.5 text-[#3F63AD]" /> Inward Location *
+                  </span>
+                  {isSuperAdmin ? (
+                    <span className="text-[9px] text-blue-700 font-bold bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">
+                      Admin: All Locations
+                    </span>
+                  ) : (
+                    <span className="text-[9px] text-slate-700 font-bold bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                      <Lock className="w-2.5 h-2.5 text-slate-500" /> Assigned Store
+                    </span>
+                  )}
+                </Label>
+                {isSuperAdmin ? (
+                  <Select
+                    value={form.warehouse || userAssignedBranch}
+                    onValueChange={(val) => setForm({ ...form, warehouse: val })}
+                  >
+                    <SelectTrigger className="bg-white border-slate-300 text-xs font-bold text-slate-800 h-9">
+                      <SelectValue placeholder="Select Inward Showroom / Godown" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {allLocationsList.map((loc) => (
+                        <SelectItem key={loc.name} value={loc.name} className="text-xs">
+                          <div className="flex items-center justify-between w-full gap-2">
+                            <span className="font-semibold">{loc.name}</span>
+                            <span className="text-[10px] text-slate-500 font-mono">({loc.type})</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div className="h-9 px-3 bg-slate-100/90 border border-slate-200 rounded-md flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-800 truncate" title={form.warehouse || userAssignedBranch}>
+                      {form.warehouse || userAssignedBranch}
+                    </span>
+                    <Badge variant="outline" className="text-[10px] bg-white text-slate-600 font-mono shrink-0 ml-1.5">
+                      {userAssignedBranch.toLowerCase().includes("godown") ? "Godown" : "Showroom"}
+                    </Badge>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-1.5">
@@ -617,7 +740,6 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
                       supplierLookupStatus === "existing" && "border-emerald-400 bg-emerald-50/50 ring-2 ring-emerald-100",
                       supplierLookupStatus === "new" && "border-amber-400 bg-amber-50/50 ring-2 ring-amber-100"
                     )}
-                    autoFocus
                   />
                   {supplierLookupStatus === "existing" && (
                     <span className="absolute right-2 top-1/2 -translate-y-1/2"><UserCheck className="w-4 h-4 text-emerald-600" /></span>
@@ -628,7 +750,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
                 </div>
               </div>
 
-              <div className="space-y-1.5 md:col-span-2">
+              <div className="space-y-1.5">
                 <Label className="text-xs text-slate-600">Supplier Name *</Label>
                 <Input
                   placeholder="Enter or select supplier name"

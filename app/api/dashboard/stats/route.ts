@@ -15,11 +15,19 @@ export async function GET(request: Request) {
     const endDateParam = searchParams.get("endDate");
     const warehouseParam = searchParams.get("warehouse") || searchParams.get("location") || "";
 
-    let allInvoices = await Invoice.find({}).sort({ createdAt: -1 }).lean();
-    let allCustomers = await Customer.find({}).sort({ createdAt: -1 }).lean();
-    let allItems = await Item.find({}).sort({ createdAt: -1 }).lean();
-    let allSuppliers = await Supplier.find({}).sort({ createdAt: -1 }).lean();
-    let allExpenses = await Expense.find({}).sort({ createdAt: -1 }).lean();
+    const [allInvoicesRaw, allCustomersRaw, allItemsRaw, allSuppliersRaw, allExpensesRaw] = await Promise.all([
+      Invoice.find({}).sort({ createdAt: -1 }).lean(),
+      Customer.find({}).sort({ createdAt: -1 }).lean(),
+      Item.find({}).sort({ createdAt: -1 }).lean(),
+      Supplier.find({}).sort({ createdAt: -1 }).lean(),
+      Expense.find({}).sort({ createdAt: -1 }).lean(),
+    ]);
+
+    let allInvoices = allInvoicesRaw;
+    let allCustomers = allCustomersRaw;
+    let allItems = allItemsRaw;
+    let allSuppliers = allSuppliersRaw;
+    let allExpenses = allExpensesRaw;
 
     // Multi-Warehouse Isolation Filter
     if (warehouseParam && warehouseParam !== "all") {
@@ -662,6 +670,7 @@ export async function GET(request: Request) {
       timestamp: new Date().toISOString(),
     });
   } catch (error: any) {
+    console.error("Dashboard stats error:", error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

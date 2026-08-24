@@ -4,7 +4,7 @@ export interface IUser extends Document {
   name: string;
   email: string;
   password?: string;
-  role: "admin" | "warehouse" | "salesman" | "cashier" | "accounts" | "hr" | "supplier" | "manager" | "sales";
+  role: "admin" | "warehouse" | "salesman" | "cashier" | "accounts" | "hr" | "supplier" | "manager" | "sales" | "driver";
   mobile?: string;
   avatar?: string;
   address?: string;
@@ -17,14 +17,19 @@ export interface IUser extends Document {
   designation?: string;
   monthlySalary?: number;
   salaryType?: "Fixed" | "Fixed + Incentive" | "Commission Only";
+  salaryPaymentDay?: number;
   joiningDate?: string;
   advanceBalance?: number;
   monthlyAdvanceDeduction?: number;
+  vehicleNumber?: string;
+  drivingLicenseNo?: string;
   bankName?: string;
   bankAccountNo?: string;
   bankIfsc?: string;
   assignedWarehouseId?: string;
   assignedWarehouseName?: string;
+  assignedBrand?: string;
+  assignedBrands?: string[];
   status: "active" | "inactive";
 }
 
@@ -35,7 +40,7 @@ const UserSchema = new Schema<IUser>(
     password: { type: String },
     role: {
       type: String,
-      enum: ["admin", "warehouse", "salesman", "cashier", "accounts", "hr", "supplier", "manager", "sales"],
+      enum: ["admin", "warehouse", "salesman", "cashier", "accounts", "hr", "supplier", "manager", "sales", "driver", "courier", "delivery"],
       default: "salesman",
       index: true,
     },
@@ -59,21 +64,27 @@ const UserSchema = new Schema<IUser>(
       enum: ["Fixed", "Fixed + Incentive", "Commission Only"],
       default: "Fixed",
     },
+    salaryPaymentDay: { type: Number, default: 7 },
     joiningDate: { type: String, default: () => new Date().toISOString().split("T")[0] },
     advanceBalance: { type: Number, default: 0 },
     monthlyAdvanceDeduction: { type: Number, default: 0 },
+    vehicleNumber: { type: String, default: "" },
+    drivingLicenseNo: { type: String, default: "" },
     bankName: { type: String, default: "" },
     bankAccountNo: { type: String, default: "" },
     bankIfsc: { type: String, default: "" },
     assignedWarehouseId: { type: String, default: "" },
     assignedWarehouseName: { type: String, default: "" },
+    assignedBrand: { type: String, default: "" },
+    assignedBrands: [{ type: String }],
     status: { type: String, enum: ["active", "inactive"], default: "active" },
   },
   { timestamps: true, collection: "users" }
 );
 
-if (mongoose.models.User) {
-  delete mongoose.models.User;
+if (mongoose.models && (mongoose.models as any).User) {
+  delete (mongoose.models as any).User;
 }
+
 const User: Model<IUser> = mongoose.model<IUser>("User", UserSchema);
 export default User;

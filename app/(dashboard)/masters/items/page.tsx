@@ -3,7 +3,12 @@
 import { useState, useMemo, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Search, Filter, Download, Upload, Printer, MoreHorizontal, Edit, Trash2, Eye, Package, TrendingUp, AlertTriangle, CheckCircle, X, Sparkles, ShoppingBag } from "lucide-react";
+import { 
+  Plus, Search, Filter, Download, Upload, Printer, MoreHorizontal, 
+  Edit, Trash2, Eye, Package, TrendingUp, AlertTriangle, CheckCircle, 
+  X, Sparkles, ShoppingBag, Store, Warehouse, Building2, Layers, RefreshCw,
+  Barcode, Hash, PlusCircle, Check, Trash
+} from "lucide-react";
 import { toast } from "sonner";
 import { PageShell } from "@/components/shared/page-shell";
 import { Button } from "@/components/ui/button";
@@ -21,6 +26,9 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import {
+  Popover, PopoverContent, PopoverTrigger,
+} from "@/components/ui/popover";
 import { AutocompleteSearch } from "@/components/shared/autocomplete-search";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 import { formatCurrency, downloadCSV, formatDate, cn } from "@/lib/utils";
@@ -45,16 +53,42 @@ interface ItemFormData {
   incentiveValue: string;
   mrp: string;
   currentStock: string;
+  showroomStock: string;
+  godownStock: string;
   reorderLevel: string;
   warehouse: string;
   status: string;
 }
 
+const EMPTY_FORM: ItemFormData = {
+  name: "",
+  code: "",
+  category: "",
+  brand: "",
+  unit: "PCS",
+  hsn: "",
+  gstRate: "18",
+  purchasePrice: "",
+  sellingPrice: "",
+  minSellingPrice: "",
+  incentiveTargetAmount: "",
+  incentiveAmount: "0",
+  incentiveType: "fixed",
+  incentiveValue: "0",
+  mrp: "",
+  currentStock: "0",
+  showroomStock: "0",
+  godownStock: "0",
+  reorderLevel: "5",
+  warehouse: "Ashoka Enterprises (Kunraghat Showroom)",
+  status: "active",
+};
+
 function ItemsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryCategory = searchParams?.get("category");
-  const { activeLocation, locations } = useBranch();
+  const { activeLocation } = useBranch();
 
   const { data: session } = useSession();
   const userRole = ((session?.user as any)?.role || "admin").toLowerCase();
@@ -65,34 +99,54 @@ function ItemsPageContent() {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState(queryCategory || "all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [stockLocationFilter, setStockLocationFilter] = useState<"all" | "in_showroom" | "in_godown">("all");
+  const [stockViewDisplay, setStockViewDisplay] = useState<"both" | "showroom" | "godown">("both");
 
   useEffect(() => {
     if (queryCategory) {
       setCategoryFilter(queryCategory);
     }
   }, [queryCategory]);
+
+  interface FormSerialItem {
+    id: string;
+    serialNumber: string;
+    status: "AVAILABLE" | "SOLD" | "RETURNED" | "DEFECTIVE";
+    warehouse: string;
+    batchNo: string;
+    isExisting: boolean;
+  }
+
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any | null>(null);
   const [viewingItem, setViewingItem] = useState<any | null>(null);
   const [deletingCode, setDeletingCode] = useState<string | null>(null);
-  const [formData, setFormData] = useState<ItemFormData>({
-    name: "", code: "", category: "", brand: "", unit: "PCS",
-    hsn: "", gstRate: "18", purchasePrice: "", sellingPrice: "",
-    minSellingPrice: "", incentiveTargetAmount: "", incentiveAmount: "0",
-    incentiveType: "fixed", incentiveValue: "0",
-    mrp: "", currentStock: "0", reorderLevel: "10",
-    warehouse: activeLocation?.name || "Ashoka Enterprises (Kunraghat Showroom)", status: "active",
-  });
+  const [formData, setFormData] = useState<ItemFormData>(EMPTY_FORM);
+  const [formSerials, setFormSerials] = useState<FormSerialItem[]>([]);
+  const [newSerialInput, setNewSerialInput] = useState("");
+  const [batchNoInput, setBatchNoInput] = useState("");
+  const [serialWarehouseInput, setSerialWarehouseInput] = useState("Showroom");
+  const [serialStatusInput, setSerialStatusInput] = useState<"AVAILABLE" | "SOLD" | "RETURNED" | "DEFECTIVE">("AVAILABLE");
   const [page, setPage] = useState(1);
   const PER_PAGE = 10;
 
-  const { data: items = [], isLoading: loading } = useQuery({
-    queryKey: ["items", activeLocation?.name],
+  // Fetch all serial numbers for live editing
+  const { data: allDbSerials = [], refetch: refetchSerials } = useQuery({
+    queryKey: ["all-serial-numbers"],
     queryFn: async () => {
-      const whParam = activeLocation?.name ? `?warehouse=${encodeURIComponent(activeLocation.name)}` : "";
-      const res = await fetch(`/api/items${whParam}`);
+      const res = await fetch("/api/serial-numbers?status=ALL");
+      const json = await res.json();
+      return json.success ? json.data : [];
+    }
+  });
+
+  // Fetch all items
+  const { data: items = [], isLoading: loading } = useQuery({
+    queryKey: ["items"],
+    queryFn: async () => {
+      const res = await fetch("/api/items");
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
       return json.data;
@@ -131,37 +185,85 @@ function ItemsPageContent() {
     }
   });
 
+  // Calculate live summary stats
+  const summaryStats = useMemo(() => {
+    const list = Array.isArray(items) ? items.filter(Boolean) : [];
+    let showroomTotal = 0;
+    let godownTotal = 0;
+    let lowStockCount = 0;
+    let outOfStockCount = 0;
+
+    for (const it of list) {
+      const sQty = Number(it.showroomStock ?? it.currentStock ?? 0);
+      const gQty = Number(it.godownStock ?? it.currentStock ?? 0);
+      const totalQty = sQty + gQty;
+      const reorder = Number(it.reorderLevel || 5);
+
+      showroomTotal += sQty;
+      godownTotal += gQty;
+
+      if (totalQty === 0) {
+        outOfStockCount++;
+      } else if (totalQty <= reorder) {
+        lowStockCount++;
+      }
+    }
+
+    return {
+      total: list.length,
+      active: list.filter((i: any) => i.status === "active").length,
+      showroomTotal,
+      godownTotal,
+      lowStock: lowStockCount,
+      outOfStock: outOfStockCount,
+    };
+  }, [items]);
+
+  // Filter items based on search, category, status, and stockLocationFilter
   const filtered = useMemo(() => {
-    return items.filter((item) => {
+    if (!Array.isArray(items)) return [];
+    return items.filter((item: any) => {
+      if (!item) return false;
       const matchSearch = !search || 
-        item.name.toLowerCase().includes(search.toLowerCase()) ||
-        item.code.toLowerCase().includes(search.toLowerCase()) ||
-        item.brand.toLowerCase().includes(search.toLowerCase());
+        (item.name && item.name.toLowerCase().includes(search.toLowerCase())) ||
+        (item.code && item.code.toLowerCase().includes(search.toLowerCase())) ||
+        (item.vpCode && item.vpCode.toLowerCase().includes(search.toLowerCase())) ||
+        (item.brand && item.brand.toLowerCase().includes(search.toLowerCase()));
+      
       const matchCategory = categoryFilter === "all" || item.category === categoryFilter;
+
+      const showroomQty = Number(item.showroomStock ?? item.currentStock ?? 0);
+      const godownQty = Number(item.godownStock ?? item.currentStock ?? 0);
+      const totalQty = showroomQty + godownQty;
+      const reorder = Number(item.reorderLevel || 5);
+
+      let matchLocation = true;
+      if (stockLocationFilter === "in_showroom") {
+        matchLocation = showroomQty > 0;
+      } else if (stockLocationFilter === "in_godown") {
+        matchLocation = godownQty > 0;
+      }
+
       let matchStatus = true;
       if (statusFilter === "low_stock") {
-        matchStatus = item.currentStock > 0 && item.currentStock <= item.reorderLevel;
+        matchStatus = totalQty > 0 && totalQty <= reorder;
       } else if (statusFilter === "out_of_stock") {
-        matchStatus = item.currentStock === 0;
-      } else if (statusFilter !== "all") {
-        matchStatus = item.status === statusFilter;
+        matchStatus = totalQty === 0;
+      } else if (statusFilter === "active") {
+        matchStatus = item.status === "active";
+      } else if (statusFilter === "inactive") {
+        matchStatus = item.status === "inactive";
       }
-      return matchSearch && matchCategory && matchStatus;
+
+      return matchSearch && matchCategory && matchLocation && matchStatus;
     });
-  }, [items, search, categoryFilter, statusFilter]);
+  }, [items, search, categoryFilter, stockLocationFilter, statusFilter]);
 
   const paginated = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
   const totalPages = Math.ceil(filtered.length / PER_PAGE);
 
-  const summaryStats = useMemo(() => ({
-    total: items.length,
-    active: items.filter((i) => i.status === "active").length,
-    lowStock: items.filter((i) => i.currentStock > 0 && i.currentStock <= i.reorderLevel).length,
-    outOfStock: items.filter((i) => i.currentStock === 0).length,
-  }), [items]);
-
   const handleSelectAll = (checked: boolean) => {
-    setSelectedIds(checked ? paginated.map((i) => i.code) : []);
+    setSelectedIds(checked ? paginated.map((i: any) => i.code) : []);
   };
 
   const handleSelect = (code: string, checked: boolean) => {
@@ -174,7 +276,14 @@ function ItemsPageContent() {
       return;
     }
     setEditingItem(null);
-    setFormData({ ...EMPTY_FORM, code: `ITM-${String(items.length + 1).padStart(4, "0")}` });
+    setFormData({ 
+      ...EMPTY_FORM, 
+      code: `ITM-${String(items.length + 1).padStart(4, "0")}`,
+      warehouse: activeLocation?.name || "Ashoka Enterprises (Kunraghat Showroom)"
+    });
+    setFormSerials([]);
+    setNewSerialInput("");
+    setBatchNoInput("");
     setIsFormOpen(true);
   };
 
@@ -188,6 +297,9 @@ function ItemsPageContent() {
     const matchedBrand = brands.find((b: any) => b.name?.toLowerCase().trim() === itemBrand.toLowerCase())?.name || itemBrand;
     const itemCategory = item.category ? item.category.trim() : "";
     const matchedCategory = categories.find((c: any) => c.name?.toLowerCase().trim() === itemCategory.toLowerCase())?.name || itemCategory;
+
+    const sStock = item.showroomStock !== undefined ? item.showroomStock : (item.currentStock || 0);
+    const gStock = item.godownStock !== undefined ? item.godownStock : (item.currentStock || 0);
 
     setFormData({
       name: item.name || "", 
@@ -205,12 +317,88 @@ function ItemsPageContent() {
       incentiveType: item.incentiveType || "fixed",
       incentiveValue: String(item.incentiveValue || item.incentiveAmount || 0),
       mrp: String(item.mrp || ""), 
-      currentStock: String(item.currentStock || 0),
+      currentStock: String(sStock),
+      showroomStock: String(sStock),
+      godownStock: String(gStock),
       reorderLevel: String(item.reorderLevel || 5), 
       warehouse: item.warehouse || activeLocation?.name || "Ashoka Enterprises (Kunraghat Showroom)", 
       status: item.status || "active",
     });
+
+    const matching = (allDbSerials || []).filter((s: any) => 
+      (s.vpCode && (s.vpCode === item.vpCode || s.vpCode === item.code)) ||
+      (s.itemId && (s.itemId === item._id || s.itemId === item.id)) ||
+      (s.itemName && s.itemName.toLowerCase().trim() === item.name.toLowerCase().trim())
+    );
+
+    setFormSerials(matching.map((s: any) => ({
+      id: s._id || s.serialNumber,
+      serialNumber: s.serialNumber,
+      status: s.status || "AVAILABLE",
+      warehouse: s.warehouse || "Showroom",
+      batchNo: s.batchNo || "",
+      isExisting: true
+    })));
+    setNewSerialInput("");
+    setBatchNoInput("");
     setIsFormOpen(true);
+  };
+
+  const handleAddSerials = () => {
+    if (!newSerialInput.trim()) {
+      toast.error("Please enter a serial or IMEI number");
+      return;
+    }
+    const rawTokens = newSerialInput.split(/[\n,;]+/).map(t => t.trim().toUpperCase()).filter(Boolean);
+    if (rawTokens.length === 0) return;
+
+    const existingSerialsSet = new Set(formSerials.map(s => s.serialNumber.toUpperCase()));
+    const newItemsToAdd: FormSerialItem[] = [];
+
+    for (const sn of rawTokens) {
+      if (existingSerialsSet.has(sn)) {
+        toast.warning(`Serial ${sn} is already in the list`);
+        continue;
+      }
+      existingSerialsSet.add(sn);
+      newItemsToAdd.push({
+        id: `temp-${Date.now()}-${Math.random()}`,
+        serialNumber: sn,
+        status: serialStatusInput,
+        warehouse: serialWarehouseInput || "Showroom",
+        batchNo: batchNoInput.trim(),
+        isExisting: false,
+      });
+    }
+
+    if (newItemsToAdd.length > 0) {
+      setFormSerials(prev => [...prev, ...newItemsToAdd]);
+      setNewSerialInput("");
+      toast.success(`Added ${newItemsToAdd.length} Serial / IMEI Number(s)`);
+    }
+  };
+
+  const handleRemoveSerial = async (index: number) => {
+    const itemToRemove = formSerials[index];
+    if (itemToRemove?.isExisting) {
+      try {
+        await fetch(`/api/serial-numbers?serialNumber=${encodeURIComponent(itemToRemove.serialNumber)}`, {
+          method: "DELETE"
+        });
+        toast.success(`Serial ${itemToRemove.serialNumber} deleted from database`);
+      } catch (err) {
+        console.warn("Delete serial error:", err);
+      }
+    }
+    setFormSerials(prev => prev.filter((_, idx) => idx !== index));
+  };
+
+  const handleUpdateSerialField = (index: number, field: keyof FormSerialItem, value: any) => {
+    setFormSerials(prev => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], [field]: value };
+      return copy;
+    });
   };
 
   const saveMutation = useMutation({
@@ -226,9 +414,11 @@ function ItemsPageContent() {
       return json.data;
     },
     onSuccess: () => {
-      toast.success(editingItem ? "Item updated successfully" : "Item added successfully");
+      toast.success(editingItem ? "Item and serial numbers updated successfully" : "Item added successfully");
       setIsFormOpen(false);
       queryClient.invalidateQueries({ queryKey: ["items"] });
+      queryClient.invalidateQueries({ queryKey: ["all-serial-numbers"] });
+      queryClient.invalidateQueries({ queryKey: ["serialNumbers"] });
     },
     onError: (error: any) => {
       toast.error(error.message || "An error occurred");
@@ -261,6 +451,9 @@ function ItemsPageContent() {
       return;
     }
     
+    const sStock = Number(formData.showroomStock || formData.currentStock || 0);
+    const gStock = Number(formData.godownStock || formData.currentStock || 0);
+
     const payload = {
       ...formData,
       code: formData.code || `ITM-${String(items.length + 1).padStart(4, "0")}`,
@@ -273,9 +466,51 @@ function ItemsPageContent() {
       incentiveType: formData.incentiveType || "fixed",
       incentiveValue: Number(formData.incentiveValue) || Number(formData.incentiveAmount) || 0,
       mrp: Number(formData.mrp),
-      currentStock: Number(formData.currentStock),
+      showroomStock: sStock,
+      godownStock: gStock,
+      currentStock: sStock,
       reorderLevel: Number(formData.reorderLevel)
     };
+
+    // Save newly added serial numbers
+    const serialsToCreate = formSerials.filter(s => !s.isExisting && s.serialNumber.trim()).map(s => ({
+      serialNumber: s.serialNumber.trim().toUpperCase(),
+      itemId: editingItem?._id || "",
+      vpCode: formData.code || editingItem?.vpCode || "VP-GEN",
+      itemName: formData.name,
+      status: s.status || "AVAILABLE",
+      warehouse: s.warehouse || activeLocation?.name || "Kunraghat Showroom",
+      batchNo: s.batchNo || "",
+    }));
+
+    if (serialsToCreate.length > 0) {
+      try {
+        await fetch("/api/serial-numbers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(serialsToCreate)
+        });
+      } catch (err) {
+        console.warn("Error creating serials:", err);
+      }
+    }
+
+    // Update existing serial numbers
+    for (const s of formSerials.filter(s => s.isExisting)) {
+      try {
+        await fetch("/api/serial-numbers", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            serialNumber: s.serialNumber,
+            status: s.status,
+            notes: "Updated from Product Master Edit Form"
+          })
+        });
+      } catch (err) {
+        console.warn("Error updating serial:", err);
+      }
+    }
 
     saveMutation.mutate(payload);
   };
@@ -296,59 +531,54 @@ function ItemsPageContent() {
     setSelectedIds([]);
   };
 
-  const [importing, setImporting] = useState(false);
-
-  const handleImportStock3 = async () => {
-    setImporting(true);
-    const toastId = toast.loading("Importing real stock from Stock3.json...");
-    try {
-      const res = await fetch("/api/admin/import-stock", { method: "POST" });
-      const json = await res.json();
-      if (json.success) {
-        toast.success(`Successfully imported ${json.summary?.totalItemsImported || 0} real items from Stock3.json!`, { id: toastId });
-        queryClient.invalidateQueries({ queryKey: ["items"] });
-        queryClient.invalidateQueries({ queryKey: ["brands"] });
-        queryClient.invalidateQueries({ queryKey: ["categories"] });
-      } else {
-        toast.error(json.error || "Import failed", { id: toastId });
-      }
-    } catch (err: any) {
-      toast.error(err.message || "Failed to trigger import", { id: toastId });
-    } finally {
-      setImporting(false);
-    }
-  };
-
   const getStockStatus = (item: any) => {
-    if (item.currentStock === 0) return { label: "Out of Stock", variant: "destructive" as const, low: true };
-    if (item.currentStock <= item.reorderLevel) return { label: "Reorder Needed", variant: "destructive" as const, low: true };
+    const sQty = Number(item.showroomStock ?? item.currentStock ?? 0);
+    const gQty = Number(item.godownStock ?? item.currentStock ?? 0);
+    const totalQty = sQty + gQty;
+    const reorder = Number(item.reorderLevel || 5);
+
+    if (totalQty === 0) return { label: "Out of Stock", variant: "destructive" as const, low: true };
+    if (totalQty <= reorder) return { label: "Reorder Needed", variant: "destructive" as const, low: true };
     return { label: "In Stock", variant: "success" as const, low: false };
   };
 
   return (
     <PageShell
-      title="Items"
-      subtitle={`${summaryStats.total} products in your catalog`}
-      breadcrumbs={[{ label: "Masters", href: "/masters/items" }, { label: "Items" }]}
+      title="Master Stock & Products"
+      subtitle={`${summaryStats.total} products in catalog · Live Showroom & Godown stock overview`}
+      breadcrumbs={[{ label: "Masters", href: "/masters/items" }, { label: "Master Stock" }]}
       actions={
         isSuperAdminOrAdmin ? (
-          <>
+          <div className="flex flex-wrap items-center gap-2">
             <Button 
               variant="outline" 
               size="sm" 
-              onClick={handleImportStock3}
-              disabled={importing}
-              className="border-blue-300 text-[#3F63AD] hover:bg-blue-50 font-semibold"
+              onClick={() => downloadCSV(items.map(i => ({
+                name: i.name,
+                code: i.code,
+                vpCode: i.vpCode,
+                brand: i.brand,
+                category: i.category,
+                showroomStock: i.showroomStock ?? i.currentStock ?? 0,
+                godownStock: i.godownStock ?? i.currentStock ?? 0,
+                totalStock: (i.showroomStock ?? i.currentStock ?? 0) + (i.godownStock ?? i.currentStock ?? 0),
+                sellingPrice: i.sellingPrice,
+                mrp: i.mrp,
+                purchasePrice: i.purchasePrice,
+                unit: i.unit,
+              })), "master_stock_report.csv")} 
+              className="text-xs"
             >
-              <Upload className="w-4 h-4 mr-1.5" /> {importing ? "Importing..." : "Import Stock3.json"}
+              <Download className="w-3.5 h-3.5 mr-1.5" /> Export CSV
             </Button>
-            <Button variant="outline" size="sm" onClick={() => downloadCSV(items.map(i => ({...i})), "items.csv")}>
-              <Download className="w-4 h-4 mr-1.5" /> Export
+            <Button 
+              size="sm" 
+              onClick={() => router.push("/purchase/entries?action=create")} 
+              className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white text-xs font-bold shadow-sm"
+            >
+              <Plus className="w-3.5 h-3.5 mr-1.5" /> + Inward Stock / Purchase Entry
             </Button>
-            <Button size="sm" onClick={openAdd} className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white">
-              <Plus className="w-4 h-4 mr-1.5" /> Add Item
-            </Button>
-          </>
+          </div>
         ) : (
           <div className="flex items-center gap-2">
             <Badge className="bg-blue-50 text-[#30539C] border border-blue-200 text-xs font-bold px-3 py-1.5">
@@ -357,10 +587,21 @@ function ItemsPageContent() {
             <Button 
               variant="outline" 
               size="sm" 
-              onClick={() => downloadCSV(items.map(i => ({ name: i.name, code: i.code, vpCode: i.vpCode, category: i.category, brand: i.brand, sellingPrice: i.sellingPrice, mrp: i.mrp, stock: i.currentStock, unit: i.unit })), "product_catalog_prices.csv")}
+              onClick={() => downloadCSV(items.map(i => ({ 
+                name: i.name, 
+                code: i.code, 
+                vpCode: i.vpCode, 
+                category: i.category, 
+                brand: i.brand, 
+                showroomStock: i.showroomStock ?? i.currentStock ?? 0,
+                godownStock: i.godownStock ?? i.currentStock ?? 0,
+                sellingPrice: i.sellingPrice, 
+                mrp: i.mrp, 
+                unit: i.unit 
+              })), "product_catalog_prices.csv")}
               className="text-xs"
             >
-              <Download className="w-4 h-4 mr-1.5" /> Export Price List
+              <Download className="w-3.5 h-3.5 mr-1.5" /> Export Price List
             </Button>
           </div>
         )
@@ -370,12 +611,12 @@ function ItemsPageContent() {
         <div className="bg-blue-50/80 border border-blue-200 rounded-xl p-3.5 flex items-center justify-between text-xs text-slate-700 mb-2">
           <div className="flex items-center gap-2">
             <Badge className="bg-[#30539C] text-white text-[10px]">Sales Staff View</Badge>
-            <span>Sales staff have real-time <strong>Read-Only Access</strong> to search catalog, check live stock across showrooms, and verify selling prices/MRP for customer quotations. Adding or modifying items is restricted to Admin.</span>
+            <span>You have real-time access to check live stock in your logged-in Showroom and Central Godown.</span>
           </div>
         </div>
       )}
 
-      {/* Summary Cards with 1-Click Interactive Filter */}
+      {/* Clean Standard Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { 
@@ -441,7 +682,7 @@ function ItemsPageContent() {
               </div>
               {isSelected && (
                 <Badge className={cn("text-[10px] font-bold uppercase", stat.filterKey === "low_stock" ? "bg-amber-500" : stat.filterKey === "out_of_stock" ? "bg-red-600" : "bg-[#3F63AD]")}>
-                  Filter Active
+                  Active
                 </Badge>
               )}
             </button>
@@ -449,85 +690,75 @@ function ItemsPageContent() {
         })}
       </div>
 
-      {/* Low Stock / Out of Stock Banner */}
-      {(statusFilter === "low_stock" || statusFilter === "out_of_stock") && (
-        <div className="bg-gradient-to-r from-amber-50 via-orange-50 to-amber-100 border border-amber-300 rounded-2xl p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center font-black shrink-0 shadow-xs">
-              <AlertTriangle className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-xs font-black text-amber-950 uppercase tracking-wide">
-                Showing {statusFilter === "low_stock" ? "Low Stock Items" : "Out of Stock Items"} ({filtered.length} products require restock)
-              </p>
-              <p className="text-[11px] text-amber-800 font-medium mt-0.5">
-                Use the dedicated automated Purchase Reorder module to create supplier purchase orders with 1-click.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <Button
-              size="sm"
-              onClick={() => router.push("/purchase/low-stock")}
-              className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs"
-            >
-              <ShoppingBag className="w-3.5 h-3.5 mr-1.5" /> ⚡ Open Low Stock Purchase Page
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => { setStatusFilter("all"); setPage(1); }}
-              className="text-xs border-amber-300 hover:bg-amber-100 font-semibold"
-            >
-              Clear Filter
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Table */}
+      {/* Table Container */}
       <div className="data-table-container">
         {/* Toolbar */}
-        <div className="flex flex-wrap items-center gap-3 p-4 border-b">
-          <AutocompleteSearch
-            data={items}
-            searchKeys={["name", "code", "vpCode", "brand", "category"]}
-            displayKey="name"
-            subDisplayKey="vpCode"
-            placeholder="Search items, VP Code, brand, category..."
-            value={search}
-            onSearchChange={(val) => { setSearch(val); setPage(1); }}
-            className="flex-1 min-w-48"
-          />
-          <Select value={categoryFilter} onValueChange={(v) => { setCategoryFilter(v); setPage(1); }}>
-            <SelectTrigger className="w-44">
-              <SelectValue placeholder="Category" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Categories</SelectItem>
-              {categories.map((c: any) => <SelectItem key={c._id || c.id} value={c.name}>{c.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
-            <SelectTrigger className="w-32">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="inactive">Inactive</SelectItem>
-              <SelectItem value="low_stock">Low Stock (Reorder)</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b bg-slate-50/40">
+          <div className="flex flex-wrap items-center gap-2 flex-1">
+            {/* Search */}
+            <AutocompleteSearch
+              data={items}
+              searchKeys={["name", "code", "vpCode", "brand", "category"]}
+              displayKey="name"
+              subDisplayKey="vpCode"
+              placeholder="Search by product name, VP Code, SKU, brand..."
+              value={search}
+              onSearchChange={(val) => { setSearch(val); setPage(1); }}
+              className="min-w-[240px] max-w-sm flex-1"
+            />
 
-          {isSuperAdminOrAdmin && selectedIds.length > 0 && (
-            <div className="flex items-center gap-2 ml-auto">
-              <span className="text-sm text-muted-foreground">{selectedIds.length} selected</span>
-              <Button variant="destructive" size="sm" onClick={handleBulkDelete}>
-                <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
-              </Button>
-            </div>
-          )}
+            {/* Quick Active Location Filter Indicator if applied */}
+            {stockLocationFilter !== "all" && (
+              <Badge className={cn("text-xs font-bold py-1 px-2.5 flex items-center gap-1.5", stockLocationFilter === "in_showroom" ? "bg-blue-600 text-white" : "bg-amber-600 text-white")}>
+                {stockLocationFilter === "in_showroom" ? <Store className="w-3 h-3" /> : <Warehouse className="w-3 h-3" />}
+                {stockLocationFilter === "in_showroom" ? "Showing Showroom In-Stock (>0)" : "Showing Godown In-Stock (>0)"}
+                <button
+                  type="button"
+                  onClick={() => setStockLocationFilter("all")}
+                  className="ml-1 hover:opacity-80 font-black"
+                  title="Clear location filter"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </Badge>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Category Filter */}
+            <Select value={categoryFilter} onValueChange={(v) => { setCategoryFilter(v); setPage(1); }}>
+              <SelectTrigger className="w-40 bg-white">
+                <SelectValue placeholder="Category" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Categories</SelectItem>
+                {categories.map((c: any) => <SelectItem key={c._id || c.id || c.name} value={c.name}>{c.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+
+            {/* Status Filter */}
+            <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
+              <SelectTrigger className="w-32 bg-white">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
+                <SelectItem value="low_stock">Low Stock</SelectItem>
+                <SelectItem value="out_of_stock">Out of Stock</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {isSuperAdminOrAdmin && selectedIds.length > 0 && (
+              <div className="flex items-center gap-2 ml-2">
+                <span className="text-xs text-muted-foreground">{selectedIds.length} selected</span>
+                <Button variant="destructive" size="sm" onClick={handleBulkDelete}>
+                  <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Table */}
@@ -543,14 +774,108 @@ function ItemsPageContent() {
                     />
                   </th>
                 )}
-                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Item</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Item Particulars</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Category</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">HSN / GST</th>
                 {!isSalesperson && (
                   <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide">Purchase ₹</th>
                 )}
                 <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide">Selling ₹</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide">Live Stock</th>
+                
+                {/* Excel-Like Filter Button in Live Stock Header */}
+                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide min-w-[170px]">
+                  <div className="flex items-center justify-end gap-1.5">
+                    <span>
+                      {stockViewDisplay === "showroom" && "🏪 Showroom Stock"}
+                      {stockViewDisplay === "godown" && "🏭 Godown Stock"}
+                      {stockViewDisplay === "both" && "Live Stock"}
+                    </span>
+
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          className={cn(
+                            "inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold border transition-all shadow-2xs cursor-pointer",
+                            stockLocationFilter !== "all" || stockViewDisplay !== "both" 
+                              ? "bg-blue-600 text-white border-blue-700 hover:bg-blue-700" 
+                              : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100 hover:text-slate-900"
+                          )}
+                          title="Excel Filter: Filter Showroom & Godown Stock"
+                        >
+                          <Filter className="w-3 h-3" />
+                          <span>Filter</span>
+                          <span className="text-[8px] opacity-70">▼</span>
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-60 p-2 space-y-1 z-50">
+                        <div className="px-2 py-1 text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">
+                          Stock Column View
+                        </div>
+                        <DropdownMenuItem 
+                          onClick={() => setStockViewDisplay("both")}
+                          className={cn("flex items-center justify-between text-xs cursor-pointer", stockViewDisplay === "both" && "font-bold text-blue-700 bg-blue-50")}
+                        >
+                          <span className="flex items-center gap-1.5"><Layers className="w-3.5 h-3.5" /> Both (Showroom & Godown)</span>
+                          {stockViewDisplay === "both" && <CheckCircle className="w-3.5 h-3.5 text-blue-600" />}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          onClick={() => setStockViewDisplay("showroom")}
+                          className={cn("flex items-center justify-between text-xs cursor-pointer", stockViewDisplay === "showroom" && "font-bold text-blue-700 bg-blue-50")}
+                        >
+                          <span className="flex items-center gap-1.5"><Store className="w-3.5 h-3.5 text-blue-600" /> Showroom Stock Only</span>
+                          {stockViewDisplay === "showroom" && <CheckCircle className="w-3.5 h-3.5 text-blue-600" />}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          onClick={() => setStockViewDisplay("godown")}
+                          className={cn("flex items-center justify-between text-xs cursor-pointer", stockViewDisplay === "godown" && "font-bold text-amber-800 bg-amber-50")}
+                        >
+                          <span className="flex items-center gap-1.5"><Warehouse className="w-3.5 h-3.5 text-amber-600" /> Godown Stock Only</span>
+                          {stockViewDisplay === "godown" && <CheckCircle className="w-3.5 h-3.5 text-amber-600" />}
+                        </DropdownMenuItem>
+
+                        <DropdownMenuSeparator />
+
+                        <div className="px-2 py-1 text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">
+                          Filter Product Rows
+                        </div>
+                        <DropdownMenuItem 
+                          onClick={() => { setStockLocationFilter("all"); setPage(1); }}
+                          className={cn("flex items-center justify-between text-xs cursor-pointer", stockLocationFilter === "all" && "font-bold bg-slate-100")}
+                        >
+                          <span>All Products ({items.length})</span>
+                          {stockLocationFilter === "all" && <CheckCircle className="w-3.5 h-3.5" />}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          onClick={() => { setStockLocationFilter("in_showroom"); setPage(1); }}
+                          className={cn("flex items-center justify-between text-xs cursor-pointer", stockLocationFilter === "in_showroom" && "font-bold text-blue-700 bg-blue-50")}
+                        >
+                          <span className="flex items-center gap-1.5"><Store className="w-3.5 h-3.5 text-blue-600" /> In Showroom Stock (&gt; 0)</span>
+                          {stockLocationFilter === "in_showroom" && <CheckCircle className="w-3.5 h-3.5 text-blue-600" />}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          onClick={() => { setStockLocationFilter("in_godown"); setPage(1); }}
+                          className={cn("flex items-center justify-between text-xs cursor-pointer", stockLocationFilter === "in_godown" && "font-bold text-amber-800 bg-amber-50")}
+                        >
+                          <span className="flex items-center gap-1.5"><Warehouse className="w-3.5 h-3.5 text-amber-600" /> In Godown Stock (&gt; 0)</span>
+                          {stockLocationFilter === "in_godown" && <CheckCircle className="w-3.5 h-3.5 text-amber-600" />}
+                        </DropdownMenuItem>
+
+                        {(stockLocationFilter !== "all" || stockViewDisplay !== "both") && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem 
+                              onClick={() => { setStockLocationFilter("all"); setStockViewDisplay("both"); setPage(1); }}
+                              className="text-xs text-red-600 font-bold focus:bg-red-50 focus:text-red-600 cursor-pointer"
+                            >
+                              <X className="w-3.5 h-3.5 mr-1" /> Reset Filter & View
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </th>
+
                 <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wide">Status</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wide">Actions</th>
               </tr>
@@ -567,14 +892,18 @@ function ItemsPageContent() {
                   <td colSpan={isSuperAdminOrAdmin ? 9 : 7} className="px-4 py-16 text-center">
                     <Package className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
                     <p className="text-muted-foreground font-medium">No items found</p>
-                    <p className="text-xs text-muted-foreground mt-1">Try adjusting your search or filters</p>
+                    <p className="text-xs text-muted-foreground mt-1">Try adjusting your search or category filter</p>
                   </td>
                 </tr>
               ) : (
-                paginated.map((item) => {
+                paginated.map((item: any) => {
                   const stockStatus = getStockStatus(item);
                   const isSelected = selectedIds.includes(item.code);
-                  const rowBg = isSelected ? "bg-blue-50/50" : (stockStatus.low ? "bg-red-50/50 hover:bg-red-50/70" : "hover:bg-slate-50/70");
+                  const showroomQty = Number(item.showroomStock ?? item.currentStock ?? 0);
+                  const godownQty = Number(item.godownStock ?? item.currentStock ?? 0);
+                  const totalQty = showroomQty + godownQty;
+                  const rowBg = isSelected ? "bg-blue-50/50" : (stockStatus.low ? "bg-red-50/40 hover:bg-red-50/60" : "hover:bg-slate-50/70");
+
                   return (
                     <tr key={item.code} className={`transition-colors ${rowBg}`}>
                       {isSuperAdminOrAdmin && (
@@ -591,16 +920,18 @@ function ItemsPageContent() {
                           <div>
                             <p className="font-medium text-foreground">{item.name}</p>
                             <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
-                              <span className="font-mono text-blue-600 font-bold bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200">VP: {item.vpCode || item.code}</span>
+                              <span className="font-mono text-blue-600 font-bold bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200">
+                                VP: {item.vpCode || item.code}
+                              </span>
                               <span>·</span>
-                              <span>{item.brand}</span>
+                              <span className="font-semibold">{item.brand}</span>
                             </p>
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-muted-foreground">{item.category}</td>
+                      <td className="px-4 py-3 text-muted-foreground font-medium">{item.category}</td>
                       <td className="px-4 py-3">
-                        <p className="text-sm font-mono">{item.hsnCode || item.hsn}</p>
+                        <p className="text-sm font-mono font-medium">{item.hsnCode || item.hsn}</p>
                         <p className="text-xs text-muted-foreground">GST {item.gstRate}%</p>
                       </td>
                       {!isSalesperson && (
@@ -610,49 +941,156 @@ function ItemsPageContent() {
                         <p className="font-semibold text-foreground">{formatCurrency(item.sellingPrice)}</p>
                         <p className="text-xs text-muted-foreground">MRP {formatCurrency(item.mrp)}</p>
                       </td>
+                      
+                      {/* Clickable Live Stock Cell: Opens Showroom & Godown Stock Breakdown Popover */}
                       <td className="px-4 py-3 text-right">
-                        <p className={`font-semibold ${item.currentStock === 0 ? "text-red-600" : item.currentStock <= item.reorderLevel ? "text-amber-600" : "text-foreground"}`}>
-                          {item.currentStock} {item.unit || "PCS"}
-                        </p>
-                        <p className="text-xs text-muted-foreground">Min: {item.reorderLevel}</p>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <button
+                              type="button"
+                              className="group text-right p-1.5 -mr-1.5 rounded-xl hover:bg-blue-50/90 border border-transparent hover:border-blue-200 transition-all cursor-pointer outline-none focus:ring-2 focus:ring-[#3F63AD]/30"
+                              title="Click to view Showroom & Godown stock breakdown"
+                            >
+                              <div className="flex flex-col items-end">
+                                <div className="flex items-center gap-1">
+                                  <span className={cn(
+                                    "text-xs font-black font-mono tracking-tight group-hover:text-[#3F63AD] transition-colors",
+                                    totalQty === 0 ? "text-red-600" : totalQty <= (item.reorderLevel || 5) ? "text-amber-600" : "text-slate-900"
+                                  )}>
+                                    {stockViewDisplay === "showroom" 
+                                      ? `${showroomQty} ${item.unit || "PCS"}` 
+                                      : stockViewDisplay === "godown" 
+                                      ? `${godownQty} ${item.unit || "PCS"}` 
+                                      : `${totalQty} ${item.unit || "PCS"}`}
+                                  </span>
+                                  <span className="text-[9px] text-slate-400 group-hover:text-[#3F63AD]">▾</span>
+                                </div>
+
+                                <div className="flex items-center gap-1 text-[10px] mt-0.5">
+                                  <span className={cn("px-1 py-0.2 rounded font-bold border text-[9px]", showroomQty > 0 ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-slate-50 text-slate-400 border-slate-200")}>
+                                    🏪 {showroomQty}
+                                  </span>
+                                  <span className={cn("px-1 py-0.2 rounded font-bold border text-[9px]", godownQty > 0 ? "bg-amber-50 text-amber-800 border-amber-200" : "bg-slate-50 text-slate-400 border-slate-200")}>
+                                    🏭 {godownQty}
+                                  </span>
+                                </div>
+                              </div>
+                            </button>
+                          </PopoverTrigger>
+
+                          <PopoverContent align="end" className="w-80 p-0 rounded-2xl shadow-2xl border border-slate-200 overflow-hidden z-50">
+                            {/* Popover Header */}
+                            <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-3.5 flex items-center justify-between">
+                              <div className="max-w-[190px]">
+                                <p className="font-bold text-xs line-clamp-1">{item.name}</p>
+                                <p className="text-[10px] text-slate-300 font-mono mt-0.5">
+                                  VP: <span className="text-amber-300 font-bold">{item.vpCode || item.code}</span> · {item.brand}
+                                </p>
+                              </div>
+                              <Badge className={cn("text-[9px] font-bold uppercase", stockStatus.low ? "bg-red-600" : "bg-emerald-600")}>
+                                {stockStatus.label}
+                              </Badge>
+                            </div>
+
+                            {/* Popover Breakdown List */}
+                            <div className="p-3.5 space-y-2.5 bg-white text-xs">
+                              <p className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">
+                                Live Stock Breakdown
+                              </p>
+
+                              {/* Showroom Row */}
+                              <div className="flex items-center justify-between p-2.5 rounded-xl bg-blue-50/70 border border-blue-100">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold">
+                                    <Store className="w-3.5 h-3.5" />
+                                  </div>
+                                  <div>
+                                    <p className="font-bold text-blue-950 text-xs">Showroom Stock</p>
+                                    <p className="text-[10px] text-blue-700/80 truncate max-w-[130px]">{activeLocation?.name || "Kunraghat Showroom"}</p>
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <p className="font-mono font-extrabold text-blue-900 text-sm">{showroomQty} {item.unit || "PCS"}</p>
+                                  <p className="text-[9px] text-blue-600 font-semibold">{showroomQty > 0 ? "In Stock" : "Out of Stock"}</p>
+                                </div>
+                              </div>
+
+                              {/* Godown Row */}
+                              <div className="flex items-center justify-between p-2.5 rounded-xl bg-amber-50/70 border border-amber-200">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-7 h-7 rounded-lg bg-amber-600 text-white flex items-center justify-center font-bold">
+                                    <Warehouse className="w-3.5 h-3.5" />
+                                  </div>
+                                  <div>
+                                    <p className="font-bold text-amber-950 text-xs">Central Godown</p>
+                                    <p className="text-[10px] text-amber-800/80">Main Logistics Hub</p>
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <p className="font-mono font-extrabold text-amber-950 text-sm">{godownQty} {item.unit || "PCS"}</p>
+                                  <p className="text-[9px] text-amber-700 font-semibold">{godownQty > 0 ? "In Stock" : "Out of Stock"}</p>
+                                </div>
+                              </div>
+
+                              {/* Total Stock Row */}
+                              <div className="flex items-center justify-between pt-2 border-t border-slate-100 font-bold text-slate-800 px-1">
+                                <span className="text-[11px] text-slate-600">Total System Units:</span>
+                                <span className="font-mono text-sm text-[#3F63AD] font-black">{totalQty} {item.unit || "PCS"}</span>
+                              </div>
+                            </div>
+                          </PopoverContent>
+                        </Popover>
                       </td>
+
                       <td className="px-4 py-3 text-center">
                         <Badge variant={stockStatus.variant}>{stockStatus.label}</Badge>
                       </td>
                       <td className="px-4 py-3 text-center">
-                        {isSalesperson ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 px-2.5 text-[11px] font-bold text-[#30539C] border-blue-200 hover:bg-blue-50"
-                            onClick={() => setViewingItem(item)}
-                          >
-                            <Eye className="w-3.5 h-3.5 mr-1" /> View Details
-                          </Button>
-                        ) : (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <button className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors">
-                                <MoreHorizontal className="w-4 h-4 text-muted-foreground" />
-                              </button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-40">
-                              <DropdownMenuItem onClick={() => setViewingItem(item)}>
-                                <Eye className="w-4 h-4 mr-2" /> View
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => openEdit(item)}>
-                                <Edit className="w-4 h-4 mr-2" /> Edit
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => confirmDelete(item.code)}
-                                className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                        <div className="flex items-center justify-center gap-1.5">
+                          {isSalesperson ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2.5 text-[11px] font-bold text-[#30539C] border-blue-200 hover:bg-blue-50"
+                              onClick={() => setViewingItem(item)}
+                            >
+                              <Eye className="w-3.5 h-3.5 mr-1" /> View
+                            </Button>
+                          ) : (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2.5 text-[11px] font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border-amber-300 shadow-xs"
+                                onClick={() => openEdit(item)}
                               >
-                                <Trash2 className="w-4 h-4 mr-2" /> Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        )}
+                                <Edit className="w-3.5 h-3.5 mr-1 text-amber-600" /> Edit
+                              </Button>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <button className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors">
+                                    <MoreHorizontal className="w-4 h-4 text-muted-foreground" />
+                                  </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-44">
+                                  <DropdownMenuItem onClick={() => setViewingItem(item)}>
+                                    <Eye className="w-4 h-4 mr-2" /> View Details
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => openEdit(item)}>
+                                    <Edit className="w-4 h-4 mr-2" /> Edit Item & Serials
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() => confirmDelete(item.code)}
+                                    className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                                  >
+                                    <Trash2 className="w-4 h-4 mr-2" /> Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -684,7 +1122,7 @@ function ItemsPageContent() {
             ))}
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages}
+              disabled={page === totalPages || totalPages === 0}
               className="px-3 py-1.5 rounded-lg border hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Next
@@ -707,14 +1145,14 @@ function ItemsPageContent() {
                   {editingItem ? "Edit Product Catalog Item" : "Add Mobile & Electronics Item"}
                 </h3>
                 <p className="text-xs text-slate-300 mt-0.5">
-                  Specify product particulars, pricing, GST tax slate & warehouse stock levels
+                  Specify particulars, pricing, GST tax rates & showroom/godown stock levels
                 </p>
               </div>
             </div>
           </div>
 
           <div className="p-6 space-y-6 bg-slate-50/50">
-            {/* Section 1: General Product Particulars */}
+            {/* Section 1: General Particulars */}
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
               <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#3F63AD] flex items-center gap-2">
                 <Package className="w-4 h-4 text-[#3F63AD]" /> 1. Product Identification & Categorization
@@ -744,7 +1182,7 @@ function ItemsPageContent() {
                   </datalist>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">VP Code (Item SKU)</Label>
+                  <Label className="text-xs font-semibold text-slate-700">VP Code (SKU)</Label>
                   <Input
                     placeholder="Auto-generated (e.g. VP-10029)"
                     value={formData.code}
@@ -796,10 +1234,10 @@ function ItemsPageContent() {
               </div>
             </div>
 
-            {/* Section 2: Pricing, Floor Price & Salesperson Incentive */}
+            {/* Section 2: Pricing & Floor Price */}
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
               <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#3F63AD] flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-[#3F63AD]" /> 2. Pricing, Floor Limit & Target-Based Incentive
+                <TrendingUp className="w-4 h-4 text-[#3F63AD]" /> 2. Pricing & Selling Rates
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1.5">
@@ -824,16 +1262,15 @@ function ItemsPageContent() {
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold text-amber-700 flex items-center gap-1">
-                    Min Floor Price (₹) <span className="text-[10px] text-amber-600 font-normal">(Admin PIN Lock)</span>
+                    Min Floor Price (₹) <span className="text-[10px] text-amber-600 font-normal">(PIN Lock)</span>
                   </Label>
                   <Input
                     type="number"
-                    placeholder="e.g. 135000 (Min allowed)"
+                    placeholder="e.g. 135000"
                     value={formData.minSellingPrice}
                     onChange={(e) => setFormData((f) => ({ ...f, minSellingPrice: e.target.value }))}
                     className="bg-amber-50/50 border-amber-300 font-mono font-semibold"
                   />
-                  <p className="text-[10px] text-slate-500">Sales below this price requires Admin Authorization PIN (1234).</p>
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold text-slate-700">MRP (₹)</Label>
@@ -854,93 +1291,47 @@ function ItemsPageContent() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2 md:col-span-3 bg-emerald-50/60 p-4 rounded-xl border border-emerald-300">
-                  <div className="flex items-center justify-between mb-1">
-                    <Label className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                      Salesperson Target & Incentive Reward (Fixed ₹ Amount ya Percentage %)
-                    </Label>
-                    <Badge className="bg-emerald-600 text-white font-bold text-[9.5px]">TARGET COMMISSION RULE</Badge>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <div className="space-y-1">
-                      <Label className="text-[11px] font-bold text-slate-700">Target Selling Price / Range (₹) *</Label>
-                      <Input
-                        type="number"
-                        placeholder="e.g. 140000 (Min price for incentive)"
-                        value={formData.incentiveTargetAmount}
-                        onChange={(e) => setFormData((f) => ({ ...f, incentiveTargetAmount: e.target.value }))}
-                        className="bg-white border-emerald-300 font-mono font-bold text-xs"
-                      />
-                      <p className="text-[10px] text-slate-500">Staff ko is rate ya isse upar bechna hoga incentive pane ke liye.</p>
-                    </div>
-
-                    <div className="space-y-1">
-                      <Label className="text-[11px] font-bold text-slate-700">Incentive Type *</Label>
-                      <Select 
-                        value={formData.incentiveType || "fixed"} 
-                        onValueChange={(v) => setFormData((f) => ({ ...f, incentiveType: v }))}
-                      >
-                        <SelectTrigger className="bg-white border-emerald-300 font-bold text-xs text-emerald-900">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="fixed">Fixed ₹ Amount (e.g. ₹500/pc)</SelectItem>
-                          <SelectItem value="percentage">Percentage (%) (e.g. 2%)</SelectItem>
-                          <SelectItem value="none">No Incentive</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <p className="text-[10px] text-slate-500">Fixed ₹ ya selling price ka %</p>
-                    </div>
-
-                    <div className="space-y-1">
-                      <Label className="text-[11px] font-bold text-slate-700">
-                        {formData.incentiveType === "percentage" ? "Incentive Percentage (%) *" : "Incentive Amount (₹) *"}
-                      </Label>
-                      <Input
-                        type="number"
-                        disabled={formData.incentiveType === "none"}
-                        placeholder={formData.incentiveType === "percentage" ? "e.g. 2 (%)" : "e.g. 500 (₹)"}
-                        value={formData.incentiveValue}
-                        onChange={(e) => setFormData((f) => ({ ...f, incentiveValue: e.target.value, incentiveAmount: e.target.value }))}
-                        className="bg-white border-emerald-300 font-mono font-black text-xs text-emerald-800"
-                      />
-                      <p className="text-[10px] text-slate-500">
-                        {formData.incentiveType === "percentage" ? "Target meet hone par sales rate ka % milega." : "Target meet hone par fixed ₹ amount har unit par milega."}
-                      </p>
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
 
-            {/* Section 3: Inventory & Warehouse Allocation */}
+            {/* Section 3: Showroom & Godown Stock Allocation */}
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
               <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#3F63AD] flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-[#3F63AD]" /> 3. Stock Level & Warehouse Allocation
+                <AlertTriangle className="w-4 h-4 text-[#3F63AD]" /> 3. Showroom & Godown Stock Allocation
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Fulfillment Store / Warehouse</Label>
-                  <Select value={formData.warehouse} onValueChange={(v) => setFormData((f) => ({ ...f, warehouse: v }))}>
-                    <SelectTrigger className="bg-slate-50 border-slate-300"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {locations.map((w) => <SelectItem key={w.id || w.name} value={w.name}>{w.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <Label className="text-xs font-bold text-blue-800 flex items-center gap-1.5">
+                    <Store className="w-3.5 h-3.5 text-blue-600" />
+                    Showroom Stock (Logged-in Store)
+                  </Label>
+                  <Input
+                    type="number"
+                    placeholder="10"
+                    value={formData.showroomStock}
+                    onChange={(e) => setFormData((f) => ({ ...f, showroomStock: e.target.value }))}
+                    className="bg-blue-50/50 border-blue-300 font-bold"
+                  />
+                  <p className="text-[10px] text-slate-500">Available units in {activeLocation?.name || "Showroom"}</p>
                 </div>
+
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Opening Stock Quantity</Label>
+                  <Label className="text-xs font-bold text-amber-800 flex items-center gap-1.5">
+                    <Warehouse className="w-3.5 h-3.5 text-amber-700" />
+                    Godown Stock (Central Hub)
+                  </Label>
                   <Input
                     type="number"
                     placeholder="25"
-                    value={formData.currentStock}
-                    onChange={(e) => setFormData((f) => ({ ...f, currentStock: e.target.value }))}
-                    className="bg-slate-50 border-slate-300"
+                    value={formData.godownStock}
+                    onChange={(e) => setFormData((f) => ({ ...f, godownStock: e.target.value }))}
+                    className="bg-amber-50/50 border-amber-300 font-bold"
                   />
+                  <p className="text-[10px] text-slate-500">Available units in Central Godown</p>
                 </div>
+
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Low Stock Reorder Alert</Label>
+                  <Label className="text-xs font-semibold text-slate-700">Low Stock Alert Level</Label>
                   <Input
                     type="number"
                     placeholder="5"
@@ -948,8 +1339,171 @@ function ItemsPageContent() {
                     onChange={(e) => setFormData((f) => ({ ...f, reorderLevel: e.target.value }))}
                     className="bg-slate-50 border-slate-300"
                   />
+                  <p className="text-[10px] text-slate-500">Minimum threshold for reorder alert</p>
                 </div>
               </div>
+            </div>
+
+            {/* Section 4: Serial Numbers & IMEI Units Management */}
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-3">
+                <div>
+                  <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#3F63AD] flex items-center gap-2">
+                    <Barcode className="w-4 h-4 text-[#3F63AD]" /> 4. Serial Numbers & IMEI Inventory Tracking
+                  </h4>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Manage unique device serial/IMEI barcodes for this product. Serial numbers will be selectable during Invoicing & POS billing.
+                  </p>
+                </div>
+                <Badge variant="outline" className="bg-blue-50 text-blue-800 border-blue-200 font-mono font-bold text-xs self-start sm:self-auto">
+                  {formSerials.length} Registered Units ({formSerials.filter(s => s.status === "AVAILABLE").length} Available)
+                </Badge>
+              </div>
+
+              {/* Add New Serials Bar */}
+              <div className="p-4 bg-slate-50/80 rounded-xl border border-slate-200 space-y-3">
+                <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <PlusCircle className="w-4 h-4 text-[#3F63AD]" /> Add / Register Device Serial or IMEI Numbers
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                  <div className="md:col-span-5 space-y-1">
+                    <Label className="text-[11px] font-semibold text-slate-600">Serial Number / IMEI (Barcode)</Label>
+                    <Input
+                      placeholder="e.g. 354892019482019 or comma separated"
+                      value={newSerialInput}
+                      onChange={(e) => setNewSerialInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleAddSerials();
+                        }
+                      }}
+                      className="bg-white border-slate-300 font-mono text-xs font-bold uppercase"
+                    />
+                  </div>
+                  <div className="md:col-span-2 space-y-1">
+                    <Label className="text-[11px] font-semibold text-slate-600">Batch No</Label>
+                    <Input
+                      placeholder="e.g. B-01"
+                      value={batchNoInput}
+                      onChange={(e) => setBatchNoInput(e.target.value)}
+                      className="bg-white border-slate-300 font-mono text-xs uppercase"
+                    />
+                  </div>
+                  <div className="md:col-span-3 space-y-1">
+                    <Label className="text-[11px] font-semibold text-slate-600">Stock Location</Label>
+                    <Select value={serialWarehouseInput} onValueChange={setSerialWarehouseInput}>
+                      <SelectTrigger className="bg-white border-slate-300 text-xs font-medium">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Showroom">Showroom (Kunraghat)</SelectItem>
+                        <SelectItem value="Central Godown">Central Godown</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="md:col-span-2">
+                    <Button 
+                      type="button" 
+                      onClick={handleAddSerials} 
+                      className="w-full bg-[#3F63AD] hover:bg-[#2E4F95] text-white text-xs font-bold h-9"
+                    >
+                      <Plus className="w-3.5 h-3.5 mr-1" /> Add
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Serial Numbers Table / List */}
+              {formSerials.length > 0 ? (
+                <div className="border border-slate-200 rounded-xl overflow-hidden max-h-60 overflow-y-auto">
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-slate-100 text-slate-600 uppercase font-bold text-[10px] sticky top-0">
+                      <tr>
+                        <th className="px-3 py-2">#</th>
+                        <th className="px-3 py-2">Serial / IMEI Number</th>
+                        <th className="px-3 py-2">Batch</th>
+                        <th className="px-3 py-2">Location</th>
+                        <th className="px-3 py-2">Status</th>
+                        <th className="px-3 py-2 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {formSerials.map((s, idx) => (
+                        <tr key={s.id || idx} className="hover:bg-slate-50">
+                          <td className="px-3 py-2 font-mono text-slate-400 font-bold">{idx + 1}</td>
+                          <td className="px-3 py-2">
+                            <Input
+                              value={s.serialNumber}
+                              onChange={(e) => handleUpdateSerialField(idx, "serialNumber", e.target.value.toUpperCase())}
+                              className="h-7 text-xs font-mono font-bold uppercase bg-slate-50 border-slate-200 max-w-[200px]"
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <Input
+                              value={s.batchNo}
+                              placeholder="-"
+                              onChange={(e) => handleUpdateSerialField(idx, "batchNo", e.target.value.toUpperCase())}
+                              className="h-7 text-xs font-mono bg-slate-50 border-slate-200 max-w-[100px]"
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <Select 
+                              value={s.warehouse || "Showroom"} 
+                              onValueChange={(v) => handleUpdateSerialField(idx, "warehouse", v)}
+                            >
+                              <SelectTrigger className="h-7 text-xs font-medium bg-slate-50 border-slate-200 w-28">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Showroom">Showroom</SelectItem>
+                                <SelectItem value="Central Godown">Central Godown</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </td>
+                          <td className="px-3 py-2">
+                            <Select 
+                              value={s.status} 
+                              onValueChange={(v: any) => handleUpdateSerialField(idx, "status", v)}
+                            >
+                              <SelectTrigger className={cn(
+                                "h-7 text-xs font-bold border w-28",
+                                s.status === "AVAILABLE" ? "bg-emerald-50 text-emerald-800 border-emerald-300" :
+                                s.status === "SOLD" ? "bg-blue-50 text-blue-800 border-blue-300" :
+                                s.status === "DEFECTIVE" ? "bg-rose-50 text-rose-800 border-rose-300" :
+                                "bg-amber-50 text-amber-800 border-amber-300"
+                              )}>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="AVAILABLE">AVAILABLE</SelectItem>
+                                <SelectItem value="SOLD">SOLD</SelectItem>
+                                <SelectItem value="RETURNED">RETURNED</SelectItem>
+                                <SelectItem value="DEFECTIVE">DEFECTIVE</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveSerial(idx)}
+                              className="p-1 rounded text-red-600 hover:bg-red-50 transition-colors"
+                              title="Delete Serial"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="p-4 rounded-xl border border-dashed border-slate-300 bg-slate-50/50 text-center">
+                  <p className="text-xs text-slate-500 font-medium">No serial / IMEI numbers added for this item yet.</p>
+                  <p className="text-[11px] text-slate-400">Type in the box above to register serial numbers directly.</p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -958,7 +1512,7 @@ function ItemsPageContent() {
               Cancel
             </Button>
             <Button onClick={handleSave} disabled={saveMutation.isPending} className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white px-6 font-bold shadow-lg shadow-[#3F63AD]/20">
-              {saveMutation.isPending ? "Saving..." : (editingItem ? "Update Catalog Item" : "Save & Add to Catalog")}
+              {saveMutation.isPending ? "Saving..." : (editingItem ? "Update Product" : "Save & Add to Catalog")}
             </Button>
           </div>
         </DialogContent>
@@ -987,14 +1541,19 @@ function ItemsPageContent() {
         <DialogContent className="max-w-4xl p-0 rounded-2xl overflow-hidden border-none shadow-2xl">
           <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-5 flex justify-between items-center">
             <div>
-              <h3 className="text-lg font-bold tracking-tight">Product Details & Sales History</h3>
+              <h3 className="text-lg font-bold tracking-tight">Product Details & Live Stock</h3>
               <p className="text-xs text-slate-300 mt-0.5">
                 VP Code: <span className="font-mono text-amber-300 font-bold">{viewingItem?.vpCode || viewingItem?.code}</span> · {viewingItem?.brand}
               </p>
             </div>
-            <Badge variant="outline" className="bg-white/10 text-white border-white/20">
-              Stock: {viewingItem?.currentStock} {viewingItem?.unit}
-            </Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="bg-blue-500/20 text-blue-200 border-blue-400/30 font-bold text-xs">
+                🏪 Showroom: {viewingItem?.showroomStock ?? viewingItem?.currentStock ?? 0} {viewingItem?.unit || "PCS"}
+              </Badge>
+              <Badge variant="outline" className="bg-amber-500/20 text-amber-200 border-amber-400/30 font-bold text-xs">
+                🏭 Godown: {viewingItem?.godownStock ?? viewingItem?.currentStock ?? 0} {viewingItem?.unit || "PCS"}
+              </Badge>
+            </div>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-3 bg-slate-50 min-h-[400px]">
@@ -1024,10 +1583,34 @@ function ItemsPageContent() {
                     <p className="font-medium text-foreground">{viewingItem?.gstRate}%</p>
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground font-semibold uppercase">Warehouse</p>
-                    <p className="font-medium text-foreground">{viewingItem?.warehouse || "N/A"}</p>
+                    <p className="text-xs text-muted-foreground font-semibold uppercase">Min Alert</p>
+                    <p className="font-medium text-foreground">{viewingItem?.reorderLevel || 5} {viewingItem?.unit || "PCS"}</p>
                   </div>
                 </div>
+
+                {/* Stock Breakdown Card in Modal */}
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
+                  <p className="text-xs font-bold text-slate-800 uppercase tracking-wide">Stock Breakdown</p>
+                  <div className="flex items-center justify-between text-xs py-1 border-b border-slate-200">
+                    <span className="flex items-center text-blue-700 font-semibold">
+                      <Store className="w-3.5 h-3.5 mr-1" /> {activeLocation?.name || "Showroom"}:
+                    </span>
+                    <span className="font-bold font-mono text-blue-900">{viewingItem?.showroomStock ?? viewingItem?.currentStock ?? 0} {viewingItem?.unit || "PCS"}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs py-1 border-b border-slate-200">
+                    <span className="flex items-center text-amber-800 font-semibold">
+                      <Warehouse className="w-3.5 h-3.5 mr-1" /> Central Godown:
+                    </span>
+                    <span className="font-bold font-mono text-amber-900">{viewingItem?.godownStock ?? viewingItem?.currentStock ?? 0} {viewingItem?.unit || "PCS"}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs pt-1 font-bold">
+                    <span className="text-slate-800">Total System Stock:</span>
+                    <span className="font-mono text-[#3F63AD]">
+                      {Number(viewingItem?.showroomStock ?? viewingItem?.currentStock ?? 0) + Number(viewingItem?.godownStock ?? viewingItem?.currentStock ?? 0)} {viewingItem?.unit || "PCS"}
+                    </span>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-4 bg-slate-50 p-3 rounded-lg border border-slate-100">
                   {!isSalesperson ? (
                     <div>
@@ -1041,17 +1624,17 @@ function ItemsPageContent() {
                     </div>
                   )}
                   <div>
-                    <p className="text-xs text-muted-foreground font-semibold uppercase">Offer / Selling Price</p>
+                    <p className="text-xs text-muted-foreground font-semibold uppercase">Selling Price</p>
                     <p className="font-bold text-[#3F63AD]">{formatCurrency(viewingItem?.sellingPrice || 0)}</p>
                   </div>
                 </div>
               </div>
             </div>
             
-            {/* Right Side: History */}
+            {/* Right Side: Sales History */}
             <div className="col-span-2 p-5 flex flex-col h-[400px]">
               <h4 className="text-sm font-bold text-slate-700 flex items-center gap-2 border-b pb-2 mb-4">
-                <TrendingUp className="w-4 h-4 text-[#3F63AD]" /> Complete Transaction History
+                <TrendingUp className="w-4 h-4 text-[#3F63AD]" /> Recent Invoices & Sales History
               </h4>
               
               <div className="flex-1 overflow-y-auto pr-2">
@@ -1109,7 +1692,7 @@ function ItemsPageContent() {
 
 export default function ItemsPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-xs font-bold text-slate-500">Loading Value Plus Items...</div>}>
+    <Suspense fallback={<div className="p-8 text-center text-xs font-bold text-slate-500">Loading Value Plus Master Stock...</div>}>
       <ItemsPageContent />
     </Suspense>
   );

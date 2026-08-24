@@ -31,7 +31,7 @@ export async function GET(req: Request) {
       }
     }
     
-    const invoices = await Invoice.find(query).sort({ createdAt: -1 });
+    const invoices = await Invoice.find(query).sort({ createdAt: -1 }).lean();
     return NextResponse.json({ success: true, data: invoices });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -73,6 +73,10 @@ export async function POST(req: Request) {
     const existingInvoice = await Invoice.findOne({ invoiceNumber: body.invoiceNumber });
     if (existingInvoice) {
       return NextResponse.json({ success: true, data: existingInvoice, message: "Invoice already synced" });
+    }    // Generate 4-digit Delivery OTP if delayed delivery is chosen
+    if (body.dispatchType === "delayed_delivery" && !body.deliveryOtp) {
+      body.deliveryOtp = Math.floor(1000 + Math.random() * 9000).toString();
+      body.deliveryStatus = "pending_dispatch";
     }
 
     const invoice = await Invoice.create(body);
@@ -158,15 +162,16 @@ export async function POST(req: Request) {
 
               const warrantyCount = await ExtendedWarranty.countDocuments();
               await ExtendedWarranty.create({
-                warrantyId: `EW-2026-${String(warrantyCount + 1).padStart(4, "0")}-${Math.floor(1000 + Math.random() * 9000)}`,
-                customerName: invoice.customerName,
-                customerPhone: invoice.customerPhone || "N/A",
-                customerEmail: invoice.customerEmail || "",
+                policyNumber: item.extendedWarrantyPolicyNo || `EW-2026-${String(warrantyCount + 1).padStart(4, "0")}`,
+                invoiceId: invoice._id.toString(),
                 invoiceNumber: invoice.invoiceNumber,
+                customerId: invoice.customerId,
+                customerName: invoice.customerName,
+                customerPhone: invoice.customerPhone || "",
                 itemId: item.itemId,
-                productName: item.itemName,
-                vpCode: item.vpCode || item.itemCode,
+                itemName: item.itemName,
                 serialNumber: item.serialNumber || "",
+                provider: item.extendedWarrantyProvider || "OneAssist",
                 planName: item.extendedWarrantyPlan,
                 durationMonths: duration,
                 startDate,
@@ -180,8 +185,8 @@ export async function POST(req: Request) {
         }
       }
 
-      // 4.5 Auto-generate Delivery Challan if Vehicle Number is provided or outward delivery
-      if (body.vehicleNumber || body.createChallan) {
+      // 4.5 Auto-generate Delivery Challan if delayed delivery or vehicle number provided
+      if (body.dispatchType === "delayed_delivery" || body.vehicleNumber || body.createChallan) {
         const DeliveryChallan = (await import("@/models/DeliveryChallan")).default;
         const count = await DeliveryChallan.countDocuments();
         const challanNo = `DC-2026-${String(count + 1).padStart(4, "0")}`;
@@ -194,7 +199,7 @@ export async function POST(req: Request) {
           sourceParty: "M/S ASHOKA ENTERPRISES",
           sourceAddress: "H. NO. 116, NEAR SHANTI MARRIAGE HOUSE DEORIA ROAD, KUNRAGHAT GORAKHPUR",
           destinationParty: invoice.customerName,
-          destinationAddress: invoice.customerAddress || invoice.customerCity || "Gorakhpur",
+          destinationAddress: body.shippingAddress || invoice.customerAddress || invoice.customerCity || "Gorakhpur",
           customerPhone: invoice.customerPhone || "",
           itemName: firstItem?.itemName || "Assorted Products",
           vpCode: firstItem?.vpCode || firstItem?.itemCode || "",
@@ -203,12 +208,13 @@ export async function POST(req: Request) {
           quantity: body.items?.reduce((sum: number, it: any) => sum + (it.quantity || 1), 0) || 1,
           unit: firstItem?.unit || "PCS",
           financeDoId: body.financeDoId || "",
-          reason: "Tax Invoice Dispatch",
+          reason: body.dispatchType === "delayed_delivery" ? "Home Delivery Dispatch / Godown Delivery" : "Tax Invoice Dispatch",
           date: new Date(),
           vehicleNo: body.vehicleNumber || "",
-          driverName: body.driverName || "Store Dispatch",
+          driverName: body.driverName || "Delivery Team",
           driverPhone: body.driverPhone || "",
-          status: "dispatched",
+          deliveryOtp: invoice.deliveryOtp || "",
+          status: body.dispatchType === "delayed_delivery" ? "in-transit" : "delivered",
         });
 
         invoice.deliveryChallanNo = challanNo;
@@ -324,6 +330,123 @@ export async function POST(req: Request) {
           }
         } catch (leadErr) {
           console.warn("Notice: Auto-lead conversion:", leadErr);
+        }
+      }
+
+      // 7. Auto-Evaluate & Complete Sales Target Tasks for Sales Staff on Invoice Creation
+      if (invoice.type !== "credit-note" && invoice.salesExecutive) {
+        try {
+          const StaffTask = (await import("@/models/StaffTask")).default;
+          const salesPerson = invoice.salesExecutive.trim();
+          const firstName = salesPerson.split(" ")[0];
+
+          // Find active sales target tasks for this salesperson
+          const activeTargetTasks = await StaffTask.find({
+            status: { $in: ["Pending", "In Progress"] },
+            taskType: "sales_target",
+            $or: [
+              { assignedStaff: { $regex: new RegExp(salesPerson, "i") } },
+              { assignedStaff: { $regex: new RegExp(firstName, "i") } },
+              { assignedStaff: "All Staff" },
+              { assignedStaff: "Sales Staff" },
+            ],
+          });
+
+          for (const task of activeTargetTasks) {
+            let matchesTarget = false;
+            let qtyIncrement = 0;
+            const invoiceTotal = Number(invoice.total || invoice.netAmount || 0);
+
+            // Check if task targets a specific product or brand
+            if (task.targetProduct || task.targetBrand) {
+              const targetP = (task.targetProduct || "").toLowerCase().trim();
+              const targetB = (task.targetBrand || "").toLowerCase().trim();
+
+              for (const lineItem of (invoice.items || [])) {
+                const itemN = (lineItem.itemName || "").toLowerCase();
+                const itemC = (lineItem.category || "").toLowerCase();
+                const itemB = (lineItem.brand || "").toLowerCase();
+
+                if ((targetP && (itemN.includes(targetP) || itemC.includes(targetP))) ||
+                    (targetB && (itemB.includes(targetB) || itemN.includes(targetB)))) {
+                  matchesTarget = true;
+                  qtyIncrement += Number(lineItem.quantity || lineItem.qty || 1);
+                }
+              }
+            } else {
+              // General revenue/sales target
+              matchesTarget = true;
+              qtyIncrement = (invoice.items || []).reduce((acc: number, it: any) => acc + (Number(it.quantity || it.qty) || 1), 0);
+            }
+
+            if (matchesTarget) {
+              task.currentQty = (Number(task.currentQty) || 0) + (qtyIncrement || 1);
+              task.currentAmount = (Number(task.currentAmount) || 0) + invoiceTotal;
+              task.status = "In Progress";
+              task.linkedInvoiceNumber = invoice.invoiceNumber;
+
+              const isQtyMet = task.targetQty ? task.currentQty >= task.targetQty : true;
+              const isAmountMet = task.targetAmount ? task.currentAmount >= task.targetAmount : true;
+
+              if (isQtyMet && isAmountMet) {
+                task.status = "Completed";
+                task.completedAt = new Date();
+                task.completionRemarks = `Auto-completed upon generating Invoice #${invoice.invoiceNumber} (Total: ₹${invoiceTotal.toLocaleString("en-IN")})`;
+              }
+              await task.save();
+            }
+          }
+        } catch (taskErr) {
+          console.warn("Notice: Auto-task completion:", taskErr);
+        }
+      }
+
+      // 8. Adjust / Consume Customer Advance Booking Payment (Token Pre-booking)
+      const advanceAdjustedVal = Number(body.advanceAdjusted || 0);
+      if (advanceAdjustedVal > 0 && invoice.type !== "credit-note") {
+        try {
+          const CustomerAdvance = (await import("@/models/CustomerAdvance")).default;
+          const Customer = (await import("@/models/Customer")).default;
+
+          const phoneDigits = (invoice.customerPhone || "").replace(/\D/g, "");
+
+          // 8.1 Deduct from Customer model
+          if (phoneDigits && phoneDigits.length >= 10) {
+            const customerObj = await Customer.findOne({ phone: phoneDigits });
+            if (customerObj) {
+              customerObj.advanceBalance = Math.max(0, (customerObj.advanceBalance || 0) - advanceAdjustedVal);
+              await customerObj.save();
+            }
+          }
+
+          // 8.2 Adjust against active CustomerAdvance receipts
+          let remainingToDeduct = advanceAdjustedVal;
+          const activeAdvances = await CustomerAdvance.find({
+            customerPhone: phoneDigits,
+            status: { $in: ["Available", "Partially Used"] },
+          }).sort({ createdAt: 1 });
+
+          for (const adv of activeAdvances) {
+            if (remainingToDeduct <= 0) break;
+            const deductibleFromThis = Math.min(adv.remainingBalance, remainingToDeduct);
+            adv.usedAmount = (adv.usedAmount || 0) + deductibleFromThis;
+            adv.remainingBalance = Math.max(0, adv.remainingBalance - deductibleFromThis);
+            if (adv.remainingBalance === 0) {
+              adv.status = "Fully Adjusted";
+            } else {
+              adv.status = "Partially Used";
+            }
+            adv.linkedInvoiceNumber = invoice.invoiceNumber;
+            adv.notes = `${adv.notes ? adv.notes + " | " : ""}Adjusted ₹${deductibleFromThis} on Invoice #${invoice.invoiceNumber}`;
+            await adv.save();
+            remainingToDeduct -= deductibleFromThis;
+          }
+
+          invoice.advanceAdjusted = advanceAdjustedVal;
+          invoice.advanceReceiptNo = body.advanceReceiptNo || (activeAdvances[0]?.receiptNumber || "");
+          await invoice.save();
+        } catch (advErr) {
+          console.warn("Notice: Advance adjustment sync:", advErr);
         }
       }
 

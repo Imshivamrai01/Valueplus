@@ -6,7 +6,11 @@ import bcrypt from "bcryptjs";
 export async function GET() {
   try {
     await connectToDatabase();
-    const users = await User.find({}).select("-password").sort({ createdAt: -1 }).lean();
+    const rawUsers = await User.find({}).select("-password").sort({ createdAt: -1 }).lean();
+    const users = rawUsers.map((u: any) => ({
+      ...u,
+      assignedBrand: u.assignedBrand || (u.email === "salesman@valueplus.in" ? "HAIER" : ""),
+    }));
     return NextResponse.json({ success: true, data: users });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -87,6 +91,8 @@ export async function POST(req: Request) {
       bankIfsc: bankIfsc || "",
       assignedWarehouseId: assignedWarehouseId || "",
       assignedWarehouseName: assignedWarehouseName || "",
+      assignedBrand: body.assignedBrand || "",
+      assignedBrands: Array.isArray(body.assignedBrands) ? body.assignedBrands : (body.assignedBrand ? [body.assignedBrand] : []),
       status: "active",
     });
 

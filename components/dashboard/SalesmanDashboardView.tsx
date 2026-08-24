@@ -6,7 +6,7 @@ import {
   Trophy, TrendingUp, Users, Sparkles, CheckSquare, 
   Phone, MessageSquare, ArrowRight, Package, DollarSign,
   Calendar, Clock, CheckCircle2, AlertCircle, Plus, Search, 
-  ShieldCheck, Filter, Receipt, FileText, Check
+  ShieldCheck, Filter, Receipt, FileText, Check, Target
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -198,6 +198,16 @@ export function SalesmanDashboardView({ session }: { session: any }) {
                 <Sparkles className="w-4 h-4" /> New Lead
               </Button>
             </Link>
+            <Link href="/marketing/walk-in">
+              <Button size="sm" className="bg-blue-500/30 hover:bg-blue-500/40 text-blue-200 border border-blue-400/30 font-bold h-9 px-3 rounded-xl gap-1.5">
+                <Users className="w-4 h-4 text-blue-300" /> Walk-in Query
+              </Button>
+            </Link>
+            <Link href="/marketing/complaints">
+              <Button size="sm" className="bg-red-500/30 hover:bg-red-500/40 text-red-200 border border-red-400/30 font-bold h-9 px-3 rounded-xl gap-1.5">
+                <AlertCircle className="w-4 h-4 text-red-300" /> Complaints Desk
+              </Button>
+            </Link>
             <Link href="/masters/items">
               <Button size="sm" variant="ghost" className="text-slate-300 hover:text-white hover:bg-white/10 h-9 px-3 rounded-xl gap-1.5">
                 <Search className="w-4 h-4" /> Check Stock
@@ -206,6 +216,33 @@ export function SalesmanDashboardView({ session }: { session: any }) {
           </div>
         </div>
       </div>
+
+      {/* ACTIVE SALES TARGET NOTIFICATION CARD */}
+      {tasks.some((t: any) => t.taskType === "sales_target" && t.status !== "Completed") && (
+        <div className="bg-gradient-to-r from-purple-900/40 via-purple-950/20 to-transparent border-l-4 border-purple-500 p-4 rounded-2xl bg-white shadow-xs border border-purple-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+              <Target className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <p className="text-xs font-black text-purple-950 uppercase tracking-wide flex items-center gap-1.5">
+                <span>Active Showroom Sales Target Assigned</span>
+                <Badge className="bg-purple-600 text-white text-[10px]">Auto-Completes On Billing</Badge>
+              </p>
+              {tasks.filter((t: any) => t.taskType === "sales_target" && t.status !== "Completed").slice(0, 1).map((targetTask: any) => (
+                <p key={targetTask._id} className="text-xs text-purple-900 mt-0.5 font-medium">
+                  Goal: <span className="font-bold">{targetTask.taskTitle}</span> — Sold: <span className="font-bold text-purple-700">{targetTask.currentQty || 0} / {targetTask.targetQty || 1} units</span> (Due: {targetTask.dueDate})
+                </p>
+              ))}
+            </div>
+          </div>
+          <Link href="/staff/tasks">
+            <Button size="sm" className="bg-purple-600 hover:bg-purple-700 text-white font-bold h-8 text-xs shrink-0">
+              View Target Tasks
+            </Button>
+          </Link>
+        </div>
+      )}
 
       {/* PERIOD FILTER TABS */}
       <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3">

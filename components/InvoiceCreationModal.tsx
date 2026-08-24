@@ -171,6 +171,14 @@ export function InvoiceCreationModal({
     customerCity: "Gorakhpur",
     customerState: "Uttar Pradesh",
     customerPin: "273001",
+    isShippingSameAsBilling: true,
+    shippingAddress: "",
+    shippingCity: "Gorakhpur",
+    shippingState: "Uttar Pradesh",
+    shippingPin: "273001",
+    dispatchType: "immediate" as "immediate" | "delayed_delivery",
+    driverName: "",
+    driverPhone: "",
     placeOfSupply: "Uttar Pradesh(09)",
     vehicleNumber: "",
     
@@ -236,10 +244,28 @@ export function InvoiceCreationModal({
   };
 
   const [billingForm, setBillingForm] = useState(INITIAL_BILLING_FORM);
+  const [estimateIncludesAdvance, setEstimateIncludesAdvance] = useState(false);
+  const [preBookingAdvanceAmount, setPreBookingAdvanceAmount] = useState<number>(5000);
+  const [preBookingPaymentMode, setPreBookingPaymentMode] = useState<string>("UPI");
+  const [preBookingTransactionRef, setPreBookingTransactionRef] = useState<string>("");
+
+  const generateDocNumber = (type: string) => {
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    if (type === "estimate") {
+      return `EST-2026-${String(estimatesList.length + 1).padStart(4, "0")}-${randomSuffix}`;
+    } else if (type === "sales-order") {
+      return `SO-2026-${String(ordersList.length + 1).padStart(4, "0")}-${randomSuffix}`;
+    } else if (type === "credit-note") {
+      return `CN-2026-${String(invoices.filter((i:any) => i.type === "credit-note").length + 1).padStart(4, "0")}-${randomSuffix}`;
+    } else {
+      return `SVAK2026RI${String(invoices.filter((i:any) => i.type !== "credit-note").length + 602).padStart(5, "0")}`;
+    }
+  };
 
   useEffect(() => {
     if (!isOpen) {
       setBillingForm(INITIAL_BILLING_FORM);
+      setEstimateIncludesAdvance(false);
     } else {
       if (isIndividualStaff && currentUserName) {
         setBillingForm((prev) => ({ ...prev, salesExecutive: currentUserName }));
@@ -249,20 +275,11 @@ export function InvoiceCreationModal({
 
   useEffect(() => {
     if (isOpen && !billingForm.invoiceNo) {
-      setBillingForm(prev => {
-        let newNo = "";
-        const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-        if (mode === "estimate") {
-          newNo = `EST-2026-${String(estimatesList.length + 1).padStart(4, "0")}-${randomSuffix}`;
-        } else if (mode === "sales-order") {
-          newNo = `SO-2026-${String(ordersList.length + 1).padStart(4, "0")}-${randomSuffix}`;
-        } else if (mode === "credit-note") {
-          newNo = `CN-2026-${String(invoices.filter((i:any) => i.type === "credit-note").length + 1).padStart(4, "0")}-${randomSuffix}`;
-        } else {
-          newNo = `SVAK2026RI${String(invoices.filter((i:any) => i.type !== "credit-note").length + 602).padStart(5, "0")}`;
-        }
-        return { ...prev, invoiceNo: newNo, salesExecutive: isIndividualStaff ? currentUserName : prev.salesExecutive };
-      });
+      setBillingForm(prev => ({
+        ...prev,
+        invoiceNo: generateDocNumber(mode),
+        salesExecutive: isIndividualStaff ? currentUserName : prev.salesExecutive
+      }));
     }
   }, [invoices.length, estimatesList.length, ordersList.length, isOpen, billingForm.invoiceNo, mode, isIndividualStaff, currentUserName]);
 
@@ -358,6 +375,35 @@ export function InvoiceCreationModal({
     };
   }, [billingForm]);
 
+  // Customer Pre-Booking / Advance Token Query
+  const cleanPhoneForAdvance = (billingForm.customerPhone || "").replace(/\D/g, "");
+  const { data: customerAdvances = [] } = useQuery({
+    queryKey: ["customer-advances", cleanPhoneForAdvance],
+    queryFn: async () => {
+      if (!cleanPhoneForAdvance || cleanPhoneForAdvance.length < 10) return [];
+      const res = await fetch(`/api/crm/advances?phone=${cleanPhoneForAdvance}&status=Available`);
+      const json = await res.json();
+      return json.success && Array.isArray(json.data) ? json.data : [];
+    },
+    enabled: Boolean(cleanPhoneForAdvance && cleanPhoneForAdvance.length >= 10),
+  });
+
+  const totalAvailableAdvance = useMemo(() => {
+    return customerAdvances.reduce((sum: number, a: any) => sum + (Number(a.remainingBalance) || 0), 0);
+  }, [customerAdvances]);
+
+  const [applyAdvanceCredit, setApplyAdvanceCredit] = useState(true);
+  const [customAdvanceAdjusted, setCustomAdvanceAdjusted] = useState<number | null>(null);
+
+  const maxDeductibleAdvance = Math.min(totalAvailableAdvance, billCalculations.grandTotal);
+  const effectiveAdvanceAdjusted = (applyAdvanceCredit && (totalAvailableAdvance > 0 || customAdvanceAdjusted !== null) && mode === "invoice")
+    ? (customAdvanceAdjusted !== null ? Math.min(customAdvanceAdjusted, billCalculations.grandTotal) : maxDeductibleAdvance)
+    : 0;
+  const netAmountPayableAfterAdvance = Math.max(0, billCalculations.grandTotal - effectiveAdvanceAdjusted);
+  const activePaymentAmount = (mode === "estimate" && estimateIncludesAdvance)
+    ? preBookingAdvanceAmount
+    : (mode === "invoice" ? netAmountPayableAfterAdvance : billCalculations.grandTotal);
+
   const [phoneLookupStatus, setPhoneLookupStatus] = useState<"idle" | "existing" | "new">("idle");
   const [matchedEstimate, setMatchedEstimate] = useState<any>(null);
 
@@ -445,6 +491,11 @@ export function InvoiceCreationModal({
       lineItems: newItems,
     }));
 
+    if (Number(est.paidAmount || est.advanceAmount || 0) > 0) {
+      setApplyAdvanceCredit(true);
+      setCustomAdvanceAdjusted(Number(est.paidAmount || est.advanceAmount));
+    }
+
     toast.success(`Estimate ${est.estimateNumber} items & details imported successfully!`);
   };
 
@@ -465,10 +516,13 @@ export function InvoiceCreationModal({
     }
 
     if (cleanPhone.length === 10) {
-      // 1. Check for Active Estimate
+      // 1. Check for Active Estimate for THIS customer only (strict 10-digit match)
       const activeEst = estimatesList.find((est: any) => {
         const estPhone = (est.customerPhone || "").replace(/\D/g, "");
-        return (estPhone.endsWith(cleanPhone) || cleanPhone.endsWith(estPhone)) && est.status !== "Converted";
+        if (!estPhone || estPhone.length < 10) return false;
+        const estStatus = (est.status || "").toLowerCase();
+        if (estStatus === "converted" || estStatus === "accepted" || estStatus === "cancelled") return false;
+        return estPhone.slice(-10) === cleanPhone.slice(-10);
       });
       if (activeEst) {
         setMatchedEstimate(activeEst);
@@ -480,6 +534,15 @@ export function InvoiceCreationModal({
       const found = customers.find((c: any) => c.phone === cleanPhone);
       if (found) {
         const normalizedState = normalizeStateName(found.billingAddress?.state || found.state || "Uttar Pradesh");
+        const addr = found.billingAddress?.line1 ? `${found.billingAddress.line1}` : found.address || "";
+        const city = normalizeCityName(found.billingAddress?.city || found.city || "Gorakhpur", normalizedState);
+        const pin = found.billingAddress?.pincode || found.pin || found.pincode || "273001";
+        const shipAddr = found.shippingAddress?.line1 || addr;
+        const shipCity = found.shippingAddress?.city || city;
+        const shipState = found.shippingAddress?.state ? normalizeStateName(found.shippingAddress.state) : normalizedState;
+        const shipPin = found.shippingAddress?.pincode || pin;
+        const isSame = !found.shippingAddress?.line1 || (found.shippingAddress?.line1 === addr);
+
         setBillingForm((prev) => ({
           ...prev,
           customerId: found._id,
@@ -490,9 +553,15 @@ export function InvoiceCreationModal({
           customerGstin: found.gstNumber || found.gst || "",
           customerPan: found.panNumber || "",
           placeOfSupply: normalizedState.includes("09") ? normalizedState : `${normalizedState}(09)`,
-          customerCity: normalizeCityName(found.billingAddress?.city || found.city || "Gorakhpur", normalizedState),
-          customerPin: found.billingAddress?.pincode || found.pin || found.pincode || "273001",
-          customerAddress: found.billingAddress?.line1 ? `${found.billingAddress.line1}` : found.address || "",
+          customerState: normalizedState,
+          customerCity: city,
+          customerPin: pin,
+          customerAddress: addr,
+          isShippingSameAsBilling: isSame,
+          shippingAddress: shipAddr,
+          shippingCity: shipCity,
+          shippingState: shipState,
+          shippingPin: shipPin,
         }));
         setPhoneLookupStatus("existing");
         toast.success(`Customer found: ${found.name}`);
@@ -647,6 +716,10 @@ export function InvoiceCreationModal({
 
     const updated = [...billingForm.lineItems];
     const itemVpCode = prod.vpCode || prod.code;
+    const itemShowroomStock = prod.showroomStock !== undefined ? prod.showroomStock : (prod.currentStock || 0);
+    const itemGodownStock = prod.godownStock !== undefined ? prod.godownStock : (prod.currentStock || 0);
+    const totalItemStock = itemShowroomStock + itemGodownStock;
+
     updated[idx] = {
       ...updated[idx],
       name: prod.name,
@@ -661,15 +734,17 @@ export function InvoiceCreationModal({
       itemCode: prod.code,
       vpCode: itemVpCode,
       itemId: prod._id,
-      availableStock: prod.currentStock !== undefined ? prod.currentStock : 0,
+      availableStock: itemShowroomStock,
+      showroomStock: itemShowroomStock,
+      godownStock: itemGodownStock,
       batchNumber: prod.batchNumber || "",
       isSerialized: prod.isSerialized || false,
     };
     
-    if (isOutOfStock) {
-      toast.warning(`Notice: ${prod.name} is OUT OF STOCK.`);
+    if (totalItemStock <= 0) {
+      toast.warning(`Notice: ${prod.name} is OUT OF STOCK across Showroom & Godown.`);
     } else {
-      toast.info(`Selected: ${prod.name} (VP Code: ${itemVpCode}) — Available Stock: ${prod.currentStock}`);
+      toast.info(`Selected: ${prod.name} — 🏪 Showroom: ${itemShowroomStock} PCS | 🏭 Godown: ${itemGodownStock} PCS`);
     }
 
     setBillingForm((prev) => ({ ...prev, lineItems: updated }));
@@ -836,11 +911,51 @@ export function InvoiceCreationModal({
       };
     });
 
+    const isEstimate = mode === "estimate";
     const isFinance = billingForm.paymentMode === "Finance";
     const isDueCredit = billingForm.paymentMode === "Due / Credit";
-    const downPay = isFinance ? (Number(billingForm.financeDownPayment) || 0) : (isDueCredit ? (Number(billingForm.advanceAmount || billingForm.dueAdvanceAmount) || 0) : billCalculations.grandTotal);
-    const paidAmt = isFinance ? downPay : (isDueCredit ? downPay : billCalculations.grandTotal);
-    const balanceAmt = Math.max(0, billCalculations.grandTotal - paidAmt);
+    
+    let paidAmt = 0;
+    let balanceAmt = 0;
+    let paymentModeToSave = billingForm.paymentMode;
+    let advanceAdjustedToSave = isEstimate ? 0 : effectiveAdvanceAdjusted;
+    let advanceReceiptNoToSave = isEstimate ? "" : (effectiveAdvanceAdjusted > 0 ? (customerAdvances[0]?.receiptNumber || "") : "");
+
+    if (isEstimate) {
+      if (estimateIncludesAdvance) {
+        paidAmt = Math.min(billCalculations.grandTotal, preBookingAdvanceAmount);
+        balanceAmt = Math.max(0, billCalculations.grandTotal - paidAmt);
+        paymentModeToSave = billingForm.paymentMode;
+        try {
+          const txnRef = billingForm.upiTxnId || billingForm.creditCardTxnId || billingForm.debitCardTxnId || billingForm.onlineTxnId || "";
+          fetch("/api/crm/advances", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              customerName: billingForm.customerName,
+              customerPhone: billingForm.customerPhone,
+              amount: paidAmt,
+              paymentMode: billingForm.paymentMode,
+              transactionRef: txnRef,
+              productBooked: formattedItems.map(i => i.itemName).join(", "),
+              notes: `Estimate Advance Token against #${billingForm.invoiceNo} (${billingForm.paymentMode})`,
+              receivedBy: currentUserName,
+            })
+          }).catch(err => console.warn("Estimate advance logging:", err));
+        } catch (e) {
+          console.warn("Notice:", e);
+        }
+      } else {
+        paidAmt = 0;
+        balanceAmt = billCalculations.grandTotal;
+        paymentModeToSave = "N/A" as any;
+      }
+    } else {
+      const netBillAfterAdvance = Math.max(0, billCalculations.grandTotal - effectiveAdvanceAdjusted);
+      const downPay = isFinance ? (Number(billingForm.financeDownPayment) || 0) : (isDueCredit ? (Number(billingForm.advanceAmount || billingForm.dueAdvanceAmount) || 0) : netBillAfterAdvance);
+      paidAmt = isFinance ? downPay : (isDueCredit ? downPay : netBillAfterAdvance);
+      balanceAmt = Math.max(0, netBillAfterAdvance - paidAmt);
+    }
 
     createInvoiceMutation.mutate({
       ...billingForm,
@@ -858,6 +973,19 @@ export function InvoiceCreationModal({
       customerCity: billingForm.customerCity,
       customerState: billingForm.customerState,
       customerPin: billingForm.customerPin,
+      isShippingSameAsBilling: billingForm.isShippingSameAsBilling,
+      shippingStreet: billingForm.isShippingSameAsBilling ? billingForm.customerAddress : billingForm.shippingAddress,
+      shippingCity: billingForm.isShippingSameAsBilling ? billingForm.customerCity : billingForm.shippingCity,
+      shippingState: billingForm.isShippingSameAsBilling ? billingForm.customerState : billingForm.shippingState,
+      shippingPin: billingForm.isShippingSameAsBilling ? billingForm.customerPin : billingForm.shippingPin,
+      shippingAddress: billingForm.isShippingSameAsBilling 
+        ? (billingForm.customerAddress ? `${billingForm.customerAddress}, ${billingForm.customerCity}, ${billingForm.customerState} - ${billingForm.customerPin}` : "")
+        : (billingForm.shippingAddress ? `${billingForm.shippingAddress}, ${billingForm.shippingCity}, ${billingForm.shippingState} - ${billingForm.shippingPin}` : ""),
+      dispatchType: billingForm.dispatchType || "immediate",
+      deliveryStatus: billingForm.dispatchType === "delayed_delivery" ? "pending_dispatch" : "delivered",
+      driverName: billingForm.driverName || "",
+      driverPhone: billingForm.driverPhone || "",
+      driverVehicleNo: billingForm.vehicleNumber || "",
       placeOfSupply: billingForm.placeOfSupply,
       vehicleNumber: billingForm.vehicleNumber,
       
@@ -876,10 +1004,15 @@ export function InvoiceCreationModal({
       freightCharges: Number(billingForm.freightCharges || billingForm.shippingCharges || 0),
       roundOff: billCalculations.roundOff,
       total: billCalculations.grandTotal,
+
+      // Advance Adjustment
+      advanceAdjusted: advanceAdjustedToSave,
+      advanceReceiptNo: advanceReceiptNoToSave,
       
+      paymentMode: paymentModeToSave,
       paidAmount: paidAmt,
       balanceAmount: balanceAmt,
-      status: balanceAmt === 0 ? "paid" : (paidAmt > 0 ? "partial" : "sent"),
+      status: isEstimate ? "sent" : (balanceAmt === 0 ? "paid" : (paidAmt > 0 ? "partial" : "sent")),
       
       // Payment specifics
       cardCategory: billingForm.paymentMode === "Credit Card" ? "Credit Card" : (billingForm.paymentMode === "Debit Card" ? "Debit Card" : "Card"),
@@ -916,16 +1049,16 @@ export function InvoiceCreationModal({
       <Dialog open={isOpen && !offlineInvoiceToPrint} onOpenChange={onClose}>
         <DialogContent className="max-w-6xl max-h-[94vh] overflow-y-auto p-0 rounded-2xl border-none shadow-2xl">
           {/* Header */}
-          <div className="bg-gradient-to-r from-[#1B2537] via-[#243753] to-[#1B2537] text-white p-6 rounded-t-2xl flex items-center justify-between border-b border-white/10">
+          <div className="bg-gradient-to-r from-[#1B2537] via-[#243753] to-[#1B2537] text-white p-5 rounded-t-2xl flex items-center justify-between border-b border-white/10">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/20">
-                <Receipt className="w-6 h-6 text-[#76C043]" />
+              <div className="w-11 h-11 rounded-xl bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/20">
+                <Receipt className="w-5 h-5 text-[#76C043]" />
               </div>
               <div>
-                <h3 className="text-xl font-bold tracking-tight flex items-center gap-2">
+                <h3 className="text-lg font-bold tracking-tight flex items-center gap-2">
                   {mode === "estimate" ? "Create Commercial Estimate" : mode === "sales-order" ? "Sales Order Booking" : mode === "credit-note" ? "Issue Credit Note" : "Value Plus Tax Invoice Billing"}
                   <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#76C043]/20 text-[#76C043] border border-[#76C043]/30 font-mono font-bold">
-                    {mode === "credit-note" ? "CREDIT NOTE" : "TAX INVOICE (ORIGINAL)"}
+                    {mode === "credit-note" ? "CREDIT NOTE" : mode === "estimate" ? "COMMERCIAL ESTIMATE" : mode === "sales-order" ? "SALES ORDER" : "TAX INVOICE (ORIGINAL)"}
                   </span>
                 </h3>
                 <p className="text-xs text-slate-300 mt-0.5">
@@ -1010,51 +1143,172 @@ export function InvoiceCreationModal({
                   <Input value={billingForm.invoiceNo} onChange={e => setBillingForm({ ...billingForm, invoiceNo: e.target.value })} className="font-mono text-xs font-bold text-[#3F63AD] bg-blue-50/60 border-blue-200" />
                 </div>
 
-                {/* 4. ADDRESS */}
+                {/* 4. BILLING ADDRESS GROUP */}
                 <div className="space-y-1.5 md:col-span-2">
-                  <Label className="text-xs font-semibold text-slate-700">Billing & Delivery Address</Label>
+                  <Label className="text-xs font-bold text-slate-800 flex items-center justify-between">
+                    <span>🏢 Customer Billing Address *</span>
+                    <span className="text-[10px] text-slate-400 font-normal">For GST / Tax Invoice</span>
+                  </Label>
                   <Input 
-                    placeholder="e.g. C31 Divya Nagar / Turkmanpur, Gita Press" 
+                    placeholder="Street / House No., Area / Landmark" 
                     value={billingForm.customerAddress} 
                     onChange={(e) => setBillingForm({ ...billingForm, customerAddress: e.target.value })} 
-                    className="bg-slate-50 border-slate-300"
+                    className="bg-slate-50 border-slate-300 font-medium text-xs"
                   />
                 </div>
 
-                {/* 5. STATE (DEFAULT: UTTAR PRADESH) */}
+                {/* 5. BILLING STATE */}
                 <div className="space-y-1.5 md:col-span-1">
-                  <Label className="text-xs font-semibold text-slate-700">State (Prefilled)</Label>
+                  <Label className="text-xs font-semibold text-slate-700">Billing State</Label>
                   <Select value={billingForm.customerState} onValueChange={(v) => setBillingForm({ ...billingForm, customerState: v, placeOfSupply: `${v}(09)` })}>
-                    <SelectTrigger className="bg-slate-50 border-slate-300 font-semibold"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="bg-slate-50 border-slate-300 font-semibold text-xs"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {INDIA_STATES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
 
-                {/* 6. CITY / DISTRICT (DEFAULT: GORAKHPUR) */}
+                {/* 6. BILLING CITY & PINCODE */}
                 <div className="space-y-1.5 md:col-span-1">
-                  <Label className="text-xs font-semibold text-slate-700">City / District (Prefilled)</Label>
-                  <Input 
-                    value={billingForm.customerCity} 
-                    onChange={(e) => setBillingForm({ ...billingForm, customerCity: e.target.value })} 
-                    className="bg-slate-50 border-slate-300 font-semibold"
-                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-[11px] font-semibold text-slate-700">City</Label>
+                      <Input 
+                        value={billingForm.customerCity} 
+                        onChange={(e) => setBillingForm({ ...billingForm, customerCity: e.target.value })} 
+                        className="bg-slate-50 border-slate-300 font-semibold text-xs h-9"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[11px] font-semibold text-slate-700">Pincode</Label>
+                      <Input 
+                        placeholder="273001"
+                        maxLength={6}
+                        value={billingForm.customerPin} 
+                        onChange={(e) => setBillingForm({ ...billingForm, customerPin: e.target.value.replace(/\D/g, '') })} 
+                        className="font-mono bg-slate-50 border-slate-300 font-semibold text-xs h-9"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                {/* 7. GSTIN */}
+                {/* 7. SHIPPING ADDRESS SECTION & SAME AS BILLING CHECKBOX */}
+                <div className="md:col-span-4 p-3 bg-blue-50/40 rounded-xl border border-blue-100 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Truck className="w-4 h-4 text-[#30539C]" />
+                      <span className="text-xs font-bold text-slate-900">Shipping & Delivery Destination</span>
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs hover:bg-slate-50">
+                      <input 
+                        type="checkbox"
+                        checked={billingForm.isShippingSameAsBilling}
+                        onChange={(e) => setBillingForm({ ...billingForm, isShippingSameAsBilling: e.target.checked })}
+                        className="w-4 h-4 rounded text-[#30539C] focus:ring-[#30539C]"
+                      />
+                      <span className="text-xs font-semibold text-slate-700 select-none">
+                        Same as Billing Address
+                      </span>
+                    </label>
+                  </div>
+
+                  {/* CUSTOM SHIPPING ADDRESS (SHOWN WHEN UNCHECKED) */}
+                  {!billingForm.isShippingSameAsBilling && (
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3 pt-1 animate-in fade-in slide-in-from-top-1">
+                      <div className="md:col-span-2 space-y-1">
+                        <Label className="text-[11px] font-bold text-blue-900">Shipping Street Address *</Label>
+                        <Input 
+                          placeholder="e.g. Delivery Address / Site / Office / Relative's House" 
+                          value={billingForm.shippingAddress} 
+                          onChange={(e) => setBillingForm({ ...billingForm, shippingAddress: e.target.value })} 
+                          className="bg-white border-blue-200 text-xs font-medium"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[11px] font-semibold text-slate-700">Shipping State</Label>
+                        <Select value={billingForm.shippingState} onValueChange={(v) => setBillingForm({ ...billingForm, shippingState: v })}>
+                          <SelectTrigger className="bg-white border-blue-200 text-xs font-medium"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {INDIA_STATES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-[11px] font-semibold text-slate-700">City</Label>
+                          <Input 
+                            value={billingForm.shippingCity} 
+                            onChange={(e) => setBillingForm({ ...billingForm, shippingCity: e.target.value })} 
+                            className="bg-white border-blue-200 text-xs font-medium h-9"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[11px] font-semibold text-slate-700">Pin</Label>
+                          <Input 
+                            maxLength={6}
+                            placeholder="273001"
+                            value={billingForm.shippingPin} 
+                            onChange={(e) => setBillingForm({ ...billingForm, shippingPin: e.target.value.replace(/\D/g, '') })} 
+                            className="font-mono bg-white border-blue-200 text-xs font-medium h-9"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* DISPATCH / DELIVERY TIMING MODE SELECTOR */}
+                  <div className="pt-2 border-t border-blue-100/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Dispatch Mode:</span>
+                      <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-2xs">
+                        <button
+                          type="button"
+                          onClick={() => setBillingForm({ ...billingForm, dispatchType: "immediate" })}
+                          className={cn(
+                            "px-2.5 py-1 text-xs font-bold rounded-md transition-all flex items-center gap-1.5",
+                            billingForm.dispatchType === "immediate" 
+                              ? "bg-[#30539C] text-white shadow-xs" 
+                              : "text-slate-600 hover:text-slate-900"
+                          )}
+                        >
+                          🏪 Immediate Handover
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setBillingForm({ ...billingForm, dispatchType: "delayed_delivery" })}
+                          className={cn(
+                            "px-2.5 py-1 text-xs font-bold rounded-md transition-all flex items-center gap-1.5",
+                            billingForm.dispatchType === "delayed_delivery" 
+                              ? "bg-amber-600 text-white shadow-xs" 
+                              : "text-slate-600 hover:text-slate-900"
+                          )}
+                        >
+                          🚚 Delayed Home Delivery / Godown Dispatch
+                        </button>
+                      </div>
+                    </div>
+
+                    {billingForm.dispatchType === "delayed_delivery" && (
+                      <span className="text-[11px] font-mono font-bold text-amber-800 bg-amber-100/80 px-2.5 py-1 rounded-md border border-amber-200 flex items-center gap-1.5">
+                        <span>🔑 Auto Delivery OTP & WhatsApp Tracking Link will be generated</span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* 8. GSTIN */}
                 <div className="space-y-1.5 md:col-span-1">
                   <Label className="text-xs font-semibold text-slate-700">Customer GSTIN (Optional)</Label>
                   <Input placeholder="09XXXXX1234X1ZX" value={billingForm.customerGstin} onChange={(e) => setBillingForm({ ...billingForm, customerGstin: e.target.value })} className="font-mono bg-slate-50 border-slate-300 text-xs uppercase" />
                 </div>
 
-                {/* 8. PAN */}
+                {/* 9. PAN */}
                 <div className="space-y-1.5 md:col-span-1">
                   <Label className="text-xs font-semibold text-slate-700">Customer PAN (Optional)</Label>
                   <Input placeholder="ABCDE1234F" value={billingForm.customerPan} onChange={(e) => setBillingForm({ ...billingForm, customerPan: e.target.value })} className="font-mono bg-slate-50 border-slate-300 text-xs uppercase" />
                 </div>
 
-                {/* 9. FREIGHT / SHIPPING CHARGES (OPTIONAL) */}
+                {/* 10. FREIGHT / SHIPPING CHARGES (OPTIONAL) */}
                 <div className="space-y-1.5 md:col-span-1">
                   <Label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
                     <Truck className="w-3.5 h-3.5 text-emerald-600" /> Freight / Delivery Fee <span className="text-[10px] text-slate-400 font-normal">(Optional)</span>
@@ -1072,7 +1326,7 @@ export function InvoiceCreationModal({
                   />
                 </div>
 
-                {/* 10. VEHICLE NUMBER */}
+                {/* 11. VEHICLE NUMBER */}
                 <div className="space-y-1.5 md:col-span-1">
                   <Label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
                     <Truck className="w-3.5 h-3.5 text-blue-600" /> Vehicle Number (Optional)
@@ -1085,7 +1339,7 @@ export function InvoiceCreationModal({
                   />
                 </div>
 
-                {/* 11. SALES EXECUTIVE */}
+                {/* 12. SALES EXECUTIVE */}
                 <div className="space-y-1.5 md:col-span-1">
                   <div className="flex items-center justify-between">
                     <Label className="text-xs font-semibold text-slate-700">Sales Executive</Label>
@@ -1112,15 +1366,15 @@ export function InvoiceCreationModal({
                         {usersList.length > 0 ? (
                           usersList.map((u: any) => (
                             <SelectItem key={u._id || u.email} value={u.name}>
-                              {u.name} ({u.role?.toUpperCase() || "STAFF"})
+                              {u.name} {u.assignedBrand ? `(🏷️ ${u.assignedBrand} Rep)` : `(${u.role?.toUpperCase() || "STAFF"})`}
                             </SelectItem>
                           ))
                         ) : (
                           <>
                             <SelectItem value="AMIT SINGH">AMIT SINGH (Head Store Exec)</SelectItem>
-                            <SelectItem value="ROHAN VERMA">ROHAN VERMA (Electronics)</SelectItem>
-                            <SelectItem value="PRIYA SHARMA">PRIYA SHARMA (Appliances)</SelectItem>
-                            <SelectItem value="VIKAS GUPTA">VIKAS GUPTA (Mobiles)</SelectItem>
+                            <SelectItem value="ROHAN VERMA">ROHAN VERMA (🏷️ Haier Rep)</SelectItem>
+                            <SelectItem value="PRIYA SHARMA">PRIYA SHARMA (🏷️ Samsung Rep)</SelectItem>
+                            <SelectItem value="VIKAS GUPTA">VIKAS GUPTA (🏷️ LG Rep)</SelectItem>
                             <SelectItem value="STORE MANAGER">STORE MANAGER (VIP Desk)</SelectItem>
                           </>
                         )}
@@ -1236,10 +1490,25 @@ export function InvoiceCreationModal({
                               VP CODE: {item.vpCode}
                             </Badge>
                           )}
-                          {item.availableStock !== undefined && (
-                            <Badge className={cn("text-[10px] font-bold", item.availableStock > 0 ? "bg-emerald-100 text-emerald-800 border-emerald-300" : "bg-red-100 text-red-800 border-red-300")}>
-                              Available Stock: {item.availableStock} PCS
-                            </Badge>
+                          {item.name && (item.showroomStock !== undefined || item.availableStock !== undefined) && (
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <Badge className={cn(
+                                "text-[10px] font-extrabold flex items-center gap-1 px-2 py-0.5 border shadow-2xs",
+                                (item.showroomStock ?? item.availableStock ?? 0) > 0 
+                                  ? "bg-blue-50 text-[#30539C] border-blue-300" 
+                                  : "bg-red-50 text-red-800 border-red-200"
+                              )}>
+                                🏪 Showroom: <span className="font-mono font-black">{item.showroomStock ?? item.availableStock ?? 0} PCS</span>
+                              </Badge>
+                              <Badge className={cn(
+                                "text-[10px] font-extrabold flex items-center gap-1 px-2 py-0.5 border shadow-2xs",
+                                (item.godownStock ?? 0) > 0 
+                                  ? "bg-amber-50 text-amber-900 border-amber-300" 
+                                  : "bg-slate-100 text-slate-500 border-slate-200"
+                              )}>
+                                🏭 Godown: <span className="font-mono font-black">{item.godownStock ?? 0} PCS</span>
+                              </Badge>
+                            </div>
                           )}
                           {Number(item.incentiveValue || item.incentiveAmount) > 0 && item.incentiveType !== "none" && (
                             <Badge className={cn(
@@ -1279,42 +1548,66 @@ export function InvoiceCreationModal({
                             className="h-8 text-xs bg-white border-slate-300 font-semibold"
                           />
                           {activeSuggestRow === idx && suggestions.length > 0 && (
-                            <div className="absolute left-0 top-12 w-full bg-white border-2 border-[#3F63AD] shadow-2xl rounded-xl z-[9999] max-h-60 overflow-y-auto divide-y divide-slate-100 p-1">
-                              <div className="px-3 py-1 bg-slate-100 text-[10px] font-bold text-slate-600 uppercase flex justify-between">
+                            <div className="absolute left-0 top-12 w-full bg-white border-2 border-[#3F63AD] shadow-2xl rounded-xl z-[9999] max-h-64 overflow-y-auto divide-y divide-slate-100 p-1.5">
+                              <div className="px-3 py-1 bg-slate-100 text-[10px] font-bold text-slate-600 uppercase flex justify-between rounded-t-lg">
                                 <span>Catalog Match ({suggestions.length} items)</span>
-                                <span>Click to select</span>
+                                <span>🏪 Showroom & 🏭 Godown Live Stock</span>
                               </div>
-                              {suggestions.map((prod: any, pIdx: number) => (
-                                <div 
-                                  key={pIdx} 
-                                  onMouseDown={(e) => { e.preventDefault(); selectProductSuggestion(idx, prod); }} 
-                                  className="p-2 hover:bg-blue-50 cursor-pointer flex items-center justify-between rounded-lg"
-                                >
-                                  <div>
-                                    <div className="flex items-center gap-1.5 mb-0.5">
-                                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-[#3F63AD]">{prod.category || "Electronics"}</span>
-                                      <span className="text-[9px] font-mono font-bold text-slate-600">VP: {prod.vpCode || prod.code}</span>
-                                      {(prod.currentStock || 0) <= 0 ? (
-                                        <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-red-100 text-red-800 border border-red-300">
-                                          OUT OF STOCK
+                              {suggestions.map((prod: any, pIdx: number) => {
+                                const shStock = prod.showroomStock !== undefined ? prod.showroomStock : (prod.currentStock || 0);
+                                const gdStock = prod.godownStock !== undefined ? prod.godownStock : (prod.currentStock || 0);
+                                const totStock = shStock + gdStock;
+
+                                return (
+                                  <div 
+                                    key={pIdx} 
+                                    onMouseDown={(e) => { e.preventDefault(); selectProductSuggestion(idx, prod); }} 
+                                    className="p-2.5 hover:bg-blue-50/80 cursor-pointer flex items-center justify-between rounded-xl transition-colors"
+                                  >
+                                    <div className="min-w-0 pr-3">
+                                      <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-[#3F63AD]">{prod.category || "Electronics"}</span>
+                                        <span className="text-[9px] font-mono font-bold text-slate-600">VP: {prod.vpCode || prod.code}</span>
+                                        {prod.brand && (
+                                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">🏷️ {prod.brand}</span>
+                                        )}
+                                      </div>
+                                      <p className="font-bold text-slate-900 text-xs truncate max-w-[320px]">{prod.name}</p>
+                                      
+                                      {/* STOCK BREAKDOWN BADGES */}
+                                      <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                                        <span className={cn(
+                                          "text-[9.5px] font-extrabold px-1.5 py-0.5 rounded-md border flex items-center gap-1 shadow-2xs",
+                                          shStock > 0 ? "bg-blue-50 text-[#30539C] border-blue-200" : "bg-red-50 text-red-700 border-red-200"
+                                        )}>
+                                          🏪 Showroom: <span className="font-mono font-black">{shStock}</span>
                                         </span>
-                                      ) : (
-                                        <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                          Stock: {prod.currentStock}
+                                        <span className={cn(
+                                          "text-[9.5px] font-extrabold px-1.5 py-0.5 rounded-md border flex items-center gap-1 shadow-2xs",
+                                          gdStock > 0 ? "bg-amber-50 text-amber-900 border-amber-200" : "bg-slate-100 text-slate-500 border-slate-200"
+                                        )}>
+                                          🏭 Godown: <span className="font-mono font-black">{gdStock}</span>
                                         </span>
-                                      )}
+                                        <span className="text-[9px] font-bold text-slate-500 font-mono">
+                                          (Total: {totStock} Pcs)
+                                        </span>
+                                      </div>
                                     </div>
-                                    <p className="font-bold text-slate-900 text-xs">{prod.name}</p>
+                                    <div className="text-right flex-shrink-0">
+                                      <span className="font-black text-[#76C043] text-sm block">{formatCurrency(prod.sellingPrice || prod.rate || 0)}</span>
+                                      <span className="text-[9.5px] text-blue-600 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 mt-0.5 inline-block">
+                                        + Select
+                                      </span>
+                                    </div>
                                   </div>
-                                  <span className="font-black text-[#76C043] text-xs">{formatCurrency(prod.sellingPrice || prod.rate || 0)}</span>
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           )}
                         </div>
 
-                        {/* SERIAL NUMBER DROPDOWN */}
-                        <div className="md:col-span-2">
+                        {/* SERIAL NUMBER DROPDOWN (EXPANDED TO 3 COLS) */}
+                        <div className="md:col-span-3">
                           <div className="flex items-center justify-between mb-1">
                             <Label className="text-[11px] font-semibold text-slate-700">Serial Number (In Store)</Label>
                             {matchingSerials.length > 0 && (
@@ -1334,7 +1627,7 @@ export function InvoiceCreationModal({
                               <SelectContent>
                                 {matchingSerials.map((s: any) => (
                                   <SelectItem key={s._id || s.serialNumber} value={s.serialNumber}>
-                                    SN: {s.serialNumber} {s.batchNo ? `(Batch: ${s.batchNo})` : ""}
+                                    SN: {s.serialNumber}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
@@ -1347,17 +1640,6 @@ export function InvoiceCreationModal({
                               className="h-8 text-xs bg-white border-slate-300 font-mono"
                             />
                           )}
-                        </div>
-
-                        {/* BATCH NUMBER (REQ 18) */}
-                        <div className="md:col-span-1">
-                          <Label className="text-[11px] font-semibold text-slate-700">Batch No.</Label>
-                          <Input 
-                            placeholder="Batch #" 
-                            value={item.batchNumber} 
-                            onChange={(e) => handleLineItemChange(idx, "batchNumber", e.target.value)} 
-                            className="h-8 text-xs bg-white border-slate-300 font-mono"
-                          />
                         </div>
 
                         {/* QTY */}
@@ -1532,84 +1814,186 @@ export function InvoiceCreationModal({
               </div>
             </div>
 
-            {/* SECTION 3: DEDICATED PAYMENT MODES (CASH, UPI, ONLINE, CREDIT CARD + MDR, DEBIT CARD, FINANCE, DUE) */}
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-              <div className="flex items-center justify-between border-b pb-3">
-                <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#3F63AD] flex items-center gap-2">
-                  <CreditCard className="w-4 h-4 text-[#3F63AD]" /> 3. PAYMENT MODE SPECIFICATIONS & RECONCILIATION
-                </h4>
-                <div className="flex flex-wrap items-center gap-1 bg-slate-100 p-1 rounded-lg">
-                  {(["Cash", "UPI", "Credit Card", "Debit Card", "Online", "Finance", "Due / Credit"] as const).map((modeKey) => (
-                    <button
-                      key={modeKey}
-                      type="button"
-                      onClick={() => setBillingForm({ ...billingForm, paymentMode: modeKey })}
-                      className={cn(
-                        "px-3 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-1",
-                        billingForm.paymentMode === modeKey 
-                          ? (modeKey === "Due / Credit" 
-                              ? "bg-rose-600 text-white shadow-sm" 
-                              : modeKey === "Credit Card" 
-                              ? "bg-amber-600 text-white shadow-sm" 
-                              : modeKey === "Debit Card" 
-                              ? "bg-blue-600 text-white shadow-sm" 
-                              : "bg-[#3F63AD] text-white shadow-sm")
-                          : "text-slate-700 hover:bg-slate-200"
-                      )}
-                    >
-                      {modeKey}
-                    </button>
-                  ))}
+            {/* CUSTOMER ADVANCE BOOKING TOKEN CREDIT BANNER */}
+            {totalAvailableAdvance > 0 && mode === "invoice" && (
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-emerald-500/10 to-transparent border-2 border-amber-400/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-900 border border-amber-300 flex items-center justify-center font-black text-lg shrink-0 shadow-2xs">
+                    💰
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-xs font-black text-amber-950 uppercase tracking-wide">
+                        Available Advance Booking Credit: {formatCurrency(totalAvailableAdvance)}
+                      </p>
+                      <Badge className="bg-amber-600 text-white font-bold text-[10px] uppercase">
+                        {customerAdvances[0]?.receiptNumber || "Pre-Booking Advance"}
+                      </Badge>
+                    </div>
+                    <p className="text-[11px] text-slate-700 mt-0.5 font-medium">
+                      {customerAdvances[0]?.productBooked ? (
+                        <>Booked for: <strong className="text-amber-950">{customerAdvances[0].productBooked}</strong> • </>
+                      ) : ""}
+                      Customer deposit on file will be automatically deducted from this tax invoice.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 shrink-0">
+                  <label className="flex items-center gap-2 text-xs font-bold text-slate-800 cursor-pointer bg-white px-3.5 py-2 rounded-xl border border-amber-400 shadow-2xs hover:bg-amber-50/50 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={applyAdvanceCredit}
+                      onChange={(e) => setApplyAdvanceCredit(e.target.checked)}
+                      className="rounded w-4 h-4 text-[#30539C] focus:ring-[#30539C]"
+                    />
+                    <span className="text-amber-950">Deduct Advance: <strong className="text-emerald-700 font-mono">-{formatCurrency(effectiveAdvanceAdjusted)}</strong></span>
+                  </label>
                 </div>
               </div>
+            )}
 
-              {/* 1. CASH PAYMENT MODE */}
-              {billingForm.paymentMode === "Cash" && (
-                <div className="p-4 bg-emerald-50/50 rounded-xl border border-emerald-200 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+            {/* SECTION 3: PAYMENT MODES & RECONCILIATION */}
+
+            {/* 3A. ESTIMATE QUOTATION TERMS (PRICE QUOTE ONLY BY DEFAULT) */}
+            {mode === "estimate" && (
+              <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+                <div className="flex items-center justify-between border-b pb-3">
+                  <h4 className="text-xs font-extrabold uppercase tracking-wider text-blue-700 flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-blue-600" /> 3. ESTIMATE QUOTATION TERMS
+                  </h4>
+                  <Badge variant="outline" className="bg-blue-50 text-blue-800 border-blue-200 font-bold text-[10px]">
+                    PRICE ESTIMATE ONLY
+                  </Badge>
+                </div>
+
+                <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-200 space-y-3">
                   <div>
-                    <Label className="font-bold text-emerald-950">Cash Amount Payable (₹)</Label>
-                    <Input readOnly value={formatCurrency(billCalculations.grandTotal)} className="bg-white border-emerald-300 font-black text-emerald-800 text-sm mt-1" />
+                    <p className="text-xs font-bold text-blue-950">Commercial Price Estimate (Quotation Only)</p>
+                    <p className="text-[11px] text-slate-600 mt-0.5">
+                      Estimates are price quotes provided to customers before purchase. Payment modes and transaction settlement details are excluded from the estimate by default.
+                    </p>
                   </div>
-                  <div>
-                    <Label className="font-bold text-emerald-950">Cash Received By</Label>
-                    <Input value={billingForm.cashReceivedBy} onChange={(e) => setBillingForm({ ...billingForm, cashReceivedBy: e.target.value })} className="bg-white border-emerald-300 mt-1" />
-                  </div>
-                  <div>
-                    <Label className="font-bold text-emerald-950">Remarks / Cash Drawer Notes</Label>
-                    <Input placeholder="Counter collection" value={billingForm.cashRemarks} onChange={(e) => setBillingForm({ ...billingForm, cashRemarks: e.target.value })} className="bg-white border-emerald-300 mt-1" />
+
+                  <div className="pt-2 border-t border-blue-200/80">
+                    <label className="flex items-center gap-2 text-xs font-bold text-slate-800 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={estimateIncludesAdvance}
+                        onChange={(e) => setEstimateIncludesAdvance(e.target.checked)}
+                        className="rounded text-[#30539C] focus:ring-[#30539C] w-4 h-4"
+                      />
+                      <span>Customer is paying an Advance Token Deposit with this Estimate</span>
+                    </label>
                   </div>
                 </div>
-              )}
 
-              {/* 2. UPI PAYMENT MODE */}
-              {billingForm.paymentMode === "UPI" && (
-                <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-200 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-                  <div>
-                    <Label className="font-bold text-blue-950">UPI Amount (₹)</Label>
-                    <Input readOnly value={formatCurrency(billCalculations.grandTotal)} className="bg-white border-blue-300 font-black text-blue-800 text-sm mt-1" />
+                {estimateIncludesAdvance && (
+                  <div className="p-4 bg-amber-50/80 rounded-xl border-2 border-amber-400 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                    <div>
+                      <Label className="font-bold text-amber-950">Advance Token Amount (₹) *</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        max={billCalculations.grandTotal}
+                        value={preBookingAdvanceAmount}
+                        onChange={(e) => setPreBookingAdvanceAmount(Math.max(1, Number(e.target.value)))}
+                        className="bg-white border-amber-400 font-mono font-black text-emerald-800 mt-1 text-sm shadow-xs"
+                      />
+                    </div>
+                    <div>
+                      <Label className="font-bold text-amber-950">Total Quotation Value (₹)</Label>
+                      <Input readOnly value={formatCurrency(billCalculations.grandTotal)} className="bg-amber-100/60 border-amber-300 font-bold text-slate-900 mt-1" />
+                    </div>
+                    <div>
+                      <Label className="font-bold text-amber-950">Remaining Due on Delivery (₹)</Label>
+                      <Input readOnly value={formatCurrency(Math.max(0, billCalculations.grandTotal - preBookingAdvanceAmount))} className="bg-amber-100/80 border-amber-400 font-black text-amber-950 mt-1" />
+                    </div>
                   </div>
-                  <div>
-                    <Label className="font-bold text-blue-950">UPI Ref / UTR / Transaction ID *</Label>
-                    <Input placeholder="e.g. 423985729103" value={billingForm.upiTxnId} onChange={(e) => setBillingForm({ ...billingForm, upiTxnId: e.target.value })} className="bg-white border-blue-300 font-mono mt-1" />
-                  </div>
-                  <div>
-                    <Label className="font-bold text-blue-950">Remarks</Label>
-                    <Input placeholder="PhonePe / GPay / Paytm QR" value={billingForm.upiRemarks} onChange={(e) => setBillingForm({ ...billingForm, upiRemarks: e.target.value })} className="bg-white border-blue-300 mt-1" />
-                  </div>
-                </div>
-              )}
+                )}
+              </div>
+            )}
 
-              {/* 3. ONLINE PAYMENT MODE */}
-              {billingForm.paymentMode === "Online" && (
-                <div className="p-4 bg-indigo-50/50 rounded-xl border border-indigo-200 grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
-                  <div>
-                    <Label className="font-bold text-indigo-950">Online Amount (₹)</Label>
-                    <Input readOnly value={formatCurrency(billCalculations.grandTotal)} className="bg-white border-indigo-300 font-black text-indigo-800 text-sm mt-1" />
+            {/* 3B. PAYMENT MODES & RECONCILIATION (CASH, UPI, ONLINE, CREDIT CARD + MDR, DEBIT CARD, FINANCE, DUE) */}
+            {(mode !== "estimate" || estimateIncludesAdvance) && (
+              <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+                <div className="flex items-center justify-between border-b pb-3">
+                    <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#3F63AD] flex items-center gap-2">
+                      <CreditCard className="w-4 h-4 text-[#3F63AD]" /> 
+                      {mode === "estimate" ? "3. TOKEN ADVANCE PAYMENT MODE SPECIFICATIONS" : "3. PAYMENT MODE SPECIFICATIONS & RECONCILIATION"}
+                    </h4>
+                    <div className="flex flex-wrap items-center gap-1 bg-slate-100 p-1 rounded-lg">
+                      {(["Cash", "UPI", "Credit Card", "Debit Card", "Online", "Finance", "Due / Credit"] as const).map((modeKey) => (
+                        <button
+                          key={modeKey}
+                          type="button"
+                          onClick={() => setBillingForm({ ...billingForm, paymentMode: modeKey })}
+                          className={cn(
+                            "px-3 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-1",
+                            billingForm.paymentMode === modeKey 
+                              ? (modeKey === "Due / Credit" 
+                                  ? "bg-rose-600 text-white shadow-sm" 
+                                  : modeKey === "Credit Card" 
+                                  ? "bg-amber-600 text-white shadow-sm" 
+                                  : modeKey === "Debit Card" 
+                                  ? "bg-blue-600 text-white shadow-sm" 
+                                  : "bg-[#3F63AD] text-white shadow-sm")
+                              : "text-slate-700 hover:bg-slate-200"
+                          )}
+                        >
+                          {modeKey}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <div>
-                    <Label className="font-bold text-indigo-950">Transaction ID *</Label>
-                    <Input placeholder="TXN-9847192" value={billingForm.onlineTxnId} onChange={(e) => setBillingForm({ ...billingForm, onlineTxnId: e.target.value })} className="bg-white border-indigo-300 font-mono mt-1" />
-                  </div>
+
+                  {/* 1. CASH PAYMENT MODE */}
+                  {billingForm.paymentMode === "Cash" && (
+                    <div className="p-4 bg-emerald-50/50 rounded-xl border border-emerald-200 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                      <div>
+                        <Label className="font-bold text-emerald-950">Cash Amount Payable (₹)</Label>
+                        <Input readOnly value={formatCurrency(activePaymentAmount)} className="bg-white border-emerald-300 font-black text-emerald-800 text-sm mt-1" />
+                      </div>
+                      <div>
+                        <Label className="font-bold text-emerald-950">Cash Received By</Label>
+                        <Input value={billingForm.cashReceivedBy} onChange={(e) => setBillingForm({ ...billingForm, cashReceivedBy: e.target.value })} className="bg-white border-emerald-300 mt-1" />
+                      </div>
+                      <div>
+                        <Label className="font-bold text-emerald-950">Remarks / Cash Drawer Notes</Label>
+                        <Input placeholder="Counter collection" value={billingForm.cashRemarks} onChange={(e) => setBillingForm({ ...billingForm, cashRemarks: e.target.value })} className="bg-white border-emerald-300 mt-1" />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 2. UPI PAYMENT MODE */}
+                  {billingForm.paymentMode === "UPI" && (
+                    <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-200 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                      <div>
+                        <Label className="font-bold text-blue-950">UPI Amount (₹)</Label>
+                        <Input readOnly value={formatCurrency(activePaymentAmount)} className="bg-white border-blue-300 font-black text-blue-800 text-sm mt-1" />
+                      </div>
+                      <div>
+                        <Label className="font-bold text-blue-950">UPI Ref / UTR / Transaction ID *</Label>
+                        <Input placeholder="e.g. 423985729103" value={billingForm.upiTxnId} onChange={(e) => setBillingForm({ ...billingForm, upiTxnId: e.target.value })} className="bg-white border-blue-300 font-mono mt-1" />
+                      </div>
+                      <div>
+                        <Label className="font-bold text-blue-950">Remarks</Label>
+                        <Input placeholder="PhonePe / GPay / Paytm QR" value={billingForm.upiRemarks} onChange={(e) => setBillingForm({ ...billingForm, upiRemarks: e.target.value })} className="bg-white border-blue-300 mt-1" />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 3. ONLINE PAYMENT MODE */}
+                  {billingForm.paymentMode === "Online" && (
+                    <div className="p-4 bg-indigo-50/50 rounded-xl border border-indigo-200 grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
+                      <div>
+                        <Label className="font-bold text-indigo-950">Online Amount (₹)</Label>
+                        <Input readOnly value={formatCurrency(activePaymentAmount)} className="bg-white border-indigo-300 font-black text-indigo-800 text-sm mt-1" />
+                      </div>
+                      <div>
+                        <Label className="font-bold text-indigo-950">Transaction ID *</Label>
+                        <Input placeholder="TXN-9847192" value={billingForm.onlineTxnId} onChange={(e) => setBillingForm({ ...billingForm, onlineTxnId: e.target.value })} className="bg-white border-indigo-300 font-mono mt-1" />
+                      </div>
                   <div>
                     <Label className="font-bold text-indigo-950">Payment Gateway / Source</Label>
                     <Select value={billingForm.onlineGateway} onValueChange={(v) => setBillingForm({ ...billingForm, onlineGateway: v })}>
@@ -1672,7 +2056,7 @@ export function InvoiceCreationModal({
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 text-xs">
                     <div>
                       <Label className="font-bold text-amber-950">Card Swiped Amount (₹)</Label>
-                      <Input readOnly value={formatCurrency(billCalculations.grandTotal)} className="bg-white border-amber-300 font-black text-slate-900 mt-1 h-8" />
+                      <Input readOnly value={formatCurrency(activePaymentAmount)} className="bg-white border-amber-300 font-black text-slate-900 mt-1 h-8" />
                     </div>
                     <div>
                       <Label className="font-bold text-amber-950">EDC POS Swiper Machine</Label>
@@ -1726,9 +2110,9 @@ export function InvoiceCreationModal({
                   </div>
 
                   <div className="bg-amber-100/70 p-2.5 rounded-lg border border-amber-200 text-[11px] text-amber-950 flex flex-wrap items-center justify-between gap-2">
-                    <span>Card Invoice Total: <strong className="text-slate-900">{formatCurrency(billCalculations.grandTotal)}</strong></span>
-                    <span>Bank MDR Deducted: <strong className="text-red-700">-{formatCurrency(billCalculations.cardMdrAmount)} ({billingForm.creditCardMdrPercent}%)</strong></span>
-                    <span>Net Expected Bank Settlement: <strong className="text-emerald-800 text-xs font-black">{formatCurrency(billCalculations.cardNetSettlement)}</strong></span>
+                    <span>Card Invoice Total: <strong className="text-slate-900">{formatCurrency(activePaymentAmount)}</strong></span>
+                    <span>Bank MDR Deducted: <strong className="text-red-700">-{formatCurrency((activePaymentAmount * Number(billingForm.creditCardMdrPercent || 2)) / 100)} ({billingForm.creditCardMdrPercent}%)</strong></span>
+                    <span>Net Expected Bank Settlement: <strong className="text-emerald-800 text-xs font-black">{formatCurrency(activePaymentAmount - ((activePaymentAmount * Number(billingForm.creditCardMdrPercent || 2)) / 100))}</strong></span>
                   </div>
                 </div>
               )}
@@ -1751,7 +2135,7 @@ export function InvoiceCreationModal({
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 text-xs">
                     <div>
                       <Label className="font-bold text-blue-950">Debit Card Amount (₹)</Label>
-                      <Input readOnly value={formatCurrency(billCalculations.grandTotal)} className="bg-white border-blue-300 font-black text-slate-900 mt-1 h-8" />
+                      <Input readOnly value={formatCurrency(activePaymentAmount)} className="bg-white border-blue-300 font-black text-slate-900 mt-1 h-8" />
                     </div>
                     <div>
                       <Label className="font-bold text-blue-950">EDC POS Swiper Machine</Label>
@@ -1804,9 +2188,9 @@ export function InvoiceCreationModal({
                   </div>
 
                   <div className="bg-blue-100/70 p-2.5 rounded-lg border border-blue-200 text-[11px] text-blue-950 flex flex-wrap items-center justify-between gap-2">
-                    <span>Debit Card Total: <strong className="text-slate-900">{formatCurrency(billCalculations.grandTotal)}</strong></span>
-                    <span>Bank MDR: <strong className={billingForm.debitCardMdrPercent > 0 ? "text-red-700" : "text-emerald-700"}>{billingForm.debitCardMdrPercent > 0 ? `-${formatCurrency(billCalculations.cardMdrAmount)} (${billingForm.debitCardMdrPercent}%)` : "₹0.00 (0% Zero MDR)"}</strong></span>
-                    <span>Net Settlement: <strong className="text-emerald-800 text-xs font-black">{formatCurrency(billCalculations.cardNetSettlement)}</strong></span>
+                    <span>Debit Card Total: <strong className="text-slate-900">{formatCurrency(activePaymentAmount)}</strong></span>
+                    <span>Bank MDR: <strong className={billingForm.debitCardMdrPercent > 0 ? "text-red-700" : "text-emerald-700"}>{billingForm.debitCardMdrPercent > 0 ? `-${formatCurrency((activePaymentAmount * Number(billingForm.debitCardMdrPercent || 0)) / 100)} (${billingForm.debitCardMdrPercent}%)` : "₹0.00 (0% Zero MDR)"}</strong></span>
+                    <span>Net Settlement: <strong className="text-emerald-800 text-xs font-black">{formatCurrency(activePaymentAmount - ((activePaymentAmount * Number(billingForm.debitCardMdrPercent || 0)) / 100))}</strong></span>
                   </div>
                 </div>
               )}
@@ -1961,6 +2345,7 @@ export function InvoiceCreationModal({
                 </div>
               )}
             </div>
+            )}
 
             {/* SECTION 4: PAYMENT SUMMARY & TOTALS (REQ 13) */}
             <div className="bg-[#1B2537] text-white p-5 rounded-xl border border-slate-800 shadow-md grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
@@ -1977,11 +2362,23 @@ export function InvoiceCreationModal({
                 {billCalculations.freight > 0 && (
                   <p className="text-emerald-300">Freight / Delivery: <span className="font-bold text-emerald-200">+{formatCurrency(billCalculations.freight)}</span></p>
                 )}
+                {mode === "invoice" && effectiveAdvanceAdjusted > 0 && (
+                  <p className="text-amber-300 font-bold bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-500/40 flex justify-between">
+                    <span>Advance Adjusted:</span>
+                    <span>-{formatCurrency(effectiveAdvanceAdjusted)}</span>
+                  </p>
+                )}
                 {billingForm.paymentMode === "Card" && (
                   <p className="text-amber-300">MDR Deducted: <span className="font-bold text-amber-200">-{formatCurrency(billCalculations.cardMdrAmount)}</span></p>
                 )}
                 <p className="text-slate-300">Round Off: <span className="font-bold text-white">{billCalculations.roundOff > 0 ? `+₹${billCalculations.roundOff}` : `₹${billCalculations.roundOff}`}</span></p>
-                <p className="text-slate-300">Payment Mode: <span className="font-bold uppercase text-[#76C043]">{billingForm.paymentMode}</span></p>
+                <p className="text-slate-300">
+                  Payment Mode: <span className="font-bold uppercase text-[#76C043]">
+                    {mode === "estimate" 
+                      ? (estimateIncludesAdvance ? `Token (${preBookingPaymentMode})` : "Quotation Only") 
+                      : billingForm.paymentMode}
+                  </span>
+                </p>
               </div>
 
               <div className="space-y-1.5 text-xs bg-white/5 p-3 rounded-xl border border-white/10">
@@ -1994,17 +2391,44 @@ export function InvoiceCreationModal({
               </div>
 
               <div className="text-right">
-                <p className="text-xs uppercase text-slate-400 font-semibold tracking-wider">Net Amount Payable</p>
-                <p className="text-3xl font-black text-[#76C043] tracking-tight">{formatCurrency(billCalculations.grandTotal)}</p>
-                {billingForm.paymentMode === "Finance" && (
-                  <p className="text-xs text-orange-300 font-bold mt-1">
-                    Down Pay: {formatCurrency(billingForm.financeDownPayment)} • Loan: {formatCurrency(Math.max(0, billCalculations.grandTotal - Number(billingForm.financeDownPayment)))}
-                  </p>
-                )}
-                {billingForm.paymentMode === "Due / Credit" && (
-                  <p className="text-xs text-rose-300 font-bold mt-1">
-                    Paid: {formatCurrency(billingForm.advanceAmount || 0)} • Due: {formatCurrency(Math.max(0, billCalculations.grandTotal - Number(billingForm.advanceAmount || 0)))}
-                  </p>
+                {mode === "estimate" ? (
+                  estimateIncludesAdvance ? (
+                    <>
+                      <p className="text-xs uppercase text-amber-300 font-semibold tracking-wider">Advance Token Received</p>
+                      <p className="text-3xl font-black text-amber-400 tracking-tight">{formatCurrency(preBookingAdvanceAmount)}</p>
+                      <p className="text-[11px] text-slate-300 font-mono mt-0.5">
+                        Total Quote: {formatCurrency(billCalculations.grandTotal)} • Due: {formatCurrency(Math.max(0, billCalculations.grandTotal - preBookingAdvanceAmount))}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-xs uppercase text-blue-300 font-semibold tracking-wider">Total Estimated Quotation</p>
+                      <p className="text-3xl font-black text-blue-400 tracking-tight">{formatCurrency(billCalculations.grandTotal)}</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5 font-medium">Price quote only (No payment collected)</p>
+                    </>
+                  )
+                ) : (
+                  <>
+                    <p className="text-xs uppercase text-slate-400 font-semibold tracking-wider">
+                      {effectiveAdvanceAdjusted > 0 ? "Net Payable (After Advance)" : "Net Amount Payable"}
+                    </p>
+                    <p className="text-3xl font-black text-[#76C043] tracking-tight">{formatCurrency(netAmountPayableAfterAdvance)}</p>
+                    {effectiveAdvanceAdjusted > 0 && (
+                      <p className="text-[11px] text-slate-400 font-mono">
+                        Bill Total: {formatCurrency(billCalculations.grandTotal)} • Less Advance: -{formatCurrency(effectiveAdvanceAdjusted)}
+                      </p>
+                    )}
+                    {billingForm.paymentMode === "Finance" && (
+                      <p className="text-xs text-orange-300 font-bold mt-1">
+                        Down Pay: {formatCurrency(billingForm.financeDownPayment)} • Loan: {formatCurrency(Math.max(0, netAmountPayableAfterAdvance - Number(billingForm.financeDownPayment)))}
+                      </p>
+                    )}
+                    {billingForm.paymentMode === "Due / Credit" && (
+                      <p className="text-xs text-rose-300 font-bold mt-1">
+                        Paid: {formatCurrency(billingForm.advanceAmount || 0)} • Due: {formatCurrency(Math.max(0, netAmountPayableAfterAdvance - Number(billingForm.advanceAmount || 0)))}
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -2019,18 +2443,26 @@ export function InvoiceCreationModal({
                   type="submit" 
                   disabled={createInvoiceMutation.isPending || (mode === "invoice" && isIndividualStaff)} 
                   className={cn(
-                    "font-bold px-6 shadow-lg shadow-blue-900/20",
+                    "font-bold px-6 shadow-lg",
                     mode === "invoice" && isIndividualStaff 
                       ? "bg-slate-400 cursor-not-allowed text-white" 
+                      : mode === "estimate"
+                      ? "bg-blue-600 hover:bg-blue-700 text-white"
                       : "bg-[#3F63AD] hover:bg-[#2E4F95] text-white"
                   )}
                 >
-                  <Receipt className="w-4 h-4 mr-2" />
-                  {mode === "estimate" 
-                    ? "Generate Estimate" 
-                    : mode === "credit-note" 
-                    ? "Issue Credit Note" 
-                    : (isIndividualStaff ? "Restricted: Cashier Only" : "Finalize & Generate Invoice")}
+                  {mode === "estimate" ? (
+                    <><FileText className="w-4 h-4 mr-2" /> Generate Estimate</>
+                  ) : mode === "sales-order" ? (
+                    <><ShoppingCart className="w-4 h-4 mr-2" /> Book Sales Order</>
+                  ) : mode === "credit-note" ? (
+                    <><Receipt className="w-4 h-4 mr-2" /> Issue Credit Note</>
+                  ) : (
+                    <>
+                      <Receipt className="w-4 h-4 mr-2" />
+                      {isIndividualStaff ? "Restricted: Cashier Only" : "Finalize & Generate Invoice"}
+                    </>
+                  )}
                 </Button>
               </div>
             </DialogFooter>

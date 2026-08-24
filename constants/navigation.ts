@@ -37,10 +37,12 @@ import {
   Building2,
   User,
   Settings,
+  AlertCircle,
+  TrendingUp,
   type LucideIcon,
 } from "lucide-react";
 
-export type UserRole = "admin" | "warehouse" | "salesman" | "cashier" | "accounts" | "hr" | "supplier" | "manager" | "sales";
+export type UserRole = "admin" | "warehouse" | "salesman" | "cashier" | "accounts" | "hr" | "supplier" | "manager" | "sales" | "driver";
 
 export interface NavItem {
   title: string;
@@ -59,9 +61,17 @@ export interface NavGroup {
 export const NAV_GROUPS: NavGroup[] = [
   {
     title: "Overview",
-    roles: ["admin", "warehouse", "salesman", "cashier", "accounts", "hr", "supplier", "manager", "sales"],
+    roles: ["admin", "warehouse", "salesman", "cashier", "accounts", "hr", "supplier", "manager", "sales", "driver"],
     items: [
       { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+    ],
+  },
+  {
+    title: "Delivery Boy Portal",
+    roles: ["admin", "driver", "manager", "warehouse"],
+    items: [
+      { title: "My Assigned Deliveries", href: "/driver/deliveries", icon: Truck, roles: ["admin", "driver", "manager", "warehouse"] },
+      { title: "My Salary & Advances", href: "/driver/salary", icon: DollarSign, roles: ["admin", "driver", "hr", "manager"] },
     ],
   },
   {
@@ -73,6 +83,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { title: "Stock Transfer (Inter-Godown)", href: "/inventory/transfer", icon: ArrowLeftRight, roles: ["admin", "warehouse"] },
       { title: "Daily Physical Audit", href: "/inventory/audit", icon: ClipboardCheck, roles: ["admin", "warehouse"] },
       { title: "Stock Discrepancy", href: "/inventory/discrepancies", icon: AlertTriangle, roles: ["admin", "warehouse"] },
+      { title: "Order Dispatch & Deliveries", href: "/sales/dispatch", icon: Truck, roles: ["admin", "warehouse", "manager"] },
       { title: "Delivery Challan", href: "/sales/challan", icon: PackageCheck, roles: ["admin", "warehouse"] },
       { title: "E-Way Bills", href: "/sales/eway-bill", icon: Truck, roles: ["admin", "warehouse"] },
     ],
@@ -99,6 +110,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { title: "Credit Notes", href: "/sales/credit-notes", icon: FileMinus, roles: ["admin", "cashier", "accounts", "manager"] },
       { title: "Estimates / Quotes", href: "/sales/estimates", icon: FileText, roles: ["admin", "salesman", "manager"] },
       { title: "Sales Orders", href: "/sales/orders", icon: ShoppingCart, roles: ["admin", "salesman", "manager"] },
+      { title: "Order Dispatch & Deliveries", href: "/sales/dispatch", icon: Truck, roles: ["admin", "manager", "cashier", "warehouse", "salesman", "sales"] },
       { title: "Delivery Challan", href: "/sales/challan", icon: PackageCheck, roles: ["admin", "manager"] },
     ],
   },
@@ -113,10 +125,11 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    title: "CRM & Sales Enquiries",
-    roles: ["admin", "salesman", "manager"],
+    title: "CRM & Customer Service",
+    roles: ["admin", "salesman", "cashier", "manager", "hr", "accounts", "warehouse"],
     items: [
-      { title: "Walk-in Queries", href: "/marketing/walk-in", icon: Users, roles: ["admin", "salesman", "manager"] },
+      { title: "Customer Queries", href: "/marketing/walk-in", icon: Users, roles: ["admin", "salesman", "cashier", "manager"] },
+      { title: "Customer Complaints", href: "/marketing/complaints", icon: AlertCircle, roles: ["admin", "salesman", "cashier", "manager", "hr", "accounts", "warehouse"] },
       { title: "Sales Leads", href: "/marketing/leads", icon: Sparkles, roles: ["admin", "salesman", "manager"] },
     ],
   },
@@ -146,6 +159,7 @@ export const NAV_GROUPS: NavGroup[] = [
     title: "GST & Financial Reports",
     roles: ["admin", "accounts", "manager"],
     items: [
+      { title: "Profit & Loss (P&L)", href: "/accounting/profit-loss", icon: TrendingUp, roles: ["admin", "accounts", "manager"] },
       { title: "GST Reports (GSTR 1/2/3B)", href: "/gst/reports", icon: Percent, roles: ["admin", "accounts", "manager"] },
       { title: "Sales Out Report", href: "/reports/sales-out", icon: Receipt, roles: ["admin", "accounts", "manager"] },
       { title: "All Reports & Analytics", href: "/reports", icon: BarChart, roles: ["admin", "accounts", "manager"] },

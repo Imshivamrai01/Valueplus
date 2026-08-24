@@ -31,7 +31,8 @@ export interface IDeliveryChallan extends Document {
   approvedAt?: Date;
   approvedBy?: string;
   creditNoteRef?: string;
-  debitNoteRef?: string;
+  deliveryOtp?: string;
+  deliveredAt?: Date;
   status: "dispatched" | "in-transit" | "delivered" | "returned" | "received";
   remarks?: string;
 }
@@ -83,6 +84,8 @@ const DeliveryChallanSchema = new Schema<IDeliveryChallan>(
     approvedBy: { type: String, default: "" },
     creditNoteRef: { type: String, default: "" },
     debitNoteRef: { type: String, default: "" },
+    deliveryOtp: { type: String, default: "" },
+    deliveredAt: { type: Date },
     status: {
       type: String,
       enum: ["dispatched", "in-transit", "delivered", "returned", "received"],

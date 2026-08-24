@@ -26,6 +26,7 @@ export interface ICustomer extends Document {
   creditLimit: number;
   creditDays: number;
   outstandingBalance: number;
+  advanceBalance: number;
   loyaltyPoints: number;
   customerGroup: string;
   status: "active" | "inactive";
@@ -53,12 +54,17 @@ const CustomerSchema = new Schema<ICustomer>(
     creditLimit: { type: Number, default: 50000 },
     creditDays: { type: Number, default: 30 },
     outstandingBalance: { type: Number, default: 0 },
+    advanceBalance: { type: Number, default: 0 },
     loyaltyPoints: { type: Number, default: 0 },
     customerGroup: { type: String, default: "Retail" },
     status: { type: String, enum: ["active", "inactive"], default: "active" },
   },
   { timestamps: true, collection: "customers" }
 );
+
+CustomerSchema.index({ phone: 1 });
+CustomerSchema.index({ name: 1 });
+CustomerSchema.index({ code: 1 });
 
 const Customer: Model<ICustomer> = mongoose.models.Customer || mongoose.model<ICustomer>("Customer", CustomerSchema);
 export default Customer;

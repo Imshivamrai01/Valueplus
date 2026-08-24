@@ -20,21 +20,24 @@ export async function GET(req: Request) {
     }
 
     if (warehouse && warehouse !== "all") {
-      const isAshoka = warehouse.toLowerCase().includes("ashoka") || warehouse.toLowerCase().includes("kunraghat") || warehouse === "VP-KUN";
-      if (!isAshoka) {
-        const cleanWh = warehouse.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        filter.warehouse = { $regex: new RegExp(cleanWh, "i") };
-      } else {
+      const lowerWh = warehouse.toLowerCase().trim();
+      if (lowerWh === "godown" || lowerWh === "warehouse") {
+        filter.warehouse = { $regex: /godown/i };
+      } else if (lowerWh === "showroom" || lowerWh.includes("ashoka") || lowerWh.includes("kunraghat") || lowerWh === "vp-kun") {
         filter.$or = [
           { warehouse: { $exists: false } },
           { warehouse: "" },
           { warehouse: null },
-          { warehouse: { $regex: /ashoka|kunraghat|vp-kun|main showroom/i } }
+          { warehouse: { $regex: /showroom|ashoka|kunraghat|vp-kun|main\s*store/i } },
+          { warehouse: { $not: /godown/i } }
         ];
+      } else {
+        const cleanWh = warehouse.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        filter.warehouse = { $regex: new RegExp(cleanWh, "i") };
       }
     }
 
-    const items = await Item.find(filter).sort({ currentStock: -1, name: 1 });
+    const items = await Item.find(filter).sort({ currentStock: -1, name: 1 }).lean();
     return NextResponse.json({ success: true, data: items });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect, Suspense } from "react";
+import React, { useState, useMemo, useEffect, useRef, Suspense } from "react";
 import { 
   Printer, Download, Send, MessageSquare, Edit3, Plus, Trash2, CheckCircle2, 
   ArrowLeft, FileText, Building2, User, CreditCard, Layers, Sparkles, Share2, Phone
@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { printElement } from "@/lib/printUtility";
 
 // ─── HELPERS ───────────────────────────────────────────────────
 function formatCurrency(amount: number) {
@@ -66,6 +67,7 @@ interface ValueplusInvoiceProps {
 function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: ValueplusInvoiceProps = {}) {
   const searchParams = useSearchParams();
   const billIdFromUrl = searchParams?.get("billid") || searchParams?.get("id") || searchParams?.get("invoiceNumber");
+  const invoicePrintRef = useRef<HTMLDivElement>(null);
 
 
   const [invoice, setInvoice] = useState<any>(propInvoiceData || null);
@@ -128,7 +130,13 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
         customerGstin: invoice.customerGST || invoice.customerGstin || "",
         customerPan: invoice.customerPAN || invoice.customerPan || "",
         customerState: invoice.customerState || invoice.placeOfSupply || "Uttar Pradesh(09)",
+        customerAddress: invoice.customerAddress 
+          ? (invoice.customerAddress.includes(invoice.customerCity || "---") ? invoice.customerAddress : `${invoice.customerAddress}, ${invoice.customerCity || "Gorakhpur"}, ${invoice.customerState || "Uttar Pradesh"} ${invoice.customerPin ? `- ${invoice.customerPin}` : ""}`) 
+          : "c31 divya nagar, gorakhpur, Uttar Pradesh(09)",
         shippingAddress: invoice.shippingAddress || invoice.customerAddress || "c31 divya nagar, gorakhpur, Uttar Pradesh(09)",
+        dispatchType: invoice.dispatchType || "immediate",
+        deliveryStatus: invoice.deliveryStatus || "delivered",
+        deliveryOtp: invoice.deliveryOtp || "",
         
         ...(() => {
           const tableRows: any[] = [];
@@ -164,7 +172,7 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
               sno: sno++,
               name: it.itemName || it.name || "Product Item",
               vpCode: it.vpCode || it.itemCode || "",
-              batchNo: it.batchNumber || it.batchNo || (tableRows.length === 0 ? "605PLTV314681" : ""),
+              batchNo: it.batchNumber || it.batchNo || "",
               serialNo: it.serialNumber || it.serialImei || "",
               isWarrantyItem: false,
               hsn: it.hsn || it.hsnCode || "85287217",
@@ -254,6 +262,8 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
         dueClearedAt: invoice.dueClearedAt ? (typeof invoice.dueClearedAt === 'string' && invoice.dueClearedAt.includes('T') ? invoice.dueClearedAt.split('T')[0] : invoice.dueClearedAt) : "",
         dueClearedMode: invoice.dueClearedMode || "",
         dueClearedTxnId: invoice.dueClearedTxnId || "",
+        advanceAdjusted: invoice.advanceAdjusted || 0,
+        advanceReceiptNo: invoice.advanceReceiptNo || "",
         deliveryChallanNo: invoice.deliveryChallanNo || "",
         reprintCount: invoice.reprintCount || 0,
         lastPrintedAt: invoice.lastPrintedAt || "",
@@ -345,20 +355,33 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
   const handlePrint = async () => {
     try {
       if (!activeData.isEstimate && activeData.docNo) {
-        const res = await fetch("/api/invoices/print", {
+        fetch("/api/invoices/print", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ invoiceNumber: activeData.docNo })
-        });
-        const json = await res.json();
-        if (json.success && json.reprintCount) {
-          setInvoice((prev: any) => prev ? { ...prev, reprintCount: json.reprintCount, lastPrintedAt: json.lastPrintedAt } : prev);
-        }
+        })
+          .then((res) => res.json())
+          .then((json) => {
+            if (json.success && json.reprintCount) {
+              setInvoice((prev: any) =>
+                prev ? { ...prev, reprintCount: json.reprintCount, lastPrintedAt: json.lastPrintedAt } : prev
+              );
+            }
+          })
+          .catch(() => {});
       }
     } catch (e) {
       console.error("Error logging reprint count:", e);
     }
-    window.print();
+
+    if (invoicePrintRef.current) {
+      printElement(
+        invoicePrintRef.current,
+        `${activeData.isEstimate ? "Estimate" : "TaxInvoice"}_${activeData.docNo || "ValuePlus"}`
+      );
+    } else {
+      window.print();
+    }
   };
 
   const handleWhatsApp = () => {
@@ -389,7 +412,7 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 p-4 md:p-8 print:p-0 print:bg-white text-slate-900 font-sans">
+    <div className="min-h-screen bg-slate-100 p-4 md:p-8 print:p-0 print:min-h-0 print:bg-white text-slate-900 font-sans">
       {/* ─── ACTION BAR (HIDDEN IN PRINT) ────────────────────────── */}
       <div className="max-w-[860px] mx-auto mb-6 bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-3 print:hidden">
         <div className="flex items-center gap-2">
@@ -432,7 +455,10 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
       </div>
 
       {/* ─── OFFICIAL VALUE PLUS TAX INVOICE / ESTIMATE SPECIFICATION CONTAINER ─── */}
-      <div className="max-w-[860px] mx-auto bg-white border border-slate-400 p-8 shadow-xl print:border-none print:shadow-none print:p-0 print:m-0 text-[11px] leading-tight">
+      <div 
+        ref={invoicePrintRef}
+        className="max-w-[860px] mx-auto bg-white border border-slate-400 p-8 shadow-xl print:border-none print:shadow-none print:p-0 print:m-0 print:max-w-none print:w-full text-[11px] leading-tight"
+      >
         
         {/* TOP HEADER: BRAND LOGO */}
         <div className="flex flex-col items-center justify-center pb-2 border-b border-slate-300">
@@ -505,6 +531,7 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
           <div className="col-span-4 p-2 space-y-1">
             <p className="font-bold border-b pb-0.5 uppercase text-slate-800">Bill to: Customer</p>
             <p className="font-black text-xs text-slate-900">{activeData.customerName}</p>
+            <p className="text-slate-700 capitalize text-[9.5px] leading-tight font-medium">{activeData.customerAddress}</p>
             <p className="text-slate-700">
               Ph./Mobile No.: <span className="font-mono font-bold">{activeData.customerPhone}</span>
               {activeData.customerAltPhone ? <span className="text-slate-600"> / Alt: <span className="font-mono font-bold">{activeData.customerAltPhone}</span></span> : null}
@@ -521,12 +548,17 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
 
           {/* Col 3: Shipping Details */}
           <div className="col-span-4 p-2 space-y-1">
-            <p className="font-bold border-b pb-0.5 uppercase text-slate-800">Shipping Details</p>
+            <div className="flex items-center justify-between border-b pb-0.5">
+              <p className="font-bold uppercase text-slate-800">Shipping Details</p>
+              {activeData.dispatchType === "delayed_delivery" && (
+                <span className="text-[9px] font-mono font-bold text-amber-800 bg-amber-100 px-1.5 py-0.2 rounded border border-amber-200">🚚 Home Delivery</span>
+              )}
+            </div>
             <p className="font-black text-slate-900 uppercase">{activeData.customerName}</p>
-            <p className="text-slate-700 capitalize">{activeData.shippingAddress}</p>
+            <p className="text-slate-700 capitalize text-[9.5px] leading-tight font-medium">{activeData.shippingAddress}</p>
             <p className="text-slate-700">
-              Ph:/Mobile:/<span className="font-mono font-bold">{activeData.customerPhone}</span>
-              {activeData.customerAltPhone ? <span className="text-slate-600"> / Alt:<span className="font-mono font-bold">{activeData.customerAltPhone}</span></span> : null}
+              Ph:/Mobile: <span className="font-mono font-bold">{activeData.customerPhone}</span>
+              {activeData.customerAltPhone ? <span className="text-slate-600"> / Alt: <span className="font-mono font-bold">{activeData.customerAltPhone}</span></span> : null}
             </p>
             {activeData.customerGstin && <p>GSTNO: <span className="font-mono font-bold">{activeData.customerGstin}</span></p>}
           </div>
@@ -644,13 +676,21 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
                 <span className="font-mono font-bold text-slate-900">+₹{activeData.freightCharges?.toFixed(2)}</span>
               </div>
             )}
-            <div className="flex justify-between p-1.5">
+            <div className="flex justify-between p-1.5 text-[10px]">
               <span className="font-semibold">Round Off</span>
               <span className="font-mono font-bold">{activeData.roundOff > 0 ? `+${activeData.roundOff?.toFixed(2)}` : activeData.roundOff?.toFixed(2)}</span>
             </div>
+            {activeData.advanceAdjusted > 0 && (
+              <div className="flex justify-between p-1.5 text-[10px] bg-amber-50 text-amber-950 font-bold border-t border-amber-200">
+                <span>Less: Advance / Token Adjusted ({activeData.advanceReceiptNo || "Advance"})</span>
+                <span className="font-mono text-emerald-800 font-black">-₹{activeData.advanceAdjusted?.toFixed(2)}</span>
+              </div>
+            )}
             <div className="flex justify-between p-1.5 font-bold bg-slate-50 text-xs">
-              <span>Net Amount</span>
-              <span className="font-mono text-black font-black">₹{activeData.netAmount?.toFixed(2)}</span>
+              <span>{activeData.advanceAdjusted > 0 ? "Net Paid on Delivery" : "Net Amount"}</span>
+              <span className="font-mono text-black font-black">
+                ₹{Math.max(0, (activeData.netAmount || 0) - (activeData.advanceAdjusted || 0))?.toFixed(2)}
+              </span>
             </div>
             <div className="flex justify-between p-1.5 text-[9px]">
               <span>GST Payable on Reverse Charge</span>
@@ -694,7 +734,17 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
 
         {/* ─── REMARKS & PAYMENT SUMMARY ─────────────────────────── */}
         <div className="py-2 border-b border-slate-400 text-[10px] space-y-1">
-          {activeData.paymentMode === "Finance" ? (
+          {activeData.isEstimate ? (
+            (activeData.advanceAdjusted > 0 || (activeData.paidAmount > 0 && activeData.paidAmount < activeData.netAmount)) ? (
+              <p>
+                <span className="font-bold">Remarks:</span> Commercial Price Estimate • Advance Token Received: <span className="font-mono font-bold text-emerald-800">₹{(activeData.advanceAdjusted || activeData.paidAmount)?.toFixed(2)}</span> via <span className="font-bold uppercase">{activeData.paymentMode}</span> • Balance on Delivery: <span className="font-mono font-bold">₹{Math.max(0, activeData.netAmount - (activeData.advanceAdjusted || activeData.paidAmount))?.toFixed(2)}</span> • Estimate valid for 15 days.
+              </p>
+            ) : (
+              <p>
+                <span className="font-bold">Remarks:</span> Commercial Price Quotation / Estimate valid for 15 days from issue date. No payment has been charged yet. Final billing will occur upon delivery.
+              </p>
+            )
+          ) : activeData.paymentMode === "Finance" ? (
             <p>
               <span className="font-bold">Remarks:</span> Payment Mode: <span className="font-bold uppercase text-orange-700">FINANCE ({activeData.financeProvider || "Bajaj Finance"})</span> • Sanctioned Loan: <span className="font-mono font-bold">₹{(activeData.financeGrossLoan || (activeData.netAmount - (activeData.financeDownPayment || 0)))?.toFixed(2)}</span> • Down Payment: <span className="font-mono font-bold">₹{(activeData.financeDownPayment || 0)?.toFixed(2)}</span> via <span className="font-bold uppercase">{activeData.financeDownPaymentMode || "Cash"}</span> • DO ID: <span className="font-mono font-bold">{activeData.financeDoId || "N/A"}</span> {activeData.vehicleNumber ? `• Vehicle: ${activeData.vehicleNumber}` : ""}
             </p>
@@ -716,9 +766,9 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
             <p className="text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-300 inline-block">
               ✅ DUE CLEARED ON {activeData.dueClearedAt} via {activeData.dueClearedMode || "UPI"} {activeData.dueClearedTxnId ? `(Txn: ${activeData.dueClearedTxnId})` : ""} • Final Balance: ₹0.00 (PAID IN FULL)
             </p>
-          ) : (
+          ) : !activeData.isEstimate ? (
             <p><span className="font-bold">Payment Details:</span> Paid: <span className="font-mono font-bold">₹{activeData.paidAmount?.toFixed(2)}</span> {activeData.balanceAmount > 0 ? `• Balance Due: ₹${activeData.balanceAmount?.toFixed(2)}` : "• Full Settlement Received"}</p>
-          )}
+          ) : null}
         </div>
 
         {/* ─── FOOTER & DISPATCH INFORMATION ──────────────────────── */}

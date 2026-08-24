@@ -23,7 +23,7 @@ export async function GET(req: Request) {
     const filter: any = {};
     if (date) filter.auditDate = date;
     
-    const audits = await InventoryAudit.find(filter).sort({ auditDate: -1, createdAt: -1 });
+    const audits = await InventoryAudit.find(filter).sort({ auditDate: -1, createdAt: -1 }).lean();
     return NextResponse.json({ success: true, data: audits });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

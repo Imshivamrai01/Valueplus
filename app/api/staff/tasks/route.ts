@@ -40,7 +40,21 @@ export async function POST(req: Request) {
     const body = await req.json();
     await connectToDatabase();
     
-    const task = await StaffTask.create(body);
+    // Auto-populate assignedDate if not provided
+    const payload = {
+      ...body,
+      assignedDate: body.assignedDate || (() => {
+        try {
+          return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+        } catch (e) {
+          return new Date().toISOString().split("T")[0];
+        }
+      })(),
+      currentQty: Number(body.currentQty) || 0,
+      currentAmount: Number(body.currentAmount) || 0,
+    };
+
+    const task = await StaffTask.create(payload);
     return NextResponse.json({ success: true, data: task });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 400 });
@@ -52,16 +66,19 @@ export async function PUT(req: Request) {
     const body = await req.json();
     await connectToDatabase();
     
-    const { id, ...updates } = body;
-    if (!id) {
+    const { id, _id, ...updates } = body;
+    const targetId = id || _id;
+    if (!targetId) {
       return NextResponse.json({ success: false, error: "Task ID is required" }, { status: 400 });
     }
     
     if (updates.status === "Completed") {
-      updates.completedAt = new Date();
+      if (!updates.completedAt) {
+        updates.completedAt = new Date();
+      }
     }
     
-    const updated = await StaffTask.findByIdAndUpdate(id, updates, { new: true });
+    const updated = await StaffTask.findByIdAndUpdate(targetId, { $set: updates }, { new: true }).lean();
     if (!updated) {
       return NextResponse.json({ success: false, error: "Task not found" }, { status: 404 });
     }

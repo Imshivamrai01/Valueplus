@@ -5,7 +5,7 @@ import StockTransfer from "@/models/StockTransfer";
 export async function GET() {
   try {
     await connectToDatabase();
-    const transfers = await StockTransfer.find({}).sort({ createdAt: -1 });
+    const transfers = await StockTransfer.find({}).sort({ createdAt: -1 }).lean();
     return NextResponse.json({ success: true, data: transfers });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

@@ -113,8 +113,23 @@ export interface IInvoice extends Document {
   dueClearedAt?: string;
   dueClearedMode?: string;
   dueClearedBy?: string;
-  dueClearedNotes?: string;
-  dueClearedTxnId?: string;
+  // Advance Payment & Pre-Booking Adjustment
+  advanceAdjusted?: number;
+  advanceReceiptNo?: string;
+  advanceTransactionId?: string;
+
+  isShippingSameAsBilling?: boolean;
+  shippingStreet?: string;
+  shippingCity?: string;
+  shippingState?: string;
+  shippingPin?: string;
+  dispatchType?: "immediate" | "delayed_delivery";
+  deliveryStatus?: "pending_dispatch" | "packed" | "out_for_delivery" | "delivered";
+  deliveryOtp?: string;
+  driverName?: string;
+  driverPhone?: string;
+  driverVehicleNo?: string;
+  deliveredAt?: Date | string;
 
   deliveryChallanNo?: string;
   creditNoteRef?: string;
@@ -250,6 +265,22 @@ const InvoiceSchema = new Schema<IInvoice>(
     dueClearedNotes: { type: String },
     dueClearedTxnId: { type: String },
 
+    // Advance Payment / Pre-Booking Adjustment
+    advanceAdjusted: { type: Number, default: 0 },
+    // Address & Dispatch Details
+    isShippingSameAsBilling: { type: Boolean, default: true },
+    shippingStreet: { type: String, default: "" },
+    shippingCity: { type: String, default: "" },
+    shippingState: { type: String, default: "" },
+    shippingPin: { type: String, default: "" },
+    dispatchType: { type: String, enum: ["immediate", "delayed_delivery"], default: "immediate" },
+    deliveryStatus: { type: String, enum: ["pending_dispatch", "packed", "out_for_delivery", "delivered"], default: "delivered" },
+    deliveryOtp: { type: String, default: "" },
+    driverName: { type: String, default: "" },
+    driverPhone: { type: String, default: "" },
+    driverVehicleNo: { type: String, default: "" },
+    deliveredAt: { type: Date },
+
     deliveryChallanNo: String,
     creditNoteRef: String,
     notes: String,
@@ -268,8 +299,12 @@ const InvoiceSchema = new Schema<IInvoice>(
   { timestamps: true, collection: "invoices" }
 );
 
-if (mongoose.models.Invoice) {
-  delete mongoose.models.Invoice;
-}
-const Invoice: Model<IInvoice> = mongoose.model<IInvoice>("Invoice", InvoiceSchema);
+InvoiceSchema.index({ type: 1, createdAt: -1 });
+InvoiceSchema.index({ date: -1, createdAt: -1 });
+InvoiceSchema.index({ customerPhone: 1 });
+InvoiceSchema.index({ invoiceNumber: 1 });
+InvoiceSchema.index({ status: 1 });
+InvoiceSchema.index({ warehouse: 1 });
+
+const Invoice: Model<IInvoice> = mongoose.models.Invoice || mongoose.model<IInvoice>("Invoice", InvoiceSchema);
 export default Invoice;

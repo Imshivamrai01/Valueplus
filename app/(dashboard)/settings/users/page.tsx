@@ -47,6 +47,7 @@ import {
   BadgePercent,
   Calendar,
   Sparkles,
+  Award,
 } from "lucide-react";
 import { toast } from "sonner";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
@@ -54,7 +55,9 @@ import { formatCurrency } from "@/lib/utils";
 
 const ROLE_OPTIONS = [
   { value: "admin", label: "👑 Super Admin (Full Master Access)" },
+  { value: "manager", label: "🏢 Store Manager / Incharge" },
   { value: "warehouse", label: "🏬 Warehouse / Godown Incharge" },
+  { value: "driver", label: "🚚 Courier & Delivery Boy / Driver" },
   { value: "salesman", label: "👔 Salesman / Floor Executive" },
   { value: "cashier", label: "💳 Cashier / POS Billing Counter" },
   { value: "accounts", label: "📊 Accounts & GST Officer" },
@@ -72,7 +75,79 @@ export default function UsersAndStaffPage() {
   const [advanceAmountInput, setAdvanceAmountInput] = useState("");
   const [advanceNotesInput, setAdvanceNotesInput] = useState("");
 
+  const [selectedUserForView, setSelectedUserForView] = useState<any | null>(null);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+
+  const [selectedUserForEdit, setSelectedUserForEdit] = useState<any | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editActiveTab, setEditActiveTab] = useState<"login" | "kyc" | "salary">("login");
+  const [editFormData, setEditFormData] = useState<any>({
+    name: "",
+    email: "",
+    password: "",
+    role: "salesman",
+    mobile: "",
+    avatar: "",
+    address: "",
+    city: "Gorakhpur",
+    state: "Uttar Pradesh",
+    pincode: "273008",
+    idProofType: "Aadhaar Card",
+    idProofNumber: "",
+    idProofDoc: "",
+    designation: "Sales Executive",
+    monthlySalary: "25000",
+    salaryType: "Fixed",
+    joiningDate: "",
+    advanceBalance: "0",
+    monthlyAdvanceDeduction: "2000",
+    bankName: "State Bank of India",
+    bankAccountNo: "",
+    bankIfsc: "SBIN0001234",
+    assignedWarehouseName: "Ashoka Enterprises (Kunraghat Showroom)",
+    assignedBrand: "",
+    status: "active",
+  });
+
   const [activeTab, setActiveTab] = useState<"login" | "kyc" | "salary">("login");
+
+  const handleOpenView = (u: any) => {
+    setSelectedUserForView(u);
+    setIsViewModalOpen(true);
+  };
+
+  const handleOpenEdit = (u: any) => {
+    setSelectedUserForEdit(u);
+    setEditFormData({
+      name: u.name || "",
+      email: u.email || "",
+      password: "",
+      role: u.role || "salesman",
+      mobile: u.mobile || "",
+      avatar: u.avatar || "",
+      address: u.address || "",
+      city: u.city || "Gorakhpur",
+      state: u.state || "Uttar Pradesh",
+      pincode: u.pincode || "273008",
+      idProofType: u.idProofType || "Aadhaar Card",
+      idProofNumber: u.idProofNumber || "",
+      idProofDoc: u.idProofDoc || "",
+      designation: u.designation || "Staff",
+      monthlySalary: String(u.monthlySalary || 0),
+      salaryType: u.salaryType || "Fixed",
+      joiningDate: u.joiningDate ? String(u.joiningDate).split("T")[0] : "",
+      advanceBalance: String(u.advanceBalance || 0),
+      monthlyAdvanceDeduction: String(u.monthlyAdvanceDeduction || 2000),
+      bankName: u.bankName || "State Bank of India",
+      bankAccountNo: u.bankAccountNo || "",
+      bankIfsc: u.bankIfsc || "",
+      assignedWarehouseName: u.assignedWarehouseName || "Ashoka Enterprises (Kunraghat Showroom)",
+      assignedBrand: u.assignedBrand || "",
+      status: u.status || "active",
+    });
+    setEditActiveTab("login");
+    setIsEditModalOpen(true);
+  };
 
   // Form State
   const [formData, setFormData] = useState({
@@ -99,6 +174,17 @@ export default function UsersAndStaffPage() {
     bankAccountNo: "",
     bankIfsc: "SBIN0001234",
     assignedWarehouseName: "Ashoka Enterprises (Kunraghat Showroom)",
+    assignedBrand: "",
+  });
+
+  // Fetch Brands Master
+  const { data: brands = [] } = useQuery({
+    queryKey: ["brands"],
+    queryFn: async () => {
+      const res = await fetch("/api/brands");
+      const json = await res.json();
+      return json.success ? json.data : [];
+    },
   });
 
   // Fetch Users
@@ -152,6 +238,7 @@ export default function UsersAndStaffPage() {
         bankAccountNo: "",
         bankIfsc: "SBIN0001234",
         assignedWarehouseName: "Ashoka Enterprises (Kunraghat Showroom)",
+        assignedBrand: "",
       });
     },
     onError: (err: any) => toast.error(err.message),
@@ -179,6 +266,30 @@ export default function UsersAndStaffPage() {
     onError: (err: any) => toast.error(err.message),
   });
 
+  // Update User Profile Mutation
+  const updateUserMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      const res = await fetch("/api/users", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || "Failed to update user profile");
+      return json;
+    },
+    onSuccess: (data: any) => {
+      toast.success(data.message || "Staff profile updated successfully!");
+      setIsEditModalOpen(false);
+      setSelectedUserForEdit(null);
+      queryClient.invalidateQueries({ queryKey: ["users-staff"] });
+      if (selectedUserForView && selectedUserForView._id === data.data?._id) {
+        setSelectedUserForView(data.data);
+      }
+    },
+    onError: (err: any) => toast.error(err.message),
+  });
+
   // Delete User Mutation
   const deleteUserMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -201,51 +312,55 @@ export default function UsersAndStaffPage() {
       u.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       u.mobile?.includes(searchQuery) ||
       u.designation?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      u.assignedBrand?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       u.idProofNumber?.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const matchesRole = roleFilter === "all" || u.role === roleFilter;
+    let matchesRole = true;
+    if (roleFilter === "brand_rep") {
+      matchesRole = Boolean(u.assignedBrand && u.assignedBrand.trim().length > 0);
+    } else if (roleFilter !== "all") {
+      matchesRole = u.role === roleFilter;
+    }
+
     return matchesSearch && matchesRole;
   });
 
   // Aggregate Stats
   const totalPayrollBudget = users.reduce((acc: number, curr: any) => acc + (curr.monthlySalary || 0), 0);
   const totalAdvanceLoan = users.reduce((acc: number, curr: any) => acc + (curr.advanceBalance || 0), 0);
+  const totalBrandReps = users.filter((u: any) => Boolean(u.assignedBrand && u.assignedBrand.trim().length > 0)).length;
 
   return (
     <PageShell
       title="Staff & User Management (KYC, Salary & Roles)"
-      description="Create login credentials, manage Aadhaar/KYC identity proofs, base salary, advance loans, and showroom/godown assignments."
+      description="Create login credentials, manage Aadhaar/KYC identity proofs, brand representative assignments, base salary, advance loans, and showroom/godown permissions."
     >
       <div className="space-y-5">
         {/* KPI OVERVIEW CARDS */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="p-4 rounded-2xl bg-gradient-to-br from-[#30539C] to-[#203a70] text-white shadow-md border border-white/10">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[11px] font-bold text-blue-200 uppercase tracking-wider">Total Active Staff</p>
-                <h3 className="text-2xl font-black mt-1 font-mono">{users.length}</h3>
-              </div>
-              <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
-                <Users className="w-5 h-5 text-blue-200" />
-              </div>
+          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-between">
+            <div>
+              <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Active Staff</p>
+              <h3 className="text-2xl font-black text-slate-900 mt-1 font-mono">{users.length}</h3>
+              <p className="text-[10px] text-slate-400 mt-0.5">{totalBrandReps} Brand Promoters (ISD)</p>
             </div>
-            <p className="text-[10px] text-blue-200/80 mt-2">Across Showrooms & Central Godowns</p>
+            <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center">
+              <Users className="w-5 h-5 text-[#30539C]" />
+            </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Monthly Payroll</p>
-                <h3 className="text-2xl font-black text-slate-900 mt-1 font-mono">{formatCurrency(totalPayrollBudget)}</h3>
-              </div>
-              <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center">
-                <DollarSign className="w-5 h-5 text-emerald-600" />
-              </div>
+          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-between">
+            <div>
+              <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Monthly Base Payroll</p>
+              <h3 className="text-2xl font-black text-emerald-600 mt-1 font-mono">{formatCurrency(totalPayrollBudget)}</h3>
+              <p className="text-[10px] text-slate-400 mt-0.5">Estimated gross liability</p>
             </div>
-            <p className="text-[10px] text-emerald-700 font-medium mt-2">Total Monthly Base Commitment</p>
+            <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center">
+              <DollarSign className="w-5 h-5 text-emerald-600" />
+            </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
+          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-col justify-between">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Advance Loans Active</p>
@@ -282,7 +397,7 @@ export default function UsersAndStaffPage() {
           <div className="relative flex-1 min-w-[240px]">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <Input
-              placeholder="Search by Name, Mobile, Email, Aadhaar/PAN #..."
+              placeholder="Search by Name, Brand (e.g. Haier), Mobile, Email, Aadhaar #..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9 h-9 text-xs bg-slate-50 border-slate-200 font-medium"
@@ -292,13 +407,12 @@ export default function UsersAndStaffPage() {
           <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
             {[
               { id: "all", label: "All Users" },
+              { id: "brand_rep", label: "🏷️ Brand Reps (ISD)" },
               { id: "salesman", label: "👔 Salesman" },
               { id: "cashier", label: "💳 Cashier" },
               { id: "warehouse", label: "🏬 Godown" },
               { id: "accounts", label: "📊 Accounts" },
               { id: "hr", label: "👥 HR" },
-              { id: "supplier", label: "🏭 Supplier" },
-              { id: "admin", label: "👑 Super Admin" },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -320,9 +434,9 @@ export default function UsersAndStaffPage() {
           <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
             <div>
               <h3 className="text-xs font-black uppercase tracking-wider text-slate-800">
-                Staff & KYC Directory ({filteredUsers.length})
+                Staff & Sales Representatives Directory ({filteredUsers.length})
               </h3>
-              <p className="text-[11px] text-slate-500">Profiles, Role Access, KYC Proofs & Salary Breakdown</p>
+              <p className="text-[11px] text-slate-500">Employee profiles, Brand affiliations, Role access & KYC</p>
             </div>
             <Button
               size="sm"
@@ -338,6 +452,7 @@ export default function UsersAndStaffPage() {
               <thead className="bg-slate-100/75 border-b border-slate-200 text-slate-700 uppercase font-black tracking-wider text-[10px]">
                 <tr>
                   <th className="p-3.5">Employee & Role</th>
+                  <th className="p-3.5">Assigned Brand (ISD / Rep)</th>
                   <th className="p-3.5">Assigned Location</th>
                   <th className="p-3.5">KYC & Identity Proof</th>
                   <th className="p-3.5">Monthly Salary</th>
@@ -348,13 +463,13 @@ export default function UsersAndStaffPage() {
               <tbody className="divide-y divide-slate-100">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={6} className="p-0">
-                      <TableShimmer rows={6} cols={6} />
+                    <td colSpan={7} className="p-0">
+                      <TableShimmer rows={6} cols={7} />
                     </td>
                   </tr>
                 ) : filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-slate-400 font-medium">
+                    <td colSpan={7} className="p-8 text-center text-slate-400 font-medium">
                       No staff users found matching your search.
                     </td>
                   </tr>
@@ -371,8 +486,6 @@ export default function UsersAndStaffPage() {
                         ? "bg-cyan-100 text-cyan-900 border-cyan-300"
                         : u.role === "hr"
                         ? "bg-rose-100 text-rose-900 border-rose-300"
-                        : u.role === "supplier"
-                        ? "bg-orange-100 text-orange-900 border-orange-300"
                         : "bg-emerald-100 text-emerald-900 border-emerald-300";
 
                     return (
@@ -400,6 +513,23 @@ export default function UsersAndStaffPage() {
                               </div>
                             </div>
                           </div>
+                        </td>
+
+                        {/* Assigned Brand Column */}
+                        <td className="p-3.5">
+                          {u.assignedBrand ? (
+                            <div className="space-y-1">
+                              <Badge className="bg-blue-50 text-[#30539C] border-blue-300 font-extrabold text-[11px] px-2 py-0.5 shadow-2xs flex items-center gap-1 w-fit">
+                                🏷️ {u.assignedBrand}
+                              </Badge>
+                              <p className="text-[10px] text-slate-500 font-medium">Company Sales Representative</p>
+                            </div>
+                          ) : (
+                            <div>
+                              <span className="text-[11px] text-slate-500 font-medium">General Store Staff</span>
+                              <p className="text-[10px] text-slate-400">All Brands</p>
+                            </div>
+                          )}
                         </td>
 
                         {/* Location */}
@@ -467,29 +597,38 @@ export default function UsersAndStaffPage() {
 
                         {/* Action Buttons */}
                         <td className="p-3.5 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
+                          <div className="flex items-center justify-end gap-1">
                             <Button
                               size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                toast.info(`User: ${u.name} (${u.email})\nRole: ${u.role}\nKYC: ${u.idProofType} - ${u.idProofNumber}`);
-                              }}
-                              className="h-7 px-2 text-[10px] font-bold text-slate-700"
+                              variant="ghost"
+                              onClick={() => handleOpenView(u)}
+                              title="View Full Staff Profile"
+                              className="h-8 w-8 p-0 text-slate-600 hover:text-[#30539C] hover:bg-blue-50 rounded-lg transition-colors"
                             >
-                              <Eye className="w-3 h-3" />
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleOpenEdit(u)}
+                              title="Edit Staff Details"
+                              className="h-8 w-8 p-0 text-slate-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                            >
+                              <Edit2 className="w-4 h-4" />
                             </Button>
                             {u.role !== "admin" && (
                               <Button
                                 size="sm"
-                                variant="destructive"
+                                variant="ghost"
                                 onClick={() => {
                                   if (confirm(`Are you sure you want to delete user ${u.name}?`)) {
                                     deleteUserMutation.mutate(u._id);
                                   }
                                 }}
-                                className="h-7 px-2 text-[10px]"
+                                title="Delete Staff Member"
+                                className="h-8 w-8 p-0 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                               >
-                                <Trash2 className="w-3 h-3" />
+                                <Trash2 className="w-4 h-4" />
                               </Button>
                             )}
                           </div>
@@ -510,28 +649,25 @@ export default function UsersAndStaffPage() {
           <DialogHeader>
             <DialogTitle className="text-base font-black text-slate-900 flex items-center gap-2">
               <UserPlus className="w-5 h-5 text-[#30539C]" />
-              Onboard New Staff / User Profile
+              Onboard New Staff / Sales Representative Profile
             </DialogTitle>
             <DialogDescription className="text-xs text-slate-500">
-              Create login credentials, setup KYC identity documents, salary compensation & branch permissions.
+              Create login credentials, assign manufacturer brand representation, KYC identity documents & branch permissions.
             </DialogDescription>
           </DialogHeader>
 
           {/* Modal Tab Selector */}
-          <div className="flex items-center gap-2 border-b border-slate-200 pb-2 mt-2">
+          <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl mt-2">
             {[
-              { id: "login", label: "1. Login & Role Access" },
-              { id: "kyc", label: "2. Personal & KYC Proof" },
-              { id: "salary", label: "3. Salary & Bank Info" },
+              { id: "login", label: "1. Login & Access" },
+              { id: "kyc", label: "2. Personal & KYC" },
+              { id: "salary", label: "3. Salary & Bank" },
             ].map((tab) => (
               <button
                 key={tab.id}
-                type="button"
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                  activeTab === tab.id
-                    ? "bg-[#30539C] text-white shadow-sm"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  activeTab === tab.id ? "bg-white text-[#30539C] shadow-sm" : "text-slate-500 hover:text-slate-800"
                 }`}
               >
                 {tab.label}
@@ -544,20 +680,47 @@ export default function UsersAndStaffPage() {
               e.preventDefault();
               createUserMutation.mutate(formData);
             }}
-            className="space-y-4 pt-2"
+            className="mt-4 space-y-4"
           >
-            {/* TAB 1: LOGIN & ROLE */}
+            {/* TAB 1: LOGIN & ACCESS */}
             {activeTab === "login" && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1 sm:col-span-2">
                   <Label className="text-xs font-bold text-slate-700">Full Name *</Label>
                   <Input
                     required
-                    placeholder="e.g. Amit Kumar Singh"
+                    placeholder="e.g. Amit Kumar (Haier Representative)"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     className="h-9 text-xs font-medium"
                   />
+                </div>
+
+                <div className="space-y-1 sm:col-span-2">
+                  <Label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <Award className="w-3.5 h-3.5 text-[#30539C]" /> Assigned Brand (Sales Representative / Promoter)
+                  </Label>
+                  <Select
+                    value={formData.assignedBrand || "none"}
+                    onValueChange={(val) => setFormData({ ...formData, assignedBrand: val === "none" ? "" : val })}
+                  >
+                    <SelectTrigger className="h-9 text-xs font-bold bg-blue-50/40 border-blue-200">
+                      <SelectValue placeholder="Select Brand Representative" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60">
+                      <SelectItem value="none" className="text-xs text-slate-500 font-medium">
+                        🌐 General Store Executive (All Brands)
+                      </SelectItem>
+                      {brands.map((b: any) => (
+                        <SelectItem key={b._id || b.id || b.name} value={b.name} className="text-xs font-bold">
+                          🏷️ {b.name} (Sales Representative / ISD)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-slate-500">
+                    Select which company brand this sales representative belongs to (e.g. Haier, Samsung, LG).
+                  </p>
                 </div>
 
                 <div className="space-y-1">
@@ -599,32 +762,6 @@ export default function UsersAndStaffPage() {
                           {opt.label}
                         </SelectItem>
                       ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-1 sm:col-span-2">
-                  <Label className="text-xs font-bold text-slate-700">Assigned Branch / Central Godown</Label>
-                  <Select
-                    value={formData.assignedWarehouseName}
-                    onValueChange={(val) => setFormData({ ...formData, assignedWarehouseName: val })}
-                  >
-                    <SelectTrigger className="h-9 text-xs font-bold">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Ashoka Enterprises (Kunraghat Showroom)">
-                        🏬 Ashoka Enterprises (Kunraghat Showroom)
-                      </SelectItem>
-                      <SelectItem value="Value Plus (Deoria Road Branch)">
-                        🏬 Value Plus (Deoria Road Branch)
-                      </SelectItem>
-                      <SelectItem value="Gorakhpur Central Godown & Logistics Hub">
-                        🏢 Gorakhpur Central Godown & Logistics Hub
-                      </SelectItem>
-                      <SelectItem value="GIDA Industrial Area Godown">
-                        🏢 GIDA Industrial Area Godown
-                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -852,6 +989,538 @@ export default function UsersAndStaffPage() {
               {updateAdvanceMutation.isPending ? "Updating..." : "Confirm Update"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* VIEW FULL STAFF PROFILE MODAL */}
+      <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
+        <DialogContent className="max-w-2xl bg-white rounded-3xl shadow-2xl p-0 overflow-hidden border border-slate-200">
+          {selectedUserForView && (
+            <div>
+              {/* Header Hero */}
+              <div className="bg-gradient-to-r from-[#1A2744] via-[#2C3E5A] to-[#1A2744] p-6 text-white relative">
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 rounded-2xl bg-white/10 border-2 border-white/20 flex items-center justify-center text-xl font-black text-white shadow-lg overflow-hidden shrink-0">
+                    {selectedUserForView.avatar ? (
+                      <img src={selectedUserForView.avatar} alt={selectedUserForView.name} className="w-full h-full object-cover" />
+                    ) : (
+                      selectedUserForView.name?.substring(0, 2).toUpperCase()
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <h3 className="text-lg font-black text-white tracking-tight">{selectedUserForView.name}</h3>
+                      <Badge className="bg-emerald-500/25 text-emerald-300 border border-emerald-400/40 text-[10px] uppercase font-bold px-2 py-0.5">
+                        ● {selectedUserForView.status || "Active"}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-slate-300 font-medium mt-0.5">{selectedUserForView.designation || "Staff Member"}</p>
+                    <div className="flex items-center gap-2 mt-2 flex-wrap">
+                      <span className="px-2.5 py-0.5 rounded-full bg-white/15 text-[10px] font-extrabold uppercase tracking-wider text-slate-200 border border-white/10">
+                        Role: {selectedUserForView.role}
+                      </span>
+                      {selectedUserForView.assignedBrand ? (
+                        <span className="px-2.5 py-0.5 rounded-full bg-blue-500/30 border border-blue-400/40 text-blue-200 text-[10px] font-black flex items-center gap-1">
+                          🏷️ {selectedUserForView.assignedBrand} (Company Sales Rep)
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-0.5 rounded-full bg-white/10 text-slate-300 text-[10px] font-medium border border-white/5">
+                          General Store Staff (All Brands)
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Body 4-Section Grid */}
+              <div className="p-6 space-y-4 max-h-[65vh] overflow-y-auto">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Card 1: Contact & Location */}
+                  <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200 space-y-2.5">
+                    <h4 className="text-xs font-black text-slate-900 uppercase tracking-wide flex items-center gap-1.5 pb-1 border-b border-slate-200">
+                      <Phone className="w-3.5 h-3.5 text-[#30539C]" /> Contact & Showroom
+                    </h4>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between items-center py-0.5">
+                        <span className="text-slate-500">Email Address:</span>
+                        <span className="font-mono font-bold text-slate-800">{selectedUserForView.email}</span>
+                      </div>
+                      <div className="flex justify-between items-center py-0.5">
+                        <span className="text-slate-500">Mobile Phone:</span>
+                        <span className="font-mono font-bold text-slate-800">{selectedUserForView.mobile || "Not Provided"}</span>
+                      </div>
+                      <div className="flex justify-between items-center py-0.5">
+                        <span className="text-slate-500">Assigned Branch:</span>
+                        <span className="font-bold text-slate-800">{selectedUserForView.assignedWarehouseName || "Kunraghat Showroom"}</span>
+                      </div>
+                      <div className="flex justify-between items-center py-0.5">
+                        <span className="text-slate-500">Joining Date:</span>
+                        <span className="font-mono font-bold text-slate-800">{selectedUserForView.joiningDate || "—"}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 2: KYC & Verification */}
+                  <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200 space-y-2.5">
+                    <h4 className="text-xs font-black text-slate-900 uppercase tracking-wide flex items-center gap-1.5 pb-1 border-b border-slate-200">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Identity KYC Verification
+                    </h4>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between items-center py-0.5">
+                        <span className="text-slate-500">Document Type:</span>
+                        <span className="font-bold text-slate-800">{selectedUserForView.idProofType || "Aadhaar Card"}</span>
+                      </div>
+                      <div className="flex justify-between items-center py-0.5">
+                        <span className="text-slate-500">Document Number:</span>
+                        <span className="font-mono font-bold text-slate-800 bg-white px-2 py-0.5 rounded border border-slate-200">
+                          {selectedUserForView.idProofNumber || "DOC-NOT-SUBMITTED"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center py-0.5">
+                        <span className="text-slate-500">Verification Status:</span>
+                        <span className="inline-flex items-center gap-1 font-bold text-emerald-600">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Verified Staff
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 3: Salary & Compensation */}
+                  <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200 space-y-2.5">
+                    <h4 className="text-xs font-black text-slate-900 uppercase tracking-wide flex items-center gap-1.5 pb-1 border-b border-slate-200">
+                      <DollarSign className="w-3.5 h-3.5 text-[#76C043]" /> Salary & Compensation
+                    </h4>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between items-center py-0.5">
+                        <span className="text-slate-500">Monthly Salary:</span>
+                        <span className="font-mono font-black text-[#30539C] text-sm">
+                          {formatCurrency(selectedUserForView.monthlySalary || 0)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center py-0.5">
+                        <span className="text-slate-500">Salary Structure:</span>
+                        <span className="font-bold text-slate-800">{selectedUserForView.salaryType || "Fixed"}</span>
+                      </div>
+                      <div className="flex justify-between items-center py-0.5">
+                        <span className="text-slate-500">Advance Loan Balance:</span>
+                        <span className={`font-mono font-bold ${selectedUserForView.advanceBalance > 0 ? "text-amber-600" : "text-slate-500"}`}>
+                          {formatCurrency(selectedUserForView.advanceBalance || 0)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center py-0.5">
+                        <span className="text-slate-500">Monthly EMI Deduction:</span>
+                        <span className="font-mono font-bold text-slate-800">
+                          {formatCurrency(selectedUserForView.monthlyAdvanceDeduction || 0)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 4: Bank Account Details */}
+                  <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200 space-y-2.5">
+                    <h4 className="text-xs font-black text-slate-900 uppercase tracking-wide flex items-center gap-1.5 pb-1 border-b border-slate-200">
+                      <CreditCard className="w-3.5 h-3.5 text-indigo-600" /> Bank Payout Account
+                    </h4>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between items-center py-0.5">
+                        <span className="text-slate-500">Bank Name:</span>
+                        <span className="font-bold text-slate-800">{selectedUserForView.bankName || "State Bank of India"}</span>
+                      </div>
+                      <div className="flex justify-between items-center py-0.5">
+                        <span className="text-slate-500">Account Number:</span>
+                        <span className="font-mono font-bold text-slate-800">{selectedUserForView.bankAccountNo || "Not Linked"}</span>
+                      </div>
+                      <div className="flex justify-between items-center py-0.5">
+                        <span className="text-slate-500">IFSC Code:</span>
+                        <span className="font-mono font-bold text-slate-800">{selectedUserForView.bankIfsc || "SBIN0001234"}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Residential Address */}
+                {selectedUserForView.address && (
+                  <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+                    <span className="text-slate-500 font-medium">Residential Address: </span>
+                    <span className="font-bold text-slate-800">
+                      {selectedUserForView.address}, {selectedUserForView.city || "Gorakhpur"}, {selectedUserForView.state || "UP"} - {selectedUserForView.pincode || "273008"}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Clean Footer with Single Primary Action */}
+              <div className="p-4 bg-slate-100/90 border-t border-slate-200 flex items-center justify-between">
+                <Button variant="ghost" onClick={() => setIsViewModalOpen(false)} className="text-xs font-bold text-slate-600 hover:text-slate-900">
+                  Close
+                </Button>
+                <Button
+                  onClick={() => {
+                    setIsViewModalOpen(false);
+                    handleOpenEdit(selectedUserForView);
+                  }}
+                  className="bg-[#30539C] hover:bg-[#1E3A8A] text-white font-bold text-xs gap-1.5 px-5 h-9 rounded-xl shadow-md transition-all"
+                >
+                  <Edit2 className="w-3.5 h-3.5" /> Edit Staff Profile
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* EDIT STAFF / USER PROFILE MODAL */}
+      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+        <DialogContent className="max-w-2xl bg-white rounded-2xl shadow-2xl p-6 border border-slate-200 max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-base font-black text-slate-900 flex items-center gap-2">
+              <Edit2 className="w-5 h-5 text-amber-600" />
+              Edit Staff Profile: {selectedUserForEdit?.name}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Update employee role, assigned manufacturer brand, contact information, salary, and KYC verification details.
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Modal Tab Selector */}
+          <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl mt-2">
+            {[
+              { id: "login", label: "1. Account & Brand" },
+              { id: "kyc", label: "2. Personal & KYC" },
+              { id: "salary", label: "3. Salary & Bank" },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setEditActiveTab(tab.id as any)}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  editActiveTab === tab.id ? "bg-white text-[#30539C] shadow-sm" : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (selectedUserForEdit) {
+                updateUserMutation.mutate({
+                  id: selectedUserForEdit._id,
+                  ...editFormData,
+                  monthlySalary: Number(editFormData.monthlySalary || 0),
+                  advanceBalance: Number(editFormData.advanceBalance || 0),
+                  monthlyAdvanceDeduction: Number(editFormData.monthlyAdvanceDeduction || 0),
+                });
+              }
+            }}
+            className="mt-4 space-y-4"
+          >
+            {/* TAB 1: ACCOUNT & BRAND */}
+            {editActiveTab === "login" && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1 sm:col-span-2">
+                  <Label className="text-xs font-bold text-slate-700">Full Name *</Label>
+                  <Input
+                    required
+                    value={editFormData.name}
+                    onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                    className="h-9 text-xs font-medium"
+                  />
+                </div>
+
+                <div className="space-y-1 sm:col-span-2">
+                  <Label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <Award className="w-3.5 h-3.5 text-[#30539C]" /> Assigned Brand (Sales Representative / Promoter)
+                  </Label>
+                  <Select
+                    value={editFormData.assignedBrand || "none"}
+                    onValueChange={(val) => setEditFormData({ ...editFormData, assignedBrand: val === "none" ? "" : val })}
+                  >
+                    <SelectTrigger className="h-9 text-xs font-bold bg-blue-50/40 border-blue-200">
+                      <SelectValue placeholder="-- Select Assigned Brand --" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">General Store Staff (All Brands / No Specific Brand)</SelectItem>
+                      {brands.map((b: any) => (
+                        <SelectItem key={b._id || b.name} value={b.name}>
+                          🏷️ {b.name} (Exclusive Company Representative)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-700">Designation / Title</Label>
+                  <Input
+                    value={editFormData.designation}
+                    onChange={(e) => setEditFormData({ ...editFormData, designation: e.target.value })}
+                    placeholder="e.g. Senior Sales Executive"
+                    className="h-9 text-xs font-medium"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-700">System Role *</Label>
+                  <Select
+                    value={editFormData.role}
+                    onValueChange={(val) => setEditFormData({ ...editFormData, role: val })}
+                  >
+                    <SelectTrigger className="h-9 text-xs font-bold">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ROLE_OPTIONS.map((r) => (
+                        <SelectItem key={r.value} value={r.value}>
+                          {r.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-700">Login Email Address *</Label>
+                  <Input
+                    type="email"
+                    required
+                    value={editFormData.email}
+                    onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
+                    className="h-9 text-xs font-mono font-medium"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-700">New Password (Optional, leave blank to keep)</Label>
+                  <Input
+                    type="password"
+                    placeholder="••••••••"
+                    value={editFormData.password || ""}
+                    onChange={(e) => setEditFormData({ ...editFormData, password: e.target.value })}
+                    className="h-9 text-xs"
+                  />
+                </div>
+
+                <div className="space-y-1 sm:col-span-2">
+                  <Label className="text-xs font-bold text-slate-700">Assigned Branch / Showroom / Godown</Label>
+                  <Select
+                    value={editFormData.assignedWarehouseName}
+                    onValueChange={(val) => setEditFormData({ ...editFormData, assignedWarehouseName: val })}
+                  >
+                    <SelectTrigger className="h-9 text-xs font-bold">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Ashoka Enterprises (Kunraghat Showroom)">
+                        🏢 Ashoka Enterprises (Kunraghat Showroom)
+                      </SelectItem>
+                      <SelectItem value="Gorakhpur Central Godown (Warehouse)">
+                        📦 Gorakhpur Central Godown (Warehouse)
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-700">Account Status</Label>
+                  <Select
+                    value={editFormData.status || "active"}
+                    onValueChange={(val) => setEditFormData({ ...editFormData, status: val })}
+                  >
+                    <SelectTrigger className="h-9 text-xs font-bold">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Active (Full Access)</SelectItem>
+                      <SelectItem value="inactive">Inactive / Suspended</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2: PERSONAL & KYC */}
+            {editActiveTab === "kyc" && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-700">Mobile Phone Number</Label>
+                  <Input
+                    placeholder="10-digit mobile"
+                    value={editFormData.mobile}
+                    onChange={(e) => setEditFormData({ ...editFormData, mobile: e.target.value })}
+                    className="h-9 text-xs font-mono font-medium"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-700">Joining Date</Label>
+                  <Input
+                    type="date"
+                    value={editFormData.joiningDate}
+                    onChange={(e) => setEditFormData({ ...editFormData, joiningDate: e.target.value })}
+                    className="h-9 text-xs"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-700">ID Proof Type</Label>
+                  <Select
+                    value={editFormData.idProofType}
+                    onValueChange={(val) => setEditFormData({ ...editFormData, idProofType: val })}
+                  >
+                    <SelectTrigger className="h-9 text-xs font-bold">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Aadhaar Card">Aadhaar Card</SelectItem>
+                      <SelectItem value="PAN Card">PAN Card</SelectItem>
+                      <SelectItem value="Voter ID">Voter ID</SelectItem>
+                      <SelectItem value="Driving License">Driving License</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-700">ID Document Number</Label>
+                  <Input
+                    placeholder="e.g. 5544 3322 1100"
+                    value={editFormData.idProofNumber}
+                    onChange={(e) => setEditFormData({ ...editFormData, idProofNumber: e.target.value })}
+                    className="h-9 text-xs font-mono font-bold"
+                  />
+                </div>
+
+                <div className="space-y-1 sm:col-span-2">
+                  <Label className="text-xs font-bold text-slate-700">Residential Street Address</Label>
+                  <Textarea
+                    placeholder="House / Flat No, Street, Landmark"
+                    value={editFormData.address}
+                    onChange={(e) => setEditFormData({ ...editFormData, address: e.target.value })}
+                    rows={2}
+                    className="text-xs"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-700">City</Label>
+                  <Input
+                    value={editFormData.city}
+                    onChange={(e) => setEditFormData({ ...editFormData, city: e.target.value })}
+                    className="h-9 text-xs"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-700">Pincode</Label>
+                  <Input
+                    value={editFormData.pincode}
+                    onChange={(e) => setEditFormData({ ...editFormData, pincode: e.target.value })}
+                    className="h-9 text-xs font-mono"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* TAB 3: SALARY & BANK */}
+            {editActiveTab === "salary" && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-700">Monthly Salary (₹)</Label>
+                  <Input
+                    type="number"
+                    value={editFormData.monthlySalary}
+                    onChange={(e) => setEditFormData({ ...editFormData, monthlySalary: e.target.value })}
+                    className="h-9 text-xs font-mono font-bold text-slate-900"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-700">Salary Structure</Label>
+                  <Select
+                    value={editFormData.salaryType}
+                    onValueChange={(val) => setEditFormData({ ...editFormData, salaryType: val })}
+                  >
+                    <SelectTrigger className="h-9 text-xs font-bold">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Fixed">Fixed Monthly</SelectItem>
+                      <SelectItem value="Fixed + Incentive">Fixed + Sales Incentive</SelectItem>
+                      <SelectItem value="Commission Only">Commission Only</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-700">Advance Loan Balance (₹)</Label>
+                  <Input
+                    type="number"
+                    value={editFormData.advanceBalance}
+                    onChange={(e) => setEditFormData({ ...editFormData, advanceBalance: e.target.value })}
+                    className="h-9 text-xs font-mono font-medium"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-700">Monthly Advance EMI Deduction (₹)</Label>
+                  <Input
+                    type="number"
+                    value={editFormData.monthlyAdvanceDeduction}
+                    onChange={(e) => setEditFormData({ ...editFormData, monthlyAdvanceDeduction: e.target.value })}
+                    className="h-9 text-xs font-mono font-medium"
+                  />
+                </div>
+
+                <div className="space-y-1 sm:col-span-2">
+                  <Label className="text-xs font-bold text-slate-700">Bank Name</Label>
+                  <Input
+                    value={editFormData.bankName}
+                    onChange={(e) => setEditFormData({ ...editFormData, bankName: e.target.value })}
+                    className="h-9 text-xs font-medium"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-700">Bank Account Number</Label>
+                  <Input
+                    value={editFormData.bankAccountNo}
+                    onChange={(e) => setEditFormData({ ...editFormData, bankAccountNo: e.target.value })}
+                    className="h-9 text-xs font-mono font-medium"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-700">Bank IFSC Code</Label>
+                  <Input
+                    value={editFormData.bankIfsc}
+                    onChange={(e) => setEditFormData({ ...editFormData, bankIfsc: e.target.value })}
+                    className="h-9 text-xs font-mono font-medium"
+                  />
+                </div>
+              </div>
+            )}
+
+            <DialogFooter className="pt-3 border-t border-slate-100 flex items-center justify-between">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setIsEditModalOpen(false)}
+                className="text-xs font-bold"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={updateUserMutation.isPending}
+                className="bg-[#30539C] hover:bg-[#1E3A8A] text-white font-bold text-xs shadow-md px-6"
+              >
+                {updateUserMutation.isPending ? "Saving Changes..." : "Save Staff Changes"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </PageShell>

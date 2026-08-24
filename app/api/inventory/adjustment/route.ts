@@ -6,7 +6,7 @@ import Item from "@/models/Item";
 export async function GET() {
   try {
     await connectToDatabase();
-    const adjustments = await StockAdjustment.find({}).sort({ createdAt: -1 });
+    const adjustments = await StockAdjustment.find({}).sort({ createdAt: -1 }).lean();
     return NextResponse.json({ success: true, data: adjustments });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

@@ -83,7 +83,7 @@ export function Topnav() {
   }, [searchQuery]);
 
   return (
-    <header className="fixed top-0 right-0 left-0 md:left-64 h-16 bg-white/90 backdrop-blur-xl border-b border-black/[0.04] z-30 flex items-center justify-between px-3 sm:px-6 shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition-all">
+    <header className="fixed top-0 right-0 left-0 md:left-64 h-16 bg-white/90 backdrop-blur-xl border-b border-black/[0.04] z-30 flex items-center justify-between px-3 sm:px-6 shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition-all print:hidden">
       {/* Mobile Brand Logo */}
       <div className="flex md:hidden items-center mr-2 shrink-0">
         <Link href="/dashboard" className="flex items-center gap-1.5 bg-[#30539C] text-white px-2.5 py-1 rounded-xl shadow-xs">

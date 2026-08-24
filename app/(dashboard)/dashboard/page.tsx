@@ -1028,9 +1028,6 @@ export default function DashboardPage() {
 
   return (
     <div className="page-container space-y-5 pb-10">
-      {/* ─── UNIVERSAL ATTENDANCE & SHIFT WIDGET ──────────────── */}
-      <AttendancePunchWidget />
-
       {/* ─── PENDING INVENTORY AUDIT WARNING BANNER ──────────────── */}
       {isAuditPending && (
         <div className="bg-gradient-to-r from-amber-500/20 via-orange-500/10 to-transparent border-l-4 border-amber-500 p-4 rounded-xl shadow-sm flex items-center justify-between gap-4">

@@ -53,6 +53,12 @@ export function AttendancePunchWidget() {
   const userEmail = session?.user?.email || "";
   const userRole = ((session?.user as any)?.role || "salesman").toUpperCase();
 
+  // Do not render attendance widget for Super Admin / Admin panels
+  const roleLower = userRole.toLowerCase();
+  if (roleLower.includes("admin") || roleLower === "superadmin" || roleLower === "super admin") {
+    return null;
+  }
+
   const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
   const [isAdvanceModalOpen, setIsAdvanceModalOpen] = useState(false);
   const [leaveType, setLeaveType] = useState<"Casual" | "Sick" | "Paid">("Casual");
