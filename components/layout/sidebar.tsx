@@ -92,35 +92,43 @@ const ROLE_DISPLAY_NAMES: Record<string, { label: string; bg: string; text: stri
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const { activeLocation, locations, setActiveLocation, isGodown } = useBranch();
 
-  const userRole = ((session?.user as any)?.role || "admin").toLowerCase() as UserRole;
-  const userName = session?.user?.name || "Admin User";
-  const userDesignation = (session?.user as any)?.designation || "Store Head";
-  const roleConfig = ROLE_DISPLAY_NAMES[userRole] || ROLE_DISPLAY_NAMES.admin;
+  const isSessionLoading = status === "loading";
+  const rawRole = (session?.user as any)?.role;
+  const userRole: UserRole = (rawRole ? rawRole.toLowerCase() : (isSessionLoading ? "loading" : "salesman")) as any;
+  const userName = session?.user?.name || (isSessionLoading ? "Loading..." : "Staff User");
+  const userDesignation = (session?.user as any)?.designation || "Staff Member";
+  const roleConfig = ROLE_DISPLAY_NAMES[userRole] || { label: "AUTHENTICATING", bg: "bg-white/10 border-white/20", text: "text-white/80" };
 
   // Filter navigation groups based on current user's role
-  const visibleGroups = NAV_GROUPS.map((group) => {
-    // If group has role restrictions and userRole is not admin, check if group allowed
-    if (group.roles && !group.roles.includes(userRole) && userRole !== "admin") {
-      return null;
+  const visibleGroups = useMemo(() => {
+    if (isSessionLoading) {
+      return [];
     }
 
-    // Filter items inside the group
-    const visibleItems = group.items.filter((item) => {
-      if (userRole === "admin") return true;
-      if (!item.roles) return true;
-      return item.roles.includes(userRole);
-    });
+    return NAV_GROUPS.map((group) => {
+      // If group has role restrictions and userRole is not admin, check if group allowed
+      if (group.roles && !group.roles.includes(userRole) && userRole !== "admin") {
+        return null;
+      }
 
-    if (visibleItems.length === 0) return null;
+      // Filter items inside the group
+      const visibleItems = group.items.filter((item) => {
+        if (userRole === "admin") return true;
+        if (!item.roles) return true;
+        return item.roles.includes(userRole);
+      });
 
-    return {
-      ...group,
-      items: visibleItems,
-    };
-  }).filter(Boolean) as typeof NAV_GROUPS;
+      if (visibleItems.length === 0) return null;
+
+      return {
+        ...group,
+        items: visibleItems,
+      };
+    }).filter(Boolean) as typeof NAV_GROUPS;
+  }, [isSessionLoading, userRole]);
 
   return (
     <aside className="hidden md:flex fixed left-0 top-0 z-40 h-screen w-64 flex-col bg-[#30539C] shadow-[4px_0_24px_rgba(48,83,156,0.15)] border-r border-white/10 print:hidden">
@@ -234,23 +242,33 @@ export function Sidebar() {
 
       {/* Navigation Groups */}
       <ScrollArea className="flex-1 px-3 py-3">
-        {visibleGroups.map((group) => {
-          const isGroupActive = group.items.some(
-            (item) =>
-              pathname === item.href ||
-              (item.href !== "/dashboard" && pathname.startsWith(item.href))
-          );
-          return (
-            <SidebarSection
-              key={group.title}
-              title={group.title}
-              defaultOpen={
-                isGroupActive ||
-                group.title === "Overview" ||
-                group.title === "Godown & Logistics Hub" ||
-                group.title === "Sales & Billing"
-              }
-            >
+        {isSessionLoading ? (
+          <div className="space-y-3 px-1 py-2 animate-pulse">
+            <div className="h-3.5 w-20 bg-white/20 rounded-md" />
+            <div className="h-8 w-full bg-white/10 rounded-xl" />
+            <div className="h-8 w-full bg-white/10 rounded-xl" />
+            <div className="h-3.5 w-24 bg-white/20 rounded-md mt-4" />
+            <div className="h-8 w-full bg-white/10 rounded-xl" />
+            <div className="h-8 w-full bg-white/10 rounded-xl" />
+          </div>
+        ) : (
+          visibleGroups.map((group) => {
+            const isGroupActive = group.items.some(
+              (item) =>
+                pathname === item.href ||
+                (item.href !== "/dashboard" && pathname.startsWith(item.href))
+            );
+            return (
+              <SidebarSection
+                key={group.title}
+                title={group.title}
+                defaultOpen={
+                  isGroupActive ||
+                  group.title === "Overview" ||
+                  group.title === "Godown & Logistics Hub" ||
+                  group.title === "Sales & Billing"
+                }
+              >
               {group.items.map((item) => {
                 const isActive =
                   pathname === item.href ||

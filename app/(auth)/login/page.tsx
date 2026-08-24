@@ -56,8 +56,13 @@ export default function LoginPage() {
       if (res?.error) {
         setError("Login failed: " + res.error);
       } else if (res?.ok) {
-        if (username.toLowerCase().includes("driver")) {
+        const u = username.toLowerCase();
+        if (u.includes("driver")) {
           window.location.href = "/driver/deliveries";
+        } else if (u.includes("warehouse")) {
+          window.location.href = "/warehouse";
+        } else if (u.includes("supplier")) {
+          window.location.href = "/purchase/orders";
         } else {
           window.location.href = "/dashboard";
         }

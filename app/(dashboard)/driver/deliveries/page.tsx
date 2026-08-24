@@ -443,30 +443,6 @@ export default function DriverDeliveriesPage() {
             </div>
           </DialogContent>
         </Dialog>
-
-        {/* ─── NATIVE MOBILE APP BOTTOM NAVIGATION BAR (Visible on Mobile) ─── */}
-        <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 py-2 px-4 flex sm:hidden items-center justify-around shadow-2xl">
-          <Link href="/driver/deliveries" className="flex flex-col items-center gap-1 text-[#30539C]">
-            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-              <Truck className="w-4 h-4 text-[#30539C]" />
-            </div>
-            <span className="text-[10px] font-bold">Deliveries</span>
-          </Link>
-
-          <Link href="/driver/salary" className="flex flex-col items-center gap-1 text-slate-500 hover:text-[#30539C]">
-            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center">
-              <DollarSign className="w-4 h-4 text-emerald-600" />
-            </div>
-            <span className="text-[10px] font-bold">Salary</span>
-          </Link>
-
-          <button onClick={fetchDriverOrders} className="flex flex-col items-center gap-1 text-slate-500 hover:text-[#30539C]">
-            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center">
-              <RefreshCw className="w-4 h-4 text-blue-600" />
-            </div>
-            <span className="text-[10px] font-bold">Refresh</span>
-          </button>
-        </div>
       </div>
     </PageShell>
   );

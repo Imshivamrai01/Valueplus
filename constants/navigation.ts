@@ -61,9 +61,9 @@ export interface NavGroup {
 export const NAV_GROUPS: NavGroup[] = [
   {
     title: "Overview",
-    roles: ["admin", "warehouse", "salesman", "cashier", "accounts", "hr", "supplier", "manager", "sales", "driver"],
+    roles: ["admin", "warehouse", "salesman", "cashier", "accounts", "hr", "supplier", "manager", "sales"],
     items: [
-      { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+      { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["admin", "warehouse", "salesman", "cashier", "accounts", "hr", "supplier", "manager", "sales"] },
     ],
   },
   {
@@ -72,6 +72,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { title: "My Assigned Deliveries", href: "/driver/deliveries", icon: Truck, roles: ["admin", "driver", "manager", "warehouse"] },
       { title: "My Salary & Advances", href: "/driver/salary", icon: DollarSign, roles: ["admin", "driver", "hr", "manager"] },
+      { title: "My Profile & Vehicle", href: "/staff/profile", icon: ShieldCheck, roles: ["admin", "driver", "hr", "manager"] },
     ],
   },
   {

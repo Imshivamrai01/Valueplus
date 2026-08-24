@@ -30,7 +30,8 @@ import {
   Download, 
   Store,
   DollarSign,
-  Clock
+  Clock,
+  Truck
 } from "lucide-react";
 import { NAV_GROUPS, UserRole } from "@/constants/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -40,23 +41,32 @@ import { Badge } from "@/components/ui/badge";
 export function MobileBottomNav() {
   const pathname = usePathname();
   const router = useRouter();
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const { activeLocation, locations, setActiveLocation, isGodown } = useBranch();
   
   const [isQuickActionsOpen, setIsQuickActionsOpen] = useState(false);
   const [isMenuDrawerOpen, setIsMenuDrawerOpen] = useState(false);
 
-  const rawRole = ((session?.user as any)?.role || "salesman").toLowerCase();
+  const isSessionLoading = status === "loading";
+  const rawRole = ((session?.user as any)?.role || "").toLowerCase();
   const userRole: UserRole = (
-    ["admin", "warehouse", "salesman", "cashier", "accounts", "hr", "supplier", "manager", "sales"].includes(rawRole)
+    ["admin", "warehouse", "salesman", "cashier", "accounts", "hr", "supplier", "manager", "sales", "driver"].includes(rawRole)
       ? rawRole
-      : "salesman"
+      : (isSessionLoading ? "loading" : "salesman")
   ) as UserRole;
-  const userName = session?.user?.name || "Staff";
+  const userName = session?.user?.name || (isSessionLoading ? "Loading..." : "Staff");
 
   // Role-customized bottom tabs
   const getNavTabs = () => {
     switch (userRole) {
+      case "driver":
+        return [
+          { label: "Deliveries", href: "/driver/deliveries", icon: Truck },
+          { label: "Salary", href: "/driver/salary", icon: DollarSign },
+          { isFab: true },
+          { label: "Profile", href: "/staff/profile", icon: ShieldCheck },
+          { label: "Menu", isMenu: true, icon: Menu },
+        ];
       case "cashier":
         return [
           { label: "Home", href: "/dashboard", icon: LayoutDashboard },
@@ -79,7 +89,7 @@ export function MobileBottomNav() {
           { label: "Home", href: "/dashboard", icon: LayoutDashboard },
           { label: "Godown", href: "/warehouse", icon: Warehouse },
           { isFab: true },
-          { label: "Transfers", href: "/inventory/transfer", icon: ArrowRightLeft },
+          { label: "Dispatch", href: "/sales/dispatch", icon: Truck },
           { label: "Menu", isMenu: true, icon: Menu },
         ];
       case "accounts":
@@ -98,7 +108,15 @@ export function MobileBottomNav() {
           { label: "Salary", href: "/staff/salary", icon: DollarSign },
           { label: "Menu", isMenu: true, icon: Menu },
         ];
-      default: // admin & manager
+      case "manager":
+        return [
+          { label: "Home", href: "/dashboard", icon: LayoutDashboard },
+          { label: "Billing", href: "/sales/invoices", icon: Receipt },
+          { isFab: true },
+          { label: "Dispatch", href: "/sales/dispatch", icon: Truck },
+          { label: "Menu", isMenu: true, icon: Menu },
+        ];
+      default: // admin
         return [
           { label: "Home", href: "/dashboard", icon: LayoutDashboard },
           { label: "Billing", href: "/sales/invoices", icon: Receipt },
@@ -204,111 +222,187 @@ export function MobileBottomNav() {
           </DialogHeader>
 
           <div className="grid grid-cols-2 gap-2.5 my-2">
-            {/* Quick 1: Attendance */}
-            <button
-              onClick={() => {
-                setIsQuickActionsOpen(false);
-                router.push("/staff/attendance");
-              }}
-              className="p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-left transition-all group flex flex-col justify-between h-24"
-            >
-              <div className="w-8 h-8 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold group-hover:scale-110 transition-transform">
-                <Clock className="w-4 h-4" />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-white">Punch Attendance</p>
-                <p className="text-[10px] text-slate-400">Check-in / Check-out</p>
-              </div>
-            </button>
+            {userRole === "driver" ? (
+              <>
+                {/* Driver Quick 1: Deliveries */}
+                <button
+                  onClick={() => {
+                    setIsQuickActionsOpen(false);
+                    router.push("/driver/deliveries");
+                  }}
+                  className="p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-left transition-all group flex flex-col justify-between h-24"
+                >
+                  <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold group-hover:scale-110 transition-transform">
+                    <Truck className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-white">My Deliveries</p>
+                    <p className="text-[10px] text-slate-400">Assigned Orders</p>
+                  </div>
+                </button>
 
-            {/* Quick 2: Estimate */}
-            <button
-              onClick={() => {
-                setIsQuickActionsOpen(false);
-                router.push("/sales/estimates");
-              }}
-              className="p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-left transition-all group flex flex-col justify-between h-24"
-            >
-              <div className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold group-hover:scale-110 transition-transform">
-                <FileText className="w-4 h-4" />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-white">New Estimate</p>
-                <p className="text-[10px] text-slate-400">Commercial Quote</p>
-              </div>
-            </button>
+                {/* Driver Quick 2: Salary */}
+                <button
+                  onClick={() => {
+                    setIsQuickActionsOpen(false);
+                    router.push("/driver/salary");
+                  }}
+                  className="p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-left transition-all group flex flex-col justify-between h-24"
+                >
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold group-hover:scale-110 transition-transform">
+                    <DollarSign className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-white">Salary & Advance</p>
+                    <p className="text-[10px] text-slate-400">Monthly Payout</p>
+                  </div>
+                </button>
 
-            {/* Quick 3: Tax Invoice */}
-            {userRole !== "salesman" && (
-              <button
-                onClick={() => {
-                  setIsQuickActionsOpen(false);
-                  router.push("/sales/invoices");
-                }}
-                className="p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-left transition-all group flex flex-col justify-between h-24"
-              >
-                <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold group-hover:scale-110 transition-transform">
-                  <Receipt className="w-4 h-4" />
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-white">Tax Invoice (POS)</p>
-                  <p className="text-[10px] text-slate-400">Generate GST Bill</p>
-                </div>
-              </button>
+                {/* Driver Quick 3: Profile */}
+                <button
+                  onClick={() => {
+                    setIsQuickActionsOpen(false);
+                    router.push("/staff/profile");
+                  }}
+                  className="p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-left transition-all group flex flex-col justify-between h-24"
+                >
+                  <div className="w-8 h-8 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold group-hover:scale-110 transition-transform">
+                    <ShieldCheck className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-white">My Profile</p>
+                    <p className="text-[10px] text-slate-400">Vehicle & KYC</p>
+                  </div>
+                </button>
+
+                {/* Driver Quick 4: Attendance */}
+                <button
+                  onClick={() => {
+                    setIsQuickActionsOpen(false);
+                    router.push("/staff/attendance");
+                  }}
+                  className="p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-left transition-all group flex flex-col justify-between h-24"
+                >
+                  <div className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold group-hover:scale-110 transition-transform">
+                    <Clock className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-white">Punch Attendance</p>
+                    <p className="text-[10px] text-slate-400">Daily In/Out</p>
+                  </div>
+                </button>
+              </>
+            ) : (
+              <>
+                {/* Quick 1: Attendance */}
+                <button
+                  onClick={() => {
+                    setIsQuickActionsOpen(false);
+                    router.push("/staff/attendance");
+                  }}
+                  className="p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-left transition-all group flex flex-col justify-between h-24"
+                >
+                  <div className="w-8 h-8 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold group-hover:scale-110 transition-transform">
+                    <Clock className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-white">Punch Attendance</p>
+                    <p className="text-[10px] text-slate-400">Check-in / Check-out</p>
+                  </div>
+                </button>
+
+                {/* Quick 2: Estimate */}
+                {userRole === "salesman" && (
+                  <button
+                    onClick={() => {
+                      setIsQuickActionsOpen(false);
+                      router.push("/sales/estimates");
+                    }}
+                    className="p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-left transition-all group flex flex-col justify-between h-24"
+                  >
+                    <div className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold group-hover:scale-110 transition-transform">
+                      <FileText className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-white">New Estimate</p>
+                      <p className="text-[10px] text-slate-400">Commercial Quote</p>
+                    </div>
+                  </button>
+                )}
+
+                {/* Quick 3: Tax Invoice */}
+                {userRole !== "salesman" && (
+                  <button
+                    onClick={() => {
+                      setIsQuickActionsOpen(false);
+                      router.push("/sales/invoices");
+                    }}
+                    className="p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-left transition-all group flex flex-col justify-between h-24"
+                  >
+                    <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold group-hover:scale-110 transition-transform">
+                      <Receipt className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-white">Tax Invoice (POS)</p>
+                      <p className="text-[10px] text-slate-400">Generate GST Bill</p>
+                    </div>
+                  </button>
+                )}
+
+                {/* Quick 4: Receive Payment */}
+                {(userRole === "cashier" || userRole === "admin" || userRole === "manager") && (
+                  <button
+                    onClick={() => {
+                      setIsQuickActionsOpen(false);
+                      router.push("/sales/payments");
+                    }}
+                    className="p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-left transition-all group flex flex-col justify-between h-24"
+                  >
+                    <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold group-hover:scale-110 transition-transform">
+                      <CreditCard className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-white">Receive Payment</p>
+                      <p className="text-[10px] text-slate-400">Cash / UPI / EMI</p>
+                    </div>
+                  </button>
+                )}
+
+                {/* Quick 5: Stock Lookup */}
+                <button
+                  onClick={() => {
+                    setIsQuickActionsOpen(false);
+                    router.push(userRole === "warehouse" ? "/warehouse" : "/masters/items");
+                  }}
+                  className="p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-left transition-all group flex flex-col justify-between h-24"
+                >
+                  <div className="w-8 h-8 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold group-hover:scale-110 transition-transform">
+                    <ScanBarcode className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-white">Stock & Prices</p>
+                    <p className="text-[10px] text-slate-400">Live Item Catalog</p>
+                  </div>
+                </button>
+
+                {/* Quick 6: Low Stock Reorder */}
+                <button
+                  onClick={() => {
+                    setIsQuickActionsOpen(false);
+                    router.push("/purchase/low-stock");
+                  }}
+                  className="p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-left transition-all group flex flex-col justify-between h-24"
+                >
+                  <div className="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center font-bold group-hover:scale-110 transition-transform">
+                    <AlertTriangle className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-white">Low Stock</p>
+                    <p className="text-[10px] text-slate-400">Auto Reorder</p>
+                  </div>
+                </button>
+              </>
             )}
-
-            {/* Quick 4: Receive Payment */}
-            {userRole !== "salesman" && (
-              <button
-                onClick={() => {
-                  setIsQuickActionsOpen(false);
-                  router.push("/sales/payments");
-                }}
-                className="p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-left transition-all group flex flex-col justify-between h-24"
-              >
-                <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold group-hover:scale-110 transition-transform">
-                  <CreditCard className="w-4 h-4" />
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-white">Receive Payment</p>
-                  <p className="text-[10px] text-slate-400">Cash / UPI / EMI</p>
-                </div>
-              </button>
-            )}
-
-            {/* Quick 5: Stock Lookup */}
-            <button
-              onClick={() => {
-                setIsQuickActionsOpen(false);
-                router.push(userRole === "warehouse" ? "/warehouse" : "/masters/items");
-              }}
-              className="p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-left transition-all group flex flex-col justify-between h-24"
-            >
-              <div className="w-8 h-8 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold group-hover:scale-110 transition-transform">
-                <ScanBarcode className="w-4 h-4" />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-white">Stock & Prices</p>
-                <p className="text-[10px] text-slate-400">Live Item Catalog</p>
-              </div>
-            </button>
-
-            {/* Quick 6: Low Stock Reorder */}
-            <button
-              onClick={() => {
-                setIsQuickActionsOpen(false);
-                router.push("/purchase/low-stock");
-              }}
-              className="p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-left transition-all group flex flex-col justify-between h-24"
-            >
-              <div className="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center font-bold group-hover:scale-110 transition-transform">
-                <AlertTriangle className="w-4 h-4" />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-white">Low Stock</p>
-                <p className="text-[10px] text-slate-400">Auto Reorder</p>
-              </div>
-            </button>
           </div>
         </DialogContent>
       </Dialog>

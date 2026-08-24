@@ -137,7 +137,21 @@ function StatusBadge({ status }: { status: string }) {
 export default function DashboardPage() {
   const router = useRouter();
   const { activeLocation } = useBranch();
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
+
+  const userRole = ((session?.user as any)?.role || "").toLowerCase();
+
+  // Instant role-based navigation guards
+  useEffect(() => {
+    if (status === "loading") return;
+    if (userRole === "driver") {
+      router.replace("/driver/deliveries");
+    } else if (userRole === "warehouse") {
+      router.replace("/warehouse");
+    } else if (userRole === "supplier") {
+      router.replace("/purchase/orders");
+    }
+  }, [userRole, status, router]);
 
   // Period Filter State
   const [dateFilter, setDateFilter] = useState("Today");
@@ -1017,7 +1031,28 @@ export default function DashboardPage() {
     }
   };
 
-  const userRole = ((session?.user as any)?.role || "").toLowerCase();
+  if (status === "loading") {
+    return (
+      <div className="page-container space-y-6 pb-10 animate-pulse">
+        <div className="h-10 w-64 bg-slate-200 dark:bg-slate-800 rounded-xl" />
+        <MetricCardsShimmer />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <ChartShimmer />
+          <ChartShimmer />
+        </div>
+      </div>
+    );
+  }
+
+  if (userRole === "driver" || userRole === "warehouse" || userRole === "supplier") {
+    return (
+      <div className="page-container space-y-4 pb-10 flex flex-col items-center justify-center min-h-[60vh]">
+        <div className="animate-spin w-8 h-8 border-4 border-[#30539C] border-t-transparent rounded-full" />
+        <p className="text-xs text-slate-500 font-bold tracking-wide">Opening your role portal...</p>
+      </div>
+    );
+  }
+
   if (userRole === "salesman" || userRole === "sales" || userRole === "salesperson" || userRole === "sales_executive") {
     return (
       <div className="page-container pb-10">
