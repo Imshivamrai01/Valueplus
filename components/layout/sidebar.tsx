@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -314,7 +314,8 @@ export function Sidebar() {
               })}
             </SidebarSection>
           );
-        })}
+        })
+        )}
       </ScrollArea>
 
       {/* Bottom User & Logout Section */}

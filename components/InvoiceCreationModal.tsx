@@ -914,6 +914,7 @@ export function InvoiceCreationModal({
     const isEstimate = mode === "estimate";
     const isFinance = billingForm.paymentMode === "Finance";
     const isDueCredit = billingForm.paymentMode === "Due / Credit";
+    const isCard = billingForm.paymentMode === "Credit Card" || billingForm.paymentMode === "Debit Card";
     
     let paidAmt = 0;
     let balanceAmt = 0;

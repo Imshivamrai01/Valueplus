@@ -948,6 +948,8 @@ export default function DashboardPage() {
     warrantyCount: 0,
     dueRevenue: 0,
     dueCount: 0,
+    duesCollected: 0,
+    duesCollectedCount: 0,
     totalOrders: 0,
     pendingOrders: 0,
     lowStockItems: 0,
@@ -1226,6 +1228,27 @@ export default function DashboardPage() {
                     </div>
                   );
                 })}
+
+                {/* DUES COLLECTED ROW (via Receive Payment) */}
+                {(metrics.duesCollected > 0 || metrics.duesCollectedCount > 0) && (
+                  <div
+                    onClick={() => router.push("/sales/payments")}
+                    className="flex items-center justify-between text-sm cursor-pointer bg-emerald-50/70 hover:bg-emerald-100/70 p-2 rounded-xl border border-emerald-200 transition-all group"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-3 h-3 rounded-full bg-emerald-500" />
+                      <span className="text-emerald-900 font-bold text-xs sm:text-sm">Dues Collected (Receive Payment)</span>
+                    </div>
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-xs font-mono font-bold px-2 py-0.5 bg-emerald-200/80 text-emerald-900 rounded-md">
+                        {metrics.duesCollectedCount || 0} Receipts
+                      </span>
+                      <span className="font-black text-emerald-700 font-mono text-xs sm:text-sm">
+                        {formatCurrency(metrics.duesCollected || 0)}
+                      </span>
+                    </div>
+                  </div>
+                )}
 
                 {/* PENDING DUE ROW */}
                 {(metrics.dueRevenue > 0 || metrics.dueCount > 0) && (

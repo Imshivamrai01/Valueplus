@@ -5,6 +5,7 @@ import Item from "@/models/Item";
 import Customer from "@/models/Customer";
 import Supplier from "@/models/Supplier";
 import Expense from "@/models/Expense";
+import PaymentTransaction from "@/models/PaymentTransaction";
 
 export async function GET(request: Request) {
   try {
@@ -15,12 +16,13 @@ export async function GET(request: Request) {
     const endDateParam = searchParams.get("endDate");
     const warehouseParam = searchParams.get("warehouse") || searchParams.get("location") || "";
 
-    const [allInvoicesRaw, allCustomersRaw, allItemsRaw, allSuppliersRaw, allExpensesRaw] = await Promise.all([
+    const [allInvoicesRaw, allCustomersRaw, allItemsRaw, allSuppliersRaw, allExpensesRaw, allPaymentsRaw] = await Promise.all([
       Invoice.find({}).sort({ createdAt: -1 }).lean(),
       Customer.find({}).sort({ createdAt: -1 }).lean(),
       Item.find({}).sort({ createdAt: -1 }).lean(),
       Supplier.find({}).sort({ createdAt: -1 }).lean(),
       Expense.find({}).sort({ createdAt: -1 }).lean(),
+      PaymentTransaction.find({}).sort({ createdAt: -1 }).lean(),
     ]);
 
     let allInvoices = allInvoicesRaw;
@@ -28,6 +30,7 @@ export async function GET(request: Request) {
     let allItems = allItemsRaw;
     let allSuppliers = allSuppliersRaw;
     let allExpenses = allExpensesRaw;
+    let allPayments = allPaymentsRaw;
 
     // Multi-Warehouse Isolation Filter
     if (warehouseParam && warehouseParam !== "all") {
@@ -70,21 +73,44 @@ export async function GET(request: Request) {
     
     const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
 
+    // Resolve the active date range once so it can be reused for invoices, reprints & payments
+    let rangeStart: Date;
+    let rangeEnd: Date;
+    if (startDateParam && endDateParam) {
+      rangeStart = new Date(startDateParam);
+      rangeStart.setHours(0, 0, 0, 0);
+      rangeEnd = new Date(endDateParam);
+      rangeEnd.setHours(23, 59, 59, 999);
+    } else {
+      rangeStart = startOfMonth;
+      rangeEnd = new Date();
+      rangeEnd.setHours(23, 59, 59, 999);
+    }
+
     let filteredInvoices = allInvoices;
     if (startDateParam && endDateParam) {
-      const start = new Date(startDateParam);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(endDateParam);
-      end.setHours(23, 59, 59, 999);
-      
       filteredInvoices = allInvoices.filter((inv: any) => {
         const d = new Date(inv.date || inv.createdAt);
-        return d >= start && d <= end;
+        return d >= rangeStart && d <= rangeEnd;
       });
     } else {
       // Fallback to current month if no dates provided
       filteredInvoices = allInvoices.filter((inv: any) => new Date(inv.date || inv.createdAt) >= startOfMonth);
     }
+
+    // Payments recorded via "Receive Payment" are stored separately from invoices,
+    // so they're matched to the active range by their own transaction date.
+    const paymentsInRange = allPayments.filter((p: any) => {
+      const d = new Date(p.date || p.createdAt);
+      return d >= rangeStart && d <= rangeEnd;
+    });
+    const duesCollected = paymentsInRange
+      .filter((p: any) => p.type === "received" && p.partyType === "Customer")
+      .reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+    const duesCollectedCount = paymentsInRange.filter((p: any) => p.type === "received" && p.partyType === "Customer").length;
+    const supplierPayouts = paymentsInRange
+      .filter((p: any) => p.type === "paid" && p.partyType === "Supplier")
+      .reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
 
     let totalRevenue = 0;
     let cashRevenue = 0;
@@ -600,9 +626,25 @@ export async function GET(request: Request) {
     const billsModifiedCount = billsModifiedInvoices.length;
     const billsModifiedAmount = billsModifiedInvoices.reduce((sum: number, inv: any) => sum + (Number(inv.discount) || 0), 0);
 
-    const reprintedInvoices = filteredInvoices.filter((inv: any) => (Number(inv.reprintCount) || 0) > 0 || (Array.isArray(inv.printLogs) && inv.printLogs.length > 1));
+    // Reprints are matched against the active range by WHEN the print happened,
+    // not the invoice's original creation date — an old bill reprinted today must
+    // still count as "today's" reprint activity.
+    const printEventsInRange = (inv: any): number => {
+      const logs = Array.isArray(inv.printLogs) ? inv.printLogs : [];
+      const logHits = logs.filter((l: any) => {
+        const d = new Date(l.printedAt);
+        return !isNaN(d.getTime()) && d >= rangeStart && d <= rangeEnd;
+      }).length;
+      if (logHits > 0) return logHits;
+      if (inv.lastPrintedAt) {
+        const d = new Date(inv.lastPrintedAt);
+        if (!isNaN(d.getTime()) && d >= rangeStart && d <= rangeEnd) return Number(inv.reprintCount) || 1;
+      }
+      return 0;
+    };
+    const reprintedInvoices = allInvoices.filter((inv: any) => printEventsInRange(inv) > 0);
     const reprintedCount = reprintedInvoices.length;
-    const totalReprintTimes = reprintedInvoices.reduce((sum: number, inv: any) => sum + (Number(inv.reprintCount) || (inv.printLogs?.length ? inv.printLogs.length - 1 : 1)), 0);
+    const totalReprintTimes = reprintedInvoices.reduce((sum: number, inv: any) => sum + printEventsInRange(inv), 0);
     const reprintedAmount = reprintedInvoices.reduce((sum: number, inv: any) => sum + (Number(inv.total) || 0), 0);
 
     const waivedInvoices = filteredInvoices.filter((inv: any) => (Number(inv.roundOff) !== 0 || (Number(inv.discount) > 0 && inv.status === "paid")));
@@ -632,6 +674,9 @@ export async function GET(request: Request) {
         warrantyCount,
         dueRevenue,
         dueCount,
+        duesCollected,
+        duesCollectedCount,
+        supplierPayouts,
         totalExpenses,
         netProfit: (totalRevenue || 0) - totalExpenses,
         totalOrders: filteredInvoices.length || 0,
@@ -648,6 +693,12 @@ export async function GET(request: Request) {
         finance: financeTxns,
         due: dueTxns,
         all: [...cashTxns, ...upiTxns, ...onlineTxns, ...cardTxns, ...financeTxns],
+      },
+      payments: {
+        duesCollected,
+        duesCollectedCount,
+        supplierPayouts,
+        recent: paymentsInRange.slice(0, 15),
       },
       expenses: {
         total: totalExpenses,
