@@ -6,8 +6,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { 
-  Receipt, Users, CreditCard, Sparkles, ShoppingCart, Plus, Trash2, Printer, 
-  XCircle, Phone, UserCheck, UserPlus, X, Shield, AlertTriangle, FileText, CheckCircle2, Truck
+  Receipt, Users, CreditCard, Sparkles, ShoppingCart, Plus, Trash2, Printer,
+  XCircle, Phone, UserCheck, UserPlus, X, Shield, AlertTriangle, FileText, CheckCircle2, Truck, Clock
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -304,8 +304,10 @@ export function InvoiceCreationModal({
     let totalIncentive = 0;
 
     billingForm.lineItems.forEach((item) => {
-      const lineTaxable = ((Number(item.rate) || 0) - (Number(item.discount) || 0)) * (Number(item.qty) || 1);
-      const lineGst = lineTaxable * ((Number(item.gstRate) || 0) / 100);
+      // Rate is GST-inclusive: split it back into taxable + GST instead of adding GST on top.
+      const grossAmount = ((Number(item.rate) || 0) - (Number(item.discount) || 0)) * (Number(item.qty) || 1);
+      const lineTaxable = grossAmount / (1 + ((Number(item.gstRate) || 0) / 100));
+      const lineGst = grossAmount - lineTaxable;
       subtotal += (Number(item.rate) || 0) * (Number(item.qty) || 1);
       totalTaxable += lineTaxable;
       totalGst += lineGst;
@@ -854,8 +856,10 @@ export function InvoiceCreationModal({
     }
 
     const formattedItems = billingForm.lineItems.map(item => {
-      const lineTaxable = ((Number(item.rate) || 0) - (Number(item.discount) || 0)) * (Number(item.qty) || 1);
-      const lineGst = lineTaxable * ((Number(item.gstRate) || 0) / 100);
+      // Rate is GST-inclusive: split it back into taxable + GST instead of adding GST on top.
+      const grossAmount = ((Number(item.rate) || 0) - (Number(item.discount) || 0)) * (Number(item.qty) || 1);
+      const lineTaxable = grossAmount / (1 + ((Number(item.gstRate) || 0) / 100));
+      const lineGst = grossAmount - lineTaxable;
       const isIntraState = billingForm.placeOfSupply.includes("09") || billingForm.placeOfSupply.toLowerCase().includes("uttar pradesh");
       
       let lineInc = 0;
@@ -918,6 +922,7 @@ export function InvoiceCreationModal({
     
     let paidAmt = 0;
     let balanceAmt = 0;
+    let downPay = 0;
     let paymentModeToSave = billingForm.paymentMode;
     let advanceAdjustedToSave = isEstimate ? 0 : effectiveAdvanceAdjusted;
     let advanceReceiptNoToSave = isEstimate ? "" : (effectiveAdvanceAdjusted > 0 ? (customerAdvances[0]?.receiptNumber || "") : "");
@@ -953,7 +958,7 @@ export function InvoiceCreationModal({
       }
     } else {
       const netBillAfterAdvance = Math.max(0, billCalculations.grandTotal - effectiveAdvanceAdjusted);
-      const downPay = isFinance ? (Number(billingForm.financeDownPayment) || 0) : (isDueCredit ? (Number(billingForm.advanceAmount || billingForm.dueAdvanceAmount) || 0) : netBillAfterAdvance);
+      downPay = isFinance ? (Number(billingForm.financeDownPayment) || 0) : (isDueCredit ? (Number(billingForm.advanceAmount || billingForm.dueAdvanceAmount) || 0) : netBillAfterAdvance);
       paidAmt = isFinance ? downPay : (isDueCredit ? downPay : netBillAfterAdvance);
       balanceAmt = Math.max(0, netBillAfterAdvance - paidAmt);
     }
@@ -1440,8 +1445,10 @@ export function InvoiceCreationModal({
 
               <div className="space-y-3">
                 {billingForm.lineItems.map((item, idx) => {
-                  const lineTaxable = ((Number(item.rate) || 0) - (Number(item.discount) || 0)) * (Number(item.qty) || 1);
-                  const lineGst = lineTaxable * ((Number(item.gstRate) || 0) / 100);
+                  // Rate is GST-inclusive: split it back into taxable + GST instead of adding GST on top.
+                  const grossAmount = ((Number(item.rate) || 0) - (Number(item.discount) || 0)) * (Number(item.qty) || 1);
+                  const lineTaxable = grossAmount / (1 + ((Number(item.gstRate) || 0) / 100));
+                  const lineGst = grossAmount - lineTaxable;
                   const warrantyAmt = Number(item.extendedWarrantyAmount) || 0;
                   const lineTotal = lineTaxable + lineGst + warrantyAmt;
 
@@ -1806,13 +1813,17 @@ export function InvoiceCreationModal({
                           )}
                         </div>
                         <div className="font-extrabold text-sm text-slate-900">
-                          Row Total: <span className="text-[#3F63AD]">{formatCurrency(lineTotal)}</span>
+                          Total Amount: <span className="text-[#3F63AD]">{formatCurrency(lineTotal)}</span>
                         </div>
                       </div>
                     </div>
                   );
                 })}
               </div>
+
+              <Button type="button" size="sm" onClick={addLineItem} variant="outline" className="w-full text-xs gap-1 border-[#3F63AD] text-[#3F63AD] font-bold border-dashed">
+                <Plus className="w-3.5 h-3.5" /> Add Product Item
+              </Button>
             </div>
 
             {/* CUSTOMER ADVANCE BOOKING TOKEN CREDIT BANNER */}
@@ -2369,7 +2380,7 @@ export function InvoiceCreationModal({
                     <span>-{formatCurrency(effectiveAdvanceAdjusted)}</span>
                   </p>
                 )}
-                {billingForm.paymentMode === "Card" && (
+                {(billingForm.paymentMode === "Credit Card" || billingForm.paymentMode === "Debit Card") && (
                   <p className="text-amber-300">MDR Deducted: <span className="font-bold text-amber-200">-{formatCurrency(billCalculations.cardMdrAmount)}</span></p>
                 )}
                 <p className="text-slate-300">Round Off: <span className="font-bold text-white">{billCalculations.roundOff > 0 ? `+₹${billCalculations.roundOff}` : `₹${billCalculations.roundOff}`}</span></p>

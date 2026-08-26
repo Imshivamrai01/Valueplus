@@ -163,17 +163,19 @@ function ItemsPageContent() {
     }
   });
 
-  const { data: salesHistory = [], isLoading: historyLoading } = useQuery({
-    queryKey: ["item-history", viewingItem?.code],
+  const { data: ledgerData, isLoading: historyLoading } = useQuery({
+    queryKey: ["item-ledger", viewingItem?.code],
     queryFn: async () => {
-      if (!viewingItem?.code) return [];
-      const res = await fetch(`/api/items/history?code=${encodeURIComponent(viewingItem.code)}`);
+      if (!viewingItem?.code) return null;
+      const res = await fetch(`/api/reports/product-ledger?code=${encodeURIComponent(viewingItem.code)}`);
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
       return json.data;
     },
     enabled: !!viewingItem
   });
+  const ledgerTransactions = ledgerData?.transactions || [];
+  const ledgerSummary = ledgerData?.summary;
 
   const { data: brands = [] } = useQuery({
     queryKey: ["brands"],
@@ -1631,49 +1633,103 @@ function ItemsPageContent() {
               </div>
             </div>
             
-            {/* Right Side: Sales History */}
+            {/* Right Side: Purchase & Sales Ledger */}
             <div className="col-span-2 p-5 flex flex-col h-[400px]">
-              <h4 className="text-sm font-bold text-slate-700 flex items-center gap-2 border-b pb-2 mb-4">
-                <TrendingUp className="w-4 h-4 text-[#3F63AD]" /> Recent Invoices & Sales History
-              </h4>
-              
+              <div className="flex items-center justify-between border-b pb-2 mb-3">
+                <h4 className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-[#3F63AD]" /> Purchase & Sales Ledger
+                </h4>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1"
+                  disabled={ledgerTransactions.length === 0}
+                  onClick={() => downloadCSV(
+                    ledgerTransactions.map((t: any) => ({
+                      Date: t.date,
+                      Type: t.type,
+                      "Ref #": t.refNo,
+                      Party: t.party,
+                      "Qty In": t.qtyIn,
+                      "Qty Out": t.qtyOut,
+                      Rate: t.rate,
+                      Amount: t.amount,
+                      Profit: t.profit,
+                    })),
+                    `${viewingItem?.code || "item"}-ledger.csv`
+                  )}
+                >
+                  <Download className="w-3.5 h-3.5" /> Export
+                </Button>
+              </div>
+
+              {ledgerSummary && (
+                <div className="grid grid-cols-4 gap-2 mb-3 text-center">
+                  <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-2">
+                    <p className="text-[10px] text-emerald-700 font-bold uppercase">Purchased</p>
+                    <p className="text-sm font-black text-emerald-900">{ledgerSummary.totalInwardQty}</p>
+                  </div>
+                  <div className="bg-blue-50 border border-blue-100 rounded-lg p-2">
+                    <p className="text-[10px] text-blue-700 font-bold uppercase">Sold</p>
+                    <p className="text-sm font-black text-blue-900">{ledgerSummary.totalSoldQty}</p>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-2">
+                    <p className="text-[10px] text-slate-600 font-bold uppercase">Revenue</p>
+                    <p className="text-sm font-black text-slate-900">{formatCurrency(ledgerSummary.totalSoldRevenue)}</p>
+                  </div>
+                  <div className="bg-amber-50 border border-amber-100 rounded-lg p-2">
+                    <p className="text-[10px] text-amber-700 font-bold uppercase">Margin</p>
+                    <p className="text-sm font-black text-amber-900">{ledgerSummary.grossMarginPct}%</p>
+                  </div>
+                </div>
+              )}
+
               <div className="flex-1 overflow-y-auto pr-2">
                 {historyLoading ? (
                   <div className="flex flex-col items-center justify-center h-full space-y-3">
                     <div className="w-8 h-8 border-4 border-[#3F63AD] border-t-transparent rounded-full animate-spin"></div>
-                    <p className="text-sm text-muted-foreground">Loading history...</p>
+                    <p className="text-sm text-muted-foreground">Loading ledger...</p>
                   </div>
-                ) : salesHistory.length === 0 ? (
+                ) : ledgerTransactions.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full text-center">
                     <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mb-3">
                       <TrendingUp className="w-5 h-5 text-slate-400" />
                     </div>
-                    <p className="text-slate-600 font-medium">No sales recorded yet</p>
-                    <p className="text-xs text-muted-foreground mt-1">When this item is sold, invoices will appear here.</p>
+                    <p className="text-slate-600 font-medium">No purchase or sale history yet</p>
+                    <p className="text-xs text-muted-foreground mt-1">Purchase entries and invoices for this item will appear here.</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {salesHistory.map((h: any) => (
-                      <div key={h.invoiceId} className="bg-white border border-slate-200 rounded-lg p-3 hover:shadow-md transition-shadow">
-                        <div className="flex justify-between items-start mb-2">
-                          <div>
-                            <div className="font-bold text-foreground text-sm flex items-center gap-2">
-                              {h.customerName}
-                              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 uppercase h-4 tracking-wider">
-                                {h.type?.replace("-", " ") || "Tax Invoice"}
-                              </Badge>
+                    {ledgerTransactions.map((t: any) => {
+                      const isPurchase = t.source === "purchase";
+                      return (
+                        <div key={t.id} className="bg-white border border-slate-200 rounded-lg p-3 hover:shadow-md transition-shadow">
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <div className="font-bold text-foreground text-sm flex items-center gap-2">
+                                {t.party}
+                                <Badge
+                                  variant="secondary"
+                                  className={cn(
+                                    "text-[10px] px-1.5 py-0 uppercase h-4 tracking-wider",
+                                    isPurchase ? "bg-emerald-100 text-emerald-800" : "bg-blue-100 text-blue-800"
+                                  )}
+                                >
+                                  {isPurchase ? (t.type === "PURCHASE_RETURN" ? "Purchase Return" : "Purchase In") : "Sale"}
+                                </Badge>
+                              </div>
+                              <p className="text-xs text-muted-foreground">{formatDate(t.date)}</p>
                             </div>
-                            <p className="text-xs text-muted-foreground">{formatDate(h.date)}</p>
+                            <Badge variant="outline" className="font-mono text-xs text-[#3F63AD] border-[#3F63AD]/20 bg-[#3F63AD]/5">{t.refNo}</Badge>
                           </div>
-                          <Badge variant="outline" className="font-mono text-xs text-[#3F63AD] border-[#3F63AD]/20 bg-[#3F63AD]/5">{h.invoiceNumber}</Badge>
+                          <div className="flex justify-between items-center bg-slate-50 p-2 rounded text-sm">
+                            <span className="text-slate-600">Qty: <span className="font-bold text-foreground">{isPurchase ? t.qtyIn : t.qtyOut}</span></span>
+                            <span className="text-slate-600">Rate: <span className="font-bold text-foreground">{formatCurrency(t.rate)}</span></span>
+                            <span className={cn("font-bold", isPurchase ? "text-emerald-700" : "text-[#3F63AD]")}>{formatCurrency(t.amount)}</span>
+                          </div>
                         </div>
-                        <div className="flex justify-between items-center bg-slate-50 p-2 rounded text-sm">
-                          <span className="text-slate-600">Qty: <span className="font-bold text-foreground">{h.quantity}</span></span>
-                          <span className="text-slate-600">Rate: <span className="font-bold text-foreground">{formatCurrency(h.rate)}</span></span>
-                          <span className="text-[#3F63AD] font-bold">{formatCurrency(h.amount)}</span>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>

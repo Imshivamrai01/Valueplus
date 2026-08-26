@@ -154,12 +154,12 @@ export async function GET(request: Request) {
     const isSingleDay = Boolean(startDateParam && endDateParam && startDateParam === endDateParam);
     
     // Initialize continuous buckets so graph curves are always complete & smooth
-    const dailyRevenueMap: Record<string, { revenue: number, profit: number, expense: number, cash: number, upi: number, online: number, card: number, finance: number }> = {};
+    const dailyRevenueMap: Record<string, { revenue: number, profit: number, expense: number, cash: number, upi: number, online: number, card: number, finance: number, due: number }> = {};
     
     if (isSingleDay) {
       const hourlySlots = ["08:00 AM", "10:00 AM", "12:00 PM", "02:00 PM", "04:00 PM", "06:00 PM", "08:00 PM", "10:00 PM"];
       hourlySlots.forEach(slot => {
-        dailyRevenueMap[slot] = { revenue: 0, profit: 0, expense: 0, cash: 0, upi: 0, online: 0, card: 0, finance: 0 };
+        dailyRevenueMap[slot] = { revenue: 0, profit: 0, expense: 0, cash: 0, upi: 0, online: 0, card: 0, finance: 0, due: 0 };
       });
     } else if (startDateParam && endDateParam) {
       const s = new Date(startDateParam);
@@ -169,7 +169,7 @@ export async function GET(request: Request) {
         const monthShort = cur.toLocaleString('en-US', { month: 'short' });
         const day = cur.getDate();
         const displayDate = `${day < 10 ? '0' + day : day} ${monthShort}`;
-        dailyRevenueMap[displayDate] = { revenue: 0, profit: 0, expense: 0, cash: 0, upi: 0, online: 0, card: 0, finance: 0 };
+        dailyRevenueMap[displayDate] = { revenue: 0, profit: 0, expense: 0, cash: 0, upi: 0, online: 0, card: 0, finance: 0, due: 0 };
         cur.setDate(cur.getDate() + 1);
       }
     }
@@ -346,7 +346,7 @@ export async function GET(request: Request) {
       }
 
       if (!dailyRevenueMap[bucketKey]) {
-        dailyRevenueMap[bucketKey] = { revenue: 0, profit: 0, expense: 0, cash: 0, upi: 0, online: 0, card: 0, finance: 0 };
+        dailyRevenueMap[bucketKey] = { revenue: 0, profit: 0, expense: 0, cash: 0, upi: 0, online: 0, card: 0, finance: 0, due: 0 };
       }
       dailyRevenueMap[bucketKey].revenue += inv.total || 0;
       dailyRevenueMap[bucketKey].profit += 1;
@@ -354,10 +354,18 @@ export async function GET(request: Request) {
       const pMode = (inv.paymentMode || "").toLowerCase();
       if (pMode.includes("cash")) {
         dailyRevenueMap[bucketKey].cash += inv.total || 0;
-      } else if (pMode.includes("online") || pMode.includes("upi") || pMode.includes("card") || pMode.includes("bank")) {
+      } else if (pMode.includes("upi") || pMode.includes("phonepe") || pMode.includes("gpay") || pMode.includes("paytm") || pMode.includes("qr")) {
+        dailyRevenueMap[bucketKey].upi += inv.total || 0;
+      } else if (pMode.includes("card") || pMode.includes("pos") || pMode.includes("debit") || pMode.includes("swipe")) {
+        dailyRevenueMap[bucketKey].card += inv.total || 0;
+      } else if (pMode.includes("online") || pMode.includes("bank") || pMode.includes("netbanking") || pMode.includes("neft") || pMode.includes("rtgs") || pMode.includes("imps")) {
         dailyRevenueMap[bucketKey].online += inv.total || 0;
       } else {
         dailyRevenueMap[bucketKey].finance += inv.total || 0;
+      }
+
+      if (due > 0 || inv.status === "pending" || inv.status === "partial" || inv.status === "unpaid") {
+        dailyRevenueMap[bucketKey].due += due > 0 ? due : total;
       }
     });
 
@@ -452,7 +460,7 @@ export async function GET(request: Request) {
         }
 
         if (!dailyRevenueMap[bucketKey]) {
-          dailyRevenueMap[bucketKey] = { revenue: 0, profit: 0, expense: 0, cash: 0, upi: 0, online: 0, card: 0, finance: 0 };
+          dailyRevenueMap[bucketKey] = { revenue: 0, profit: 0, expense: 0, cash: 0, upi: 0, online: 0, card: 0, finance: 0, due: 0 };
         }
         dailyRevenueMap[bucketKey].revenue += amt;
         if (rawMode.includes("cash")) {
@@ -734,8 +742,11 @@ export async function GET(request: Request) {
       date,
       revenue: dailyRevenueMap[date].revenue,
       cash: dailyRevenueMap[date].cash,
+      upi: dailyRevenueMap[date].upi,
+      card: dailyRevenueMap[date].card,
       online: dailyRevenueMap[date].online,
       finance: dailyRevenueMap[date].finance,
+      due: dailyRevenueMap[date].due,
       expense: dailyRevenueMap[date].expense,
       profit: dailyRevenueMap[date].profit,
     }));

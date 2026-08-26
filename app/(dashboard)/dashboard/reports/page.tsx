@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { cn, formatCurrency, formatDateShort } from "@/lib/utils";
+import { cn, formatCurrency, formatDateShort, downloadCSV } from "@/lib/utils";
 import { DateRangeFilter, resolveDateRange } from "@/components/shared/date-range-filter";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 
@@ -104,11 +104,14 @@ function ReportsContent() {
       });
     }
 
-    const t = stats.transactions || { cash: [], online: [], finance: [], all: [] };
+    const t = stats.transactions || { cash: [], upi: [], online: [], card: [], finance: [], due: [], all: [] };
     let list = [];
     if (reportType === "cash") list = t.cash || [];
+    else if (reportType === "upi") list = t.upi || [];
     else if (reportType === "online") list = t.online || [];
+    else if (reportType === "card") list = t.card || [];
     else if (reportType === "finance") list = t.finance || [];
+    else if (reportType === "due") list = t.due || [];
     else if (reportType === "orders") list = stats.recentInvoices || [];
     else if (reportType === "aov") list = t.all || [];
     else list = t.all || []; // fallback to all transactions
@@ -125,8 +128,11 @@ function ReportsContent() {
     switch (reportType) {
       case "all": return { title: "Gross Sales / Total Revenue", icon: IndianRupee, color: "#2E3192" };
       case "cash": return { title: "Cash Collections", icon: IndianRupee, color: "#76C043" };
+      case "upi": return { title: "UPI / QR Code Collections", icon: CreditCard, color: "#8B5CF6" };
       case "online": return { title: "Online & Digital Receipts", icon: CreditCard, color: "#3F63AD" };
+      case "card": return { title: "Card (POS) Collections", icon: CreditCard, color: "#06B6D4" };
       case "finance": return { title: "Finance & Credit Ledger", icon: Receipt, color: "#F59E0B" };
+      case "due": return { title: "Due / Credit Bills", icon: Receipt, color: "#EF4444" };
       case "expense": return { title: "Showroom Operating Expenses", icon: Receipt, color: "#e11d48" };
       case "orders": return { title: "Total Sales Invoices", icon: Package, color: "#6b7280" };
       case "aov": return { title: "Average Order Value (AOV)", icon: IndianRupee, color: "#8b5cf6" };
@@ -137,16 +143,34 @@ function ReportsContent() {
   const details = getReportDetails();
   const Icon = details.icon;
 
+  const handleExport = () => {
+    const rows = getFilteredTransactions().map((tx: any) => ({
+      "Invoice/Ref #": tx.id || tx.invoiceNumber || "",
+      "Customer": tx.customer || tx.customerName || "",
+      "Date/Time": tx.time || tx.date || "",
+      "Payment Mode": tx.mode || tx.paymentTerms || tx.paymentMode || "",
+      "Amount": tx.amount || tx.total || 0,
+      "Status": tx.status || "",
+    }));
+    downloadCSV(rows, `${reportType}-transactions-${dateFilter.replace(/\s+/g, "-")}.csv`);
+  };
+
   const chartData = (stats?.dailyRevenue || []).map((day: any) => {
     let value = 0;
     if (reportType === "all" || reportType === "revenue") {
       value = day.revenue;
     } else if (reportType === "cash") {
       value = day.cash;
+    } else if (reportType === "upi") {
+      value = day.upi;
     } else if (reportType === "online") {
       value = day.online;
+    } else if (reportType === "card") {
+      value = day.card;
     } else if (reportType === "finance") {
       value = day.finance;
+    } else if (reportType === "due") {
+      value = day.due;
     } else if (reportType === "expense") {
       value = day.expense || 0;
     } else if (reportType === "orders") {
@@ -332,7 +356,7 @@ function ReportsContent() {
             <span className="text-slate-500 text-xs font-medium">
               Showing <span className="font-bold text-slate-700">{getFilteredTransactions().length}</span> entries
             </span>
-            <Button size="sm" variant="outline" className="h-8 text-xs font-bold text-slate-700">
+            <Button size="sm" variant="outline" className="h-8 text-xs font-bold text-slate-700" onClick={handleExport} disabled={getFilteredTransactions().length === 0}>
               <Download className="w-3.5 h-3.5 mr-2" /> Export to Excel
             </Button>
           </div>

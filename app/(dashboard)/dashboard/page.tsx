@@ -1189,17 +1189,21 @@ export default function DashboardPage() {
                             key={i} 
                             fill={entry.color} 
                             className="cursor-pointer hover:opacity-80 transition-opacity"
-                            onClick={() => setActiveModal(entry.key)}
+                            onClick={() => router.push(`/dashboard/reports?type=${entry.key}&dateFilter=${encodeURIComponent(dateFilter)}`)}
                           />
                         ))}
                       </Pie>
-                      <Tooltip formatter={(v: any) => [`₹${indianNumberFormat(Number(v) || 0)}`, "Amount"]} />
+                      <Tooltip
+                        formatter={(v: any) => [`${indianNumberFormat(Number(v) || 0)}`, "Amount"]}
+                        position={{ x: 0, y: -10 }}
+                        wrapperStyle={{ zIndex: 20 }}
+                      />
                     </PieChart>
                   </ResponsiveContainer>
                   <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">NET TOTAL</span>
                     <span className="text-sm sm:text-base font-black text-slate-900 font-mono tracking-tight">
-                      ₹{indianNumberFormat(totalCollectedAmount)}
+                      {indianNumberFormat(totalCollectedAmount)}
                     </span>
                     <span className="text-[10px] font-bold text-emerald-700 font-mono mt-0.5">
                       {totalBilledCount} Bills
@@ -1215,7 +1219,7 @@ export default function DashboardPage() {
                   return (
                     <div 
                       key={item.name}
-                      onClick={() => setActiveModal(item.key)}
+                      onClick={() => router.push(`/dashboard/reports?type=${item.key}&dateFilter=${encodeURIComponent(dateFilter)}`)}
                       className="flex items-center justify-between text-sm cursor-pointer hover:bg-slate-50 p-2 rounded-xl border border-transparent hover:border-slate-200 transition-all group"
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
@@ -1227,7 +1231,7 @@ export default function DashboardPage() {
                           {item.count} Bills
                         </span>
                         <span className="text-xs font-mono font-bold text-slate-400">({share}%)</span>
-                        <span className="font-black text-slate-900 font-mono text-xs sm:text-sm">₹{indianNumberFormat(item.value)}</span>
+                        <span className="font-black text-slate-900 font-mono text-xs sm:text-sm">{indianNumberFormat(item.value)}</span>
                       </div>
                     </div>
                   );
@@ -1944,13 +1948,17 @@ export default function DashboardPage() {
                                   <Cell fill="#E2E8F0" />
                                 )}
                               </Pie>
-                              <Tooltip formatter={(v: any) => [`₹${indianNumberFormat(expTotal > 0 ? Number(v) : 0)}`, "Amount"]} />
+                              <Tooltip
+                                formatter={(v: any) => [`${indianNumberFormat(expTotal > 0 ? Number(v) : 0)}`, "Amount"]}
+                                position={{ x: 0, y: -10 }}
+                                wrapperStyle={{ zIndex: 20 }}
+                              />
                             </PieChart>
                           </ResponsiveContainer>
                           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                             <span className="text-[7px] font-black text-slate-400 uppercase">EXP</span>
                             <span className="text-[11px] font-black text-rose-600 font-mono">
-                              ₹{indianNumberFormat(expTotal)}
+                              {indianNumberFormat(expTotal)}
                             </span>
                           </div>
                         </div>
@@ -2078,7 +2086,7 @@ export default function DashboardPage() {
               {/* ELECTRONICS STOCK */}
               <div
                 onClick={() => router.push("/masters/items?category=Electronics")}
-                className="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200 hover:border-blue-500 hover:bg-white hover:shadow-sm transition-all cursor-pointer flex flex-col justify-between"
+                className="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200 hover:border-blue-500 hover:bg-white hover:shadow-sm transition-all cursor-pointer flex flex-col justify-start"
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-slate-600 uppercase flex items-center gap-1.5">
@@ -2097,7 +2105,7 @@ export default function DashboardPage() {
               {/* MOBILE STOCK */}
               <div
                 onClick={() => router.push("/masters/items?category=Mobile")}
-                className="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200 hover:border-purple-500 hover:bg-white hover:shadow-sm transition-all cursor-pointer flex flex-col justify-between"
+                className="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200 hover:border-purple-500 hover:bg-white hover:shadow-sm transition-all cursor-pointer flex flex-col justify-start"
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-slate-600 uppercase flex items-center gap-1.5">
@@ -2116,7 +2124,7 @@ export default function DashboardPage() {
               {/* WARRANTY SALES */}
               <div
                 onClick={() => router.push("/sales/invoices")}
-                className="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200 hover:border-emerald-500 hover:bg-white hover:shadow-sm transition-all cursor-pointer flex flex-col justify-between"
+                className="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200 hover:border-emerald-500 hover:bg-white hover:shadow-sm transition-all cursor-pointer flex flex-col justify-start"
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-slate-600 uppercase flex items-center gap-1.5">
@@ -2340,7 +2348,7 @@ export default function DashboardPage() {
                                   {formatCurrency(m.revenue)}
                                 </span>
                                 <span className="text-[9px] font-mono text-slate-400 block">
-                                  ₹{indianNumberFormat(m.avgPrice)}/u
+                                  {indianNumberFormat(m.avgPrice)}/u
                                 </span>
                               </div>
                             </div>
@@ -2443,7 +2451,7 @@ export default function DashboardPage() {
                                   {formatCurrency(e.revenue)}
                                 </span>
                                 <span className="text-[9px] font-mono text-slate-400 block">
-                                  ₹{indianNumberFormat(e.avgPrice)}/u
+                                  {indianNumberFormat(e.avgPrice)}/u
                                 </span>
                               </div>
                             </div>
@@ -2896,7 +2904,7 @@ export default function DashboardPage() {
                     <div className="bg-blue-50/60 border border-blue-100 rounded-xl p-2 text-center">
                       <p className="text-[10px] font-bold text-blue-700 uppercase">Total Leads</p>
                       <p className="text-sm sm:text-base font-black text-slate-900 font-mono">{totalLeads}</p>
-                      <p className="text-[9px] text-slate-500 font-medium">₹{indianNumberFormat(pipelineVal)}</p>
+                      <p className="text-[9px] text-slate-500 font-medium">{indianNumberFormat(pipelineVal)}</p>
                     </div>
                     <div className="bg-amber-50/60 border border-amber-100 rounded-xl p-2 text-center">
                       <p className="text-[10px] font-bold text-amber-700 uppercase">Follow-ups</p>
@@ -2969,7 +2977,7 @@ export default function DashboardPage() {
                           <span className="text-[10px] text-slate-500 font-mono">{lead.mobile}</span>
                         </div>
                         <p className="text-[11px] text-slate-600 truncate font-medium">
-                          {lead.interestedProduct} {lead.estimatedValue > 0 && <span className="font-bold text-slate-900">· ₹{indianNumberFormat(lead.estimatedValue)}</span>}
+                          {lead.interestedProduct} {lead.estimatedValue > 0 && <span className="font-bold text-slate-900">· {indianNumberFormat(lead.estimatedValue)}</span>}
                         </p>
                         <p className="text-[10px] text-slate-400">
                           Assigned: <span className="font-semibold text-slate-600">{lead.assignedStaff || "Sales Team"}</span> {lead.followUpDate ? `· Follow-up: ${lead.followUpDate}` : ""}
@@ -3095,15 +3103,15 @@ export default function DashboardPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <div className="px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-200 text-right">
                   <p className="text-[10px] font-bold text-rose-800 uppercase tracking-wider">Today's Due</p>
-                  <p className="text-sm font-black text-rose-950 font-mono">₹{indianNumberFormat(todayDueAmount)}</p>
+                  <p className="text-sm font-black text-rose-950 font-mono">{indianNumberFormat(todayDueAmount)}</p>
                 </div>
                 <div className="px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-right">
                   <p className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">Overdue</p>
-                  <p className="text-sm font-black text-amber-950 font-mono">₹{indianNumberFormat(overdueAmount)}</p>
+                  <p className="text-sm font-black text-amber-950 font-mono">{indianNumberFormat(overdueAmount)}</p>
                 </div>
                 <div className="px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-right">
                   <p className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">Cleared Today</p>
-                  <p className="text-sm font-black text-emerald-950 font-mono">₹{indianNumberFormat(clearedTodayAmount)}</p>
+                  <p className="text-sm font-black text-emerald-950 font-mono">{indianNumberFormat(clearedTodayAmount)}</p>
                 </div>
               </div>
             </div>
