@@ -33,21 +33,36 @@ export async function GET(request: Request) {
     let allPayments = allPaymentsRaw;
 
     // Multi-Warehouse Isolation Filter
+    // Only enforce strict per-warehouse isolation on an entity type once records of that
+    // type are actually tagged with a warehouse/branchName at creation time. Invoices are
+    // never tagged anywhere in the create flow, so gating invoice filtering on the same
+    // flag as items (which ARE tagged) would zero out every invoice for any location whose
+    // name isn't literally "Ashoka"/"Kunraghat" — breaking revenue/bill totals dashboard-wide.
+    const invoicesTagged = allInvoicesRaw.some((inv: any) => inv.warehouse || inv.branchName);
+    const itemsTagged = allItemsRaw.some((it: any) => it.warehouse);
+    const expensesTagged = allExpensesRaw.some((exp: any) => exp.warehouse || exp.branchName);
+
     if (warehouseParam && warehouseParam !== "all") {
       const isAshoka = warehouseParam.toLowerCase().includes("ashoka") || warehouseParam.toLowerCase().includes("kunraghat") || warehouseParam === "VP-KUN";
       if (!isAshoka) {
-        // Strict filter for other warehouses (shows 0 if no records exist yet for this warehouse)
-        allInvoices = allInvoices.filter((inv: any) =>
-          inv.warehouse?.toLowerCase() === warehouseParam.toLowerCase() ||
-          inv.branchName?.toLowerCase() === warehouseParam.toLowerCase()
-        );
-        allItems = allItems.filter((it: any) =>
-          it.warehouse?.toLowerCase() === warehouseParam.toLowerCase()
-        );
-        allExpenses = allExpenses.filter((exp: any) =>
-          exp.warehouse?.toLowerCase() === warehouseParam.toLowerCase() ||
-          exp.branchName?.toLowerCase() === warehouseParam.toLowerCase()
-        );
+        // Strict filter for other warehouses (only meaningful once that entity type is tagged)
+        if (invoicesTagged) {
+          allInvoices = allInvoices.filter((inv: any) =>
+            inv.warehouse?.toLowerCase() === warehouseParam.toLowerCase() ||
+            inv.branchName?.toLowerCase() === warehouseParam.toLowerCase()
+          );
+        }
+        if (itemsTagged) {
+          allItems = allItems.filter((it: any) =>
+            it.warehouse?.toLowerCase() === warehouseParam.toLowerCase()
+          );
+        }
+        if (expensesTagged) {
+          allExpenses = allExpenses.filter((exp: any) =>
+            exp.warehouse?.toLowerCase() === warehouseParam.toLowerCase() ||
+            exp.branchName?.toLowerCase() === warehouseParam.toLowerCase()
+          );
+        }
       } else {
         // Ashoka Enterprises receives default/flagship data
         allInvoices = allInvoices.filter((inv: any) =>
@@ -101,8 +116,15 @@ export async function GET(request: Request) {
     // Payments recorded via "Receive Payment" are stored separately from invoices,
     // so they're matched to the active range by their own transaction date.
     const paymentsInRange = allPayments.filter((p: any) => {
-      const d = new Date(p.date || p.createdAt);
-      return d >= rangeStart && d <= rangeEnd;
+      let d: Date;
+      const dateStr = p.date || p.createdAt;
+      if (typeof dateStr === "string" && dateStr.includes("-") && dateStr.length === 10) {
+        const [yyyy, mm, dd] = dateStr.split("-").map(Number);
+        d = new Date(yyyy, mm - 1, dd, 12, 0, 0);
+      } else {
+        d = new Date(dateStr);
+      }
+      return !isNaN(d.getTime()) && d >= rangeStart && d <= rangeEnd;
     });
     const duesCollected = paymentsInRange
       .filter((p: any) => p.type === "received" && p.partyType === "Customer")
@@ -151,6 +173,13 @@ export async function GET(request: Request) {
         cur.setDate(cur.getDate() + 1);
       }
     }
+
+    // Set of invoice numbers that already have separate PaymentTransaction records
+    const paymentInvoiceRefs = new Set(
+      allPayments
+        .filter((p: any) => p.referenceId)
+        .map((p: any) => p.referenceId)
+    );
 
     filteredInvoices.forEach((inv: any) => {
       const total = Number(inv.total) || 0;
@@ -202,64 +231,70 @@ export async function GET(request: Request) {
         warrantyCount += 1;
       }
 
+      // Only count upfront collection on the invoice if it is NOT already recorded as a separate payment receipt
+      const hasSeparatePaymentReceipt = paymentInvoiceRefs.has(inv.invoiceNumber);
+      const actualCollectedOnInvoice = (hasSeparatePaymentReceipt || inv.status === "pending" || inv.status === "unpaid") ? 0 : paid;
+
       const rawMode = (inv.paymentMode || "").toLowerCase();
 
-      if (rawMode.includes("cash") || (!rawMode && inv.status === "paid")) {
-        cashRevenue += total;
-        cashTxns.push({
-          id: inv.invoiceNumber,
-          customer: inv.customerName,
-          amount: total,
-          paidAmount: paid,
-          dueAmount: due,
-          time: inv.date ? `${inv.date} 02:30 PM` : "Today",
-          mode: inv.paymentMode || "Cash Counter",
-          status: inv.status,
-          reprintCount: inv.reprintCount || 0,
-          lastPrintedAt: inv.lastPrintedAt,
-        });
-      } else if (rawMode.includes("upi") || rawMode.includes("phonepe") || rawMode.includes("gpay") || rawMode.includes("paytm") || rawMode.includes("qr")) {
-        upiRevenue += total;
-        upiTxns.push({
-          id: inv.invoiceNumber,
-          customer: inv.customerName,
-          amount: total,
-          paidAmount: paid,
-          dueAmount: due,
-          time: inv.date ? `${inv.date} 11:15 AM` : "Today",
-          mode: inv.paymentMode || "UPI / QR Code",
-          status: inv.status,
-          reprintCount: inv.reprintCount || 0,
-          lastPrintedAt: inv.lastPrintedAt,
-        });
-      } else if (rawMode.includes("card") || rawMode.includes("pos") || rawMode.includes("debit") || rawMode.includes("credit card") || rawMode.includes("swipe")) {
-        cardRevenue += total;
-        cardTxns.push({
-          id: inv.invoiceNumber,
-          customer: inv.customerName,
-          amount: total,
-          paidAmount: paid,
-          dueAmount: due,
-          time: inv.date ? `${inv.date} 01:20 PM` : "Today",
-          mode: inv.paymentMode || "Card (POS)",
-          status: inv.status,
-          reprintCount: inv.reprintCount || 0,
-          lastPrintedAt: inv.lastPrintedAt,
-        });
-      } else if (rawMode.includes("online") || rawMode.includes("bank") || rawMode.includes("netbanking") || rawMode.includes("neft") || rawMode.includes("rtgs") || rawMode.includes("imps")) {
-        onlineRevenue += total;
-        onlineTxns.push({
-          id: inv.invoiceNumber,
-          customer: inv.customerName,
-          amount: total,
-          paidAmount: paid,
-          dueAmount: due,
-          time: inv.date ? `${inv.date} 12:45 PM` : "Today",
-          mode: inv.paymentMode || "Online NetBanking",
-          status: inv.status,
-          reprintCount: inv.reprintCount || 0,
-          lastPrintedAt: inv.lastPrintedAt,
-        });
+      if (actualCollectedOnInvoice > 0) {
+        if (rawMode.includes("cash") || (!rawMode && inv.status === "paid")) {
+          cashRevenue += actualCollectedOnInvoice;
+          cashTxns.push({
+            id: inv.invoiceNumber,
+            customer: inv.customerName,
+            amount: actualCollectedOnInvoice,
+            paidAmount: actualCollectedOnInvoice,
+            dueAmount: due,
+            time: inv.date ? `${inv.date} 02:30 PM` : "Today",
+            mode: inv.paymentMode || "Cash Counter",
+            status: inv.status,
+            reprintCount: inv.reprintCount || 0,
+            lastPrintedAt: inv.lastPrintedAt,
+          });
+        } else if (rawMode.includes("upi") || rawMode.includes("phonepe") || rawMode.includes("gpay") || rawMode.includes("paytm") || rawMode.includes("qr")) {
+          upiRevenue += actualCollectedOnInvoice;
+          upiTxns.push({
+            id: inv.invoiceNumber,
+            customer: inv.customerName,
+            amount: actualCollectedOnInvoice,
+            paidAmount: actualCollectedOnInvoice,
+            dueAmount: due,
+            time: inv.date ? `${inv.date} 11:15 AM` : "Today",
+            mode: inv.paymentMode || "UPI / QR Code",
+            status: inv.status,
+            reprintCount: inv.reprintCount || 0,
+            lastPrintedAt: inv.lastPrintedAt,
+          });
+        } else if (rawMode.includes("card") || rawMode.includes("pos") || rawMode.includes("debit") || rawMode.includes("credit card") || rawMode.includes("swipe")) {
+          cardRevenue += actualCollectedOnInvoice;
+          cardTxns.push({
+            id: inv.invoiceNumber,
+            customer: inv.customerName,
+            amount: actualCollectedOnInvoice,
+            paidAmount: actualCollectedOnInvoice,
+            dueAmount: due,
+            time: inv.date ? `${inv.date} 01:20 PM` : "Today",
+            mode: inv.paymentMode || "Card (POS)",
+            status: inv.status,
+            reprintCount: inv.reprintCount || 0,
+            lastPrintedAt: inv.lastPrintedAt,
+          });
+        } else if (rawMode.includes("online") || rawMode.includes("bank") || rawMode.includes("netbanking") || rawMode.includes("neft") || rawMode.includes("rtgs") || rawMode.includes("imps")) {
+          onlineRevenue += actualCollectedOnInvoice;
+          onlineTxns.push({
+            id: inv.invoiceNumber,
+            customer: inv.customerName,
+            amount: actualCollectedOnInvoice,
+            paidAmount: actualCollectedOnInvoice,
+            dueAmount: due,
+            time: inv.date ? `${inv.date} 12:45 PM` : "Today",
+            mode: inv.paymentMode || "Online NetBanking",
+            status: inv.status,
+            reprintCount: inv.reprintCount || 0,
+            lastPrintedAt: inv.lastPrintedAt,
+          });
+        }
       } else if (rawMode.includes("finance") || rawMode.includes("bajaj") || rawMode.includes("hdb") || rawMode.includes("emi") || rawMode.includes("loan") || inv.financeProvider) {
         financeRevenue += total;
         financeTxns.push({
@@ -325,6 +360,107 @@ export async function GET(request: Request) {
         dailyRevenueMap[bucketKey].finance += inv.total || 0;
       }
     });
+
+    // Process Received Customer Payments into channel revenues & transaction lists
+    paymentsInRange
+      .filter((p: any) => p.type === "received" && p.partyType === "Customer")
+      .forEach((p: any) => {
+        const amt = Number(p.amount) || 0;
+        if (amt <= 0) return;
+
+        const rawMode = (p.paymentMode || "Cash").toLowerCase();
+
+        if (rawMode.includes("cash")) {
+          cashRevenue += amt;
+          cashTxns.push({
+            id: p.transactionId || `PAY-${p._id}`,
+            customer: p.partyName,
+            amount: amt,
+            paidAmount: amt,
+            dueAmount: 0,
+            time: p.date ? `${p.date} (Receipt)` : "Today (Receipt)",
+            mode: p.paymentMode || "Cash Counter",
+            status: "paid",
+            notes: p.notes || `Due payment receipt (${p.referenceId || "Direct"})`,
+            isReceipt: true,
+          });
+        } else if (rawMode.includes("upi") || rawMode.includes("phonepe") || rawMode.includes("gpay") || rawMode.includes("paytm") || rawMode.includes("qr")) {
+          upiRevenue += amt;
+          upiTxns.push({
+            id: p.transactionId || `PAY-${p._id}`,
+            customer: p.partyName,
+            amount: amt,
+            paidAmount: amt,
+            dueAmount: 0,
+            time: p.date ? `${p.date} (Receipt)` : "Today (Receipt)",
+            mode: p.paymentMode || "UPI / QR Code",
+            status: "paid",
+            notes: p.notes || `Due payment receipt (${p.referenceId || "Direct"})`,
+            isReceipt: true,
+          });
+        } else if (rawMode.includes("card") || rawMode.includes("pos") || rawMode.includes("debit") || rawMode.includes("credit card") || rawMode.includes("swipe")) {
+          cardRevenue += amt;
+          cardTxns.push({
+            id: p.transactionId || `PAY-${p._id}`,
+            customer: p.partyName,
+            amount: amt,
+            paidAmount: amt,
+            dueAmount: 0,
+            time: p.date ? `${p.date} (Receipt)` : "Today (Receipt)",
+            mode: p.paymentMode || "Card (POS)",
+            status: "paid",
+            notes: p.notes || `Due payment receipt (${p.referenceId || "Direct"})`,
+            isReceipt: true,
+          });
+        } else {
+          onlineRevenue += amt;
+          onlineTxns.push({
+            id: p.transactionId || `PAY-${p._id}`,
+            customer: p.partyName,
+            amount: amt,
+            paidAmount: amt,
+            dueAmount: 0,
+            time: p.date ? `${p.date} (Receipt)` : "Today (Receipt)",
+            mode: p.paymentMode || "Online NetBanking",
+            status: "paid",
+            notes: p.notes || `Due payment receipt (${p.referenceId || "Direct"})`,
+            isReceipt: true,
+          });
+        }
+
+        // Add to daily revenue trend buckets
+        let bucketKey = "";
+        if (isSingleDay) {
+          let h = 14;
+          if (p.createdAt) {
+            const dObj = new Date(p.createdAt);
+            if (!isNaN(dObj.getTime())) h = dObj.getHours();
+          }
+          if (h < 9) bucketKey = "08:00 AM";
+          else if (h < 11) bucketKey = "10:00 AM";
+          else if (h < 13) bucketKey = "12:00 PM";
+          else if (h < 15) bucketKey = "02:00 PM";
+          else if (h < 17) bucketKey = "04:00 PM";
+          else if (h < 19) bucketKey = "06:00 PM";
+          else if (h < 21) bucketKey = "08:00 PM";
+          else bucketKey = "10:00 PM";
+        } else {
+          const d = new Date(p.date || p.createdAt);
+          const monthShort = d.toLocaleString('en-US', { month: 'short' });
+          const day = d.getDate();
+          bucketKey = `${day < 10 ? '0' + day : day} ${monthShort}`;
+        }
+
+        if (!dailyRevenueMap[bucketKey]) {
+          dailyRevenueMap[bucketKey] = { revenue: 0, profit: 0, expense: 0, cash: 0, upi: 0, online: 0, card: 0, finance: 0 };
+        }
+        dailyRevenueMap[bucketKey].revenue += amt;
+        if (rawMode.includes("cash")) {
+          dailyRevenueMap[bucketKey].cash += amt;
+        } else {
+          dailyRevenueMap[bucketKey].online += amt;
+        }
+      });
 
     let dailyRevenue: any[] = [];
 

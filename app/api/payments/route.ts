@@ -81,6 +81,26 @@ export async function POST(request: Request) {
       });
     }
     
+    // Update invoice if referenceId matches an invoiceNumber
+    if (data.partyType === "Customer" && data.referenceId) {
+      try {
+        const Invoice = (await import("@/models/Invoice")).default;
+        const inv = await Invoice.findOne({ invoiceNumber: data.referenceId });
+        if (inv) {
+          const newPaid = Math.min(Number(inv.total) || 0, (Number(inv.paidAmount) || 0) + Number(data.amount));
+          const newBalance = Math.max(0, (Number(inv.total) || 0) - newPaid);
+          const newStatus = newBalance <= 0 ? "paid" : "partial";
+          await Invoice.findByIdAndUpdate(inv._id, {
+            paidAmount: newPaid,
+            balanceAmount: newBalance,
+            status: newStatus,
+          });
+        }
+      } catch (e) {
+        console.warn("Notice updating invoice from payment:", e);
+      }
+    }
+    
     const payment = await PaymentTransaction.create(data);
     return NextResponse.json({ success: true, data: payment });
   } catch (error: any) {
@@ -111,6 +131,26 @@ export async function DELETE(request: Request) {
       await Customer.findByIdAndUpdate(payment.partyId, {
         $inc: { outstandingBalance: multiplier * Number(payment.amount) } // add it back or subtract it
       });
+
+      // Revert invoice paid amount if referenceId was linked
+      if (payment.referenceId) {
+        try {
+          const Invoice = (await import("@/models/Invoice")).default;
+          const inv = await Invoice.findOne({ invoiceNumber: payment.referenceId });
+          if (inv) {
+            const newPaid = Math.max(0, (Number(inv.paidAmount) || 0) - Number(payment.amount));
+            const newBalance = Math.max(0, (Number(inv.total) || 0) - newPaid);
+            const newStatus = newPaid <= 0 ? "pending" : newBalance <= 0 ? "paid" : "partial";
+            await Invoice.findByIdAndUpdate(inv._id, {
+              paidAmount: newPaid,
+              balanceAmount: newBalance,
+              status: newStatus,
+            });
+          }
+        } catch (e) {
+          console.warn("Notice reverting invoice from payment delete:", e);
+        }
+      }
     } else if (payment.partyType === "Supplier") {
       const Supplier = (await import("@/models/Supplier")).default;
       // Reverse of POST: if we paid supplier, removing payment INCREASES our outstanding (1)

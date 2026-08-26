@@ -34,6 +34,13 @@ export default function ReceivePaymentPage() {
     onSuccess: () => {
       toast.success("Payment deleted successfully");
       queryClient.invalidateQueries({ queryKey: ["payments"] });
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("erp-payment-created"));
+        window.dispatchEvent(new CustomEvent("erp-invoice-created"));
+        window.dispatchEvent(new CustomEvent("erp-customer-updated"));
+      }
       setDeletePaymentId(null);
     },
     onError: (error: any) => {

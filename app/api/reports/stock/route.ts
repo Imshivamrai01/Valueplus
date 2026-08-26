@@ -11,8 +11,13 @@ export async function GET(req: Request) {
     await connectToDatabase();
     
     let allItems = await Item.find({ status: "active" }).lean();
-    
-    if (warehouse && warehouse !== "all") {
+
+    // Only enforce per-warehouse isolation once items are actually tagged with a warehouse
+    // at creation time. Until then, every item has warehouse === undefined, so the strict
+    // branch below would zero out stock for every location except the Ashoka default.
+    const hasWarehouseTagging = allItems.some((it: any) => it.warehouse);
+
+    if (warehouse && warehouse !== "all" && hasWarehouseTagging) {
       const isAshoka = warehouse.toLowerCase().includes("ashoka") || warehouse.toLowerCase().includes("kunraghat") || warehouse === "VP-KUN";
       if (!isAshoka) {
         allItems = allItems.filter((it: any) =>

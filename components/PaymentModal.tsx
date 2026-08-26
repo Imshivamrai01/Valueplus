@@ -98,6 +98,12 @@ export function PaymentModal({ isOpen, onClose, onSuccess, defaultPartyType = "C
       toast.success("Payment recorded successfully");
       queryClient.invalidateQueries({ queryKey: ["payments"] });
       queryClient.invalidateQueries({ queryKey: ["customers"] });
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("erp-payment-created"));
+        window.dispatchEvent(new CustomEvent("erp-invoice-created"));
+        window.dispatchEvent(new CustomEvent("erp-customer-updated"));
+      }
       onSuccess?.();
       onClose();
     },

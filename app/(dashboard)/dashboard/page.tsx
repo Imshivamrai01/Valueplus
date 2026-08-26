@@ -800,6 +800,8 @@ export default function DashboardPage() {
       window.addEventListener("offline", handleOffline);
       window.addEventListener("erp-invoice-created", handleSync);
       window.addEventListener("erp-purchase-created", handleSync);
+      window.addEventListener("erp-payment-created", handleSync);
+      window.addEventListener("erp-customer-updated", handleSync);
     }
 
     loadAllDashboardData();
@@ -811,6 +813,8 @@ export default function DashboardPage() {
         window.removeEventListener("offline", handleOffline);
         window.removeEventListener("erp-invoice-created", handleSync);
         window.removeEventListener("erp-purchase-created", handleSync);
+        window.removeEventListener("erp-payment-created", handleSync);
+        window.removeEventListener("erp-customer-updated", handleSync);
       }
     };
   }, [activeLocation?.name]);
@@ -3578,14 +3582,25 @@ export default function DashboardPage() {
                             </td>
                           )}
                           <td className="p-3 text-center">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handlePrintTrigger(txn)}
-                              className="h-7 px-2 text-[10px] font-bold text-[#3F63AD] border-[#3F63AD]/30 hover:bg-blue-50"
-                            >
-                              <Printer className="w-3 h-3 mr-1" /> View Bill
-                            </Button>
+                            {txn.isReceipt ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => router.push("/sales/payments")}
+                                className="h-7 px-2 text-[10px] font-bold text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                              >
+                                <Receipt className="w-3 h-3 mr-1 text-emerald-600" /> Payment Hub
+                              </Button>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handlePrintTrigger(txn)}
+                                className="h-7 px-2 text-[10px] font-bold text-[#3F63AD] border-[#3F63AD]/30 hover:bg-blue-50"
+                              >
+                                <Printer className="w-3 h-3 mr-1" /> View Bill
+                              </Button>
+                            )}
                           </td>
                         </tr>
                       );
