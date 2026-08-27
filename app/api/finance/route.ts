@@ -103,6 +103,7 @@ export async function POST(req: Request) {
           financeDownPayment: body.customerDownPayment,
           financeApprovalStatus: body.approvalStatus || "Pending",
           financeExpectedDisbursement: body.netDisbursement,
+          lastModifiedReason: "finance-sync",
         }
       );
     }
@@ -206,6 +207,7 @@ export async function PUT(req: Request) {
         {
           financeApprovalStatus: approvalStatus,
           financeActualDisbursement: actualReceivedAmount || updated.actualReceivedAmount,
+          lastModifiedReason: "finance-sync",
         }
       );
     }

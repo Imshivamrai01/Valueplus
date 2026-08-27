@@ -837,12 +837,10 @@ export async function GET(request: Request) {
     const cancelledCount = cancelledInvoices.length;
     const cancelledAmount = cancelledInvoices.reduce((sum: number, inv: any) => sum + (Number(inv.total) || 0), 0);
 
-    const modifiedInvoices = filteredInvoices.filter((inv: any) => {
-      if (!inv.createdAt || !inv.updatedAt) return false;
-      const created = new Date(inv.createdAt).getTime();
-      const updated = new Date(inv.updatedAt).getTime();
-      return (updated - created) > 3 * 60 * 1000;
-    });
+    // Only a genuine content edit counts as "Modified" — incidental system touches
+    // (reprint, due-clear, finance-sync, cancel) are tagged with their own reason and
+    // must never leak into this bucket, otherwise routine actions look like tampering.
+    const modifiedInvoices = filteredInvoices.filter((inv: any) => inv.lastModifiedReason === "content-edit");
     const modifiedCount = modifiedInvoices.length;
     const modifiedAmount = modifiedInvoices.reduce((sum: number, inv: any) => sum + (Number(inv.total) || 0), 0);
 

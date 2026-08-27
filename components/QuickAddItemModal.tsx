@@ -4,10 +4,11 @@ import React, { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 interface QuickAddItemModalProps {
   isOpen: boolean;
@@ -36,6 +37,24 @@ export function QuickAddItemModal({ isOpen, onClose, initialName = "", onCreated
       setForm((f) => ({ ...f, name: initialName }));
     }
   }, [isOpen, initialName]);
+
+  const { data: categories = [] } = useQuery({
+    queryKey: ["categories"],
+    queryFn: async () => {
+      const res = await fetch("/api/categories");
+      const json = await res.json();
+      return json.success ? json.data : [];
+    },
+  });
+
+  const { data: brands = [] } = useQuery({
+    queryKey: ["brands"],
+    queryFn: async () => {
+      const res = await fetch("/api/brands");
+      const json = await res.json();
+      return json.success ? json.data : [];
+    },
+  });
 
   const createMutation = useMutation({
     mutationFn: async (payload: any) => {
@@ -69,8 +88,13 @@ export function QuickAddItemModal({ isOpen, onClose, initialName = "", onCreated
       toast.error("Purchase Price, Selling Price and MRP are mandatory.");
       return;
     }
+    if (!form.category || !form.brand) {
+      toast.error("Please select a Category and Brand.");
+      return;
+    }
 
     createMutation.mutate({
+      code: `ITM-${Date.now().toString().slice(-8)}`,
       name: form.name.trim(),
       category: form.category,
       brand: form.brand,
@@ -112,12 +136,26 @@ export function QuickAddItemModal({ isOpen, onClose, initialName = "", onCreated
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-slate-700">Category</Label>
-              <Input placeholder="e.g. Smartphone" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} />
+              <Label className="text-xs font-semibold text-slate-700">Category *</Label>
+              <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
+                <SelectTrigger><SelectValue placeholder="Select category..." /></SelectTrigger>
+                <SelectContent>
+                  {categories.map((c: any) => (
+                    <SelectItem key={c._id || c.id || c.name} value={c.name}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-slate-700">Brand</Label>
-              <Input placeholder="e.g. Samsung" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} />
+              <Label className="text-xs font-semibold text-slate-700">Brand *</Label>
+              <Select value={form.brand} onValueChange={(v) => setForm({ ...form, brand: v })}>
+                <SelectTrigger><SelectValue placeholder="Select brand..." /></SelectTrigger>
+                <SelectContent>
+                  {brands.map((b: any) => (
+                    <SelectItem key={b._id || b.id || b.name} value={b.name}>{b.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 

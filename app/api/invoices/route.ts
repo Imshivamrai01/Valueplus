@@ -488,7 +488,8 @@ export async function PUT(req: Request) {
       existingInvoice.dueClearedBy = body.dueClearedBy || "Counter Staff";
       existingInvoice.dueClearedNotes = body.dueClearedNotes || "Due fully settled and cleared";
       existingInvoice.dueClearedTxnId = body.dueClearedTxnId || `CLR-${Date.now()}`;
-      
+      existingInvoice.lastModifiedReason = "due-clear";
+
       const saved = await existingInvoice.save();
 
       // Deduct from customer's outstanding balance
@@ -520,7 +521,48 @@ export async function PUT(req: Request) {
       return NextResponse.json({ success: true, message: "Due settled and cleared successfully", data: saved });
     }
 
-    const updatedInvoice = await Invoice.findOneAndUpdate({ invoiceNumber: body.invoiceNumber }, body, { new: true });
+    // Soft-cancel: unlike DELETE, the invoice record survives (for audit / leakage tracking)
+    if (body.action === "cancel") {
+      if (!body.reason || !body.reason.trim()) {
+        return NextResponse.json({ success: false, error: "A cancellation reason is required" }, { status: 400 });
+      }
+      if (existingInvoice.status === "cancelled") {
+        return NextResponse.json({ success: false, error: "Invoice is already cancelled" }, { status: 400 });
+      }
+
+      // Reverse customer's outstanding balance (same logic as hard delete)
+      if (existingInvoice.balanceAmount > 0 && existingInvoice.customerId) {
+        await Customer.findByIdAndUpdate(existingInvoice.customerId, {
+          $inc: { outstandingBalance: existingInvoice.type === "credit-note" ? existingInvoice.balanceAmount : -existingInvoice.balanceAmount }
+        });
+      }
+
+      // Reverse inventory stock (same logic as hard delete)
+      if (existingInvoice.type !== "proforma" && existingInvoice.items && existingInvoice.items.length > 0) {
+        for (const item of existingInvoice.items) {
+          if (item.itemId) {
+            await Item.findByIdAndUpdate(item.itemId, {
+              $inc: { currentStock: existingInvoice.type === "credit-note" ? -item.quantity : item.quantity }
+            });
+          }
+        }
+      }
+
+      existingInvoice.status = "cancelled";
+      existingInvoice.cancelledAt = new Date().toISOString();
+      existingInvoice.cancelledBy = body.cancelledBy || "Admin";
+      existingInvoice.cancelReason = body.reason.trim();
+      existingInvoice.lastModifiedReason = "cancel";
+
+      const saved = await existingInvoice.save();
+      return NextResponse.json({ success: true, message: "Invoice cancelled successfully", data: saved });
+    }
+
+    const updatedInvoice = await Invoice.findOneAndUpdate(
+      { invoiceNumber: body.invoiceNumber },
+      { ...body, lastModifiedReason: "content-edit" },
+      { new: true }
+    );
 
     return NextResponse.json({ success: true, message: "Invoice updated successfully", data: updatedInvoice });
   } catch (error: any) {

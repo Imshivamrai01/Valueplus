@@ -140,6 +140,15 @@ export interface IInvoice extends Document {
   reprintCount?: number;
   lastPrintedAt?: string;
   printLogs?: Array<{ printedAt: string; printedBy?: string }>;
+
+  // Tracks WHY this invoice was last touched, so dashboard audit tracking can tell a
+  // real content edit apart from incidental system updates (reprint, due-clear, etc.)
+  lastModifiedReason?: "content-edit" | "reprint" | "due-clear" | "finance-sync" | "cancel";
+
+  // Soft-cancel audit trail (invoice stays on record, unlike a hard delete)
+  cancelledAt?: string;
+  cancelledBy?: string;
+  cancelReason?: string;
 }
 
 const LineItemSchema = new Schema({
@@ -295,6 +304,13 @@ const InvoiceSchema = new Schema<IInvoice>(
         printedBy: { type: String, default: "User" },
       }
     ],
+    lastModifiedReason: {
+      type: String,
+      enum: ["content-edit", "reprint", "due-clear", "finance-sync", "cancel"],
+    },
+    cancelledAt: { type: String },
+    cancelledBy: { type: String },
+    cancelReason: { type: String },
   },
   { timestamps: true, collection: "invoices" }
 );

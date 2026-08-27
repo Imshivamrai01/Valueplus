@@ -16,7 +16,7 @@ export async function POST(req: Request) {
       { invoiceNumber },
       {
         $inc: { reprintCount: 1 },
-        $set: { lastPrintedAt: new Date().toISOString() },
+        $set: { lastPrintedAt: new Date().toISOString(), lastModifiedReason: "reprint" },
         $push: {
           printLogs: {
             printedAt: new Date().toISOString(),

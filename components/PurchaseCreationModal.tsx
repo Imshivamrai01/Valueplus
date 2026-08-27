@@ -20,6 +20,11 @@ import { useBranch } from "@/context/BranchContext";
 import { PurchaseBillPrintModal } from "@/components/PurchaseBillPrintModal";
 import { QuickAddItemModal } from "@/components/QuickAddItemModal";
 
+// Stable reference for useQuery fallbacks — `= []` inline would create a brand-new
+// array on every render while data is loading, which can make effects that depend on
+// it think their dependency "changed" every render and loop forever.
+const EMPTY_ARRAY: any[] = [];
+
 function formatCurrency(val: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(val);
 }
@@ -44,7 +49,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
   const [currentMode, setCurrentMode] = useState<"entry" | "debit-note" | "order">(mode);
   const [createdBillToPrint, setCreatedBillToPrint] = useState<any | null>(null);
 
-  const { data: dbWarehouses = [] } = useQuery({
+  const { data: dbWarehouses = EMPTY_ARRAY } = useQuery({
     queryKey: ["warehouses"],
     queryFn: async () => {
       const res = await fetch("/api/warehouses");
@@ -70,7 +75,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
     return list;
   }, [dbWarehouses, locations]);
 
-  const { data: suppliers = [] } = useQuery({
+  const { data: suppliers = EMPTY_ARRAY } = useQuery({
     queryKey: ["suppliers"],
     queryFn: async () => {
       const res = await fetch("/api/suppliers");
@@ -151,7 +156,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
     prevIsOpenRef.current = isOpen;
   }, [isOpen, mode, preloadedItem, preloadedItems, userAssignedBranch, isSuperAdmin]);
 
-  const { data: catalogItems = [] } = useQuery({
+  const { data: catalogItems = EMPTY_ARRAY } = useQuery({
     queryKey: ["items"],
     queryFn: async () => {
       const res = await fetch("/api/items");
@@ -162,7 +167,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
 
   // Fetched once so product search can also match by serial number (reverse-lookup to
   // the parent item), the same way name/code/vpCode already match.
-  const { data: allSerials = [] } = useQuery({
+  const { data: allSerials = EMPTY_ARRAY } = useQuery({
     queryKey: ["all-serial-numbers"],
     queryFn: async () => {
       const res = await fetch("/api/serial-numbers?status=AVAILABLE");
@@ -190,7 +195,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
     return [...byNameCode, ...bySerial].slice(0, 20);
   };
 
-  const { data: purchaseEntries = [] } = useQuery({
+  const { data: purchaseEntries = EMPTY_ARRAY } = useQuery({
     queryKey: ["purchase-entries"],
     queryFn: async () => {
       const res = await fetch("/api/purchase-entries");
@@ -199,7 +204,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
     }
   });
 
-  const { data: purchaseOrders = [] } = useQuery({
+  const { data: purchaseOrders = EMPTY_ARRAY } = useQuery({
     queryKey: ["purchase-orders"],
     queryFn: async () => {
       const res = await fetch("/api/purchase-orders");
@@ -328,7 +333,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
             newNo = `BILL-2026-${String(maxNum + 1).padStart(4, "0")}`;
           }
         }
-        return { ...prev, billNo: newNo };
+        return newNo === prev.billNo ? prev : { ...prev, billNo: newNo };
       });
     }
   }, [isOpen, currentMode, purchaseEntries, purchaseOrders]);

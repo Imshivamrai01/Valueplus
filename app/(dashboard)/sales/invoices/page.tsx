@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { PageShell } from "@/components/shared/page-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -76,6 +77,10 @@ function SalesInvoicesContent() {
   const [isBillingFormOpen, setIsBillingFormOpen] = useState(false);
   const [activeSuggestRow, setActiveSuggestRow] = useState<number | null>(null);
   const [invoiceToDelete, setInvoiceToDelete] = useState<string | null>(null);
+  const [invoiceToCancel, setInvoiceToCancel] = useState<string | null>(null);
+  const [cancelPin, setCancelPin] = useState("");
+  const [cancelPinError, setCancelPinError] = useState(false);
+  const [cancelReasonText, setCancelReasonText] = useState("");
 
   const { data: session } = useSession();
   const userRole = ((session?.user as any)?.role || "admin").toLowerCase();
@@ -184,6 +189,47 @@ function SalesInvoicesContent() {
       toast.error(error.message || "An error occurred while deleting");
     }
   });
+
+  const cancelInvoiceMutation = useMutation({
+    mutationFn: async ({ invoiceNumber, reason }: { invoiceNumber: string; reason: string }) => {
+      const res = await fetch("/api/invoices", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invoiceNumber, action: "cancel", reason, cancelledBy: currentUserName }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || "Failed to cancel invoice");
+      return json;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      toast.success("Invoice cancelled successfully");
+      setInvoiceToCancel(null);
+      setCancelPin("");
+      setCancelPinError(false);
+      setCancelReasonText("");
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "An error occurred while cancelling");
+    }
+  });
+
+  const handleConfirmCancel = () => {
+    const ADMIN_PIN = "1234";
+    if (cancelPin.trim() !== ADMIN_PIN) {
+      setCancelPinError(true);
+      toast.error("Invalid Admin PIN! Supervisor authorization required to cancel a bill.");
+      return;
+    }
+    if (!cancelReasonText.trim()) {
+      toast.error("Please enter a reason for cancelling this invoice.");
+      return;
+    }
+    if (invoiceToCancel) {
+      cancelInvoiceMutation.mutate({ invoiceNumber: invoiceToCancel, reason: cancelReasonText.trim() });
+    }
+  };
 
   return (
     <PageShell
@@ -400,7 +446,15 @@ function SalesInvoicesContent() {
                                   <Eye className="h-4 w-4" /> Full Invoice Preview
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
-                                <DropdownMenuItem 
+                                {inv.status !== "cancelled" && (
+                                  <DropdownMenuItem
+                                    className="gap-2 cursor-pointer text-amber-700 focus:text-amber-700"
+                                    onClick={() => setInvoiceToCancel(inv.invoiceNumber)}
+                                  >
+                                    <Ban className="h-4 w-4" /> Cancel Invoice
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuItem
                                   className="gap-2 cursor-pointer text-red-600 focus:text-red-600"
                                   onClick={() => setInvoiceToDelete(inv.invoiceNumber)}
                                 >
@@ -539,8 +593,8 @@ function SalesInvoicesContent() {
             <Button variant="outline" onClick={() => setInvoiceToDelete(null)}>
               Cancel
             </Button>
-            <Button 
-              variant="destructive" 
+            <Button
+              variant="destructive"
               onClick={() => {
                 if (invoiceToDelete) {
                   deleteInvoiceMutation.mutate(invoiceToDelete)
@@ -548,6 +602,76 @@ function SalesInvoicesContent() {
               }}
             >
               Delete Invoice
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* CANCEL INVOICE MODAL (PIN + Reason, feeds Payment Leakage audit) */}
+      <Dialog
+        open={!!invoiceToCancel}
+        onOpenChange={(open) => {
+          if (!open) {
+            setInvoiceToCancel(null);
+            setCancelPin("");
+            setCancelPinError(false);
+            setCancelReasonText("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-amber-700 flex items-center gap-2">
+              <Ban className="w-5 h-5" />
+              Cancel Invoice {invoiceToCancel}
+            </DialogTitle>
+            <DialogDescription>
+              This voids the bill (reverses stock &amp; customer balance) but keeps it on record for audit —
+              unlike Delete, it will show up in the Payment Leakage &amp; Void Audit tracker. Supervisor PIN and a reason are required.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-800">Admin 4-Digit Security PIN *</Label>
+              <Input
+                type="password"
+                maxLength={4}
+                autoFocus
+                placeholder="••••"
+                value={cancelPin}
+                onChange={(e) => { setCancelPin(e.target.value); setCancelPinError(false); }}
+                className={cn(
+                  "text-center text-xl tracking-[0.4em] font-mono h-11 font-black border-2",
+                  cancelPinError ? "border-red-500 bg-red-50" : "border-amber-400 bg-slate-50"
+                )}
+              />
+              {cancelPinError && (
+                <p className="text-xs text-red-600 font-semibold">Incorrect PIN! Supervisor authorization failed.</p>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-800">Reason for Cancellation *</Label>
+              <Textarea
+                placeholder="e.g. Customer changed mind, duplicate bill, wrong items billed..."
+                value={cancelReasonText}
+                onChange={(e) => setCancelReasonText(e.target.value)}
+                className="text-sm"
+                rows={3}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setInvoiceToCancel(null)}>
+              Back
+            </Button>
+            <Button
+              onClick={handleConfirmCancel}
+              disabled={cancelInvoiceMutation.isPending}
+              className="bg-amber-600 hover:bg-amber-700 text-white font-bold"
+            >
+              {cancelInvoiceMutation.isPending ? "Cancelling..." : "Confirm Cancellation"}
             </Button>
           </DialogFooter>
         </DialogContent>
