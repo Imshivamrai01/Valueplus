@@ -30,8 +30,10 @@ export default function SuppliersPage() {
     name: "",
     email: "",
     phone: "",
+    addressLine1: "",
     city: "Mumbai",
     state: "Maharashtra",
+    pincode: "",
     gst: "",
   });
   const PER_PAGE = 10;
@@ -119,6 +121,14 @@ export default function SuppliersPage() {
       toast.error("Please enter a valid 10-digit mobile number");
       return;
     }
+    if (!formData.addressLine1.trim()) {
+      toast.error("Please enter the Supplier Address");
+      return;
+    }
+    if (!formData.pincode || formData.pincode.replace(/\D/g, '').length !== 6) {
+      toast.error("Please enter a valid 6-digit Pincode");
+      return;
+    }
 
     const newSupp = {
       code: formData.code || `SUPP-${String(suppliers.length + 1).padStart(4, "0")}`,
@@ -126,10 +136,10 @@ export default function SuppliersPage() {
       email: formData.email || `orders@${formData.name.split(" ")[0].toLowerCase()}.com`,
       phone: formData.phone,
       address: {
-        line1: "Supplier Address",
+        line1: formData.addressLine1.trim(),
         city: formData.city,
         state: formData.state,
-        pincode: "000000",
+        pincode: formData.pincode,
         country: "India"
       },
       gstNumber: formData.gst || "27AAACV9999A1Z2",
@@ -151,8 +161,10 @@ export default function SuppliersPage() {
       name: s.name,
       email: s.email || "",
       phone: s.phone || "",
+      addressLine1: s.address?.line1 || "",
       city: cityName,
       state: stateName,
+      pincode: s.address?.pincode || "",
       gst: s.gstNumber || "",
     });
     setIsFormOpen(true);
@@ -181,8 +193,10 @@ export default function SuppliersPage() {
       name: "",
       email: "",
       phone: "",
+      addressLine1: "",
       city: "Mumbai",
       state: "Maharashtra",
+      pincode: "",
       gst: "",
     });
     setIsFormOpen(true);
@@ -315,6 +329,16 @@ export default function SuppliersPage() {
                   />
                 </div>
 
+                <div className="space-y-1.5 md:col-span-3">
+                  <Label className="text-xs font-semibold text-slate-700">Supplier Address (Street / Area) *</Label>
+                  <Input
+                    placeholder="e.g. 42, Industrial Estate, Andheri East"
+                    value={formData.addressLine1}
+                    onChange={(e) => setFormData({ ...formData, addressLine1: e.target.value })}
+                    className="bg-slate-50 border-slate-300"
+                  />
+                </div>
+
                 <div className="space-y-1.5 md:col-span-2">
                   <Label className="text-xs font-semibold text-slate-700">State / Region</Label>
                   <Select 
@@ -350,6 +374,17 @@ export default function SuppliersPage() {
                       })()}
                     </SelectContent>
                   </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">Pincode *</Label>
+                  <Input
+                    placeholder="400069"
+                    maxLength={6}
+                    value={formData.pincode}
+                    onChange={(e) => setFormData({ ...formData, pincode: e.target.value.replace(/\D/g, "") })}
+                    className="bg-slate-50 border-slate-300 font-mono"
+                  />
                 </div>
               </div>
             </div>

@@ -91,7 +91,9 @@ export async function POST(req: Request) {
           partyType: "Customer",
           partyName: invoice.customerName,
           amount: body.paidAmount,
-          paymentMode: body.paymentMode || "Cash",
+          // For a Finance sale, the amount actually collected here is the customer's down
+          // payment — tag it with however that down payment was really collected, not "Finance".
+          paymentMode: body.financeProvider ? (body.financeDownPaymentMode || body.downPaymentMode || "Cash") : (body.paymentMode || "Cash"),
           date: body.date || new Date().toISOString().split("T")[0],
           referenceId: invoice.invoiceNumber,
           notes: invoice.type === 'credit-note' ? `Refund for Credit Note ${invoice.invoiceNumber}` : `Initial payment for ${invoice.type === 'sales-order' ? 'order' : 'invoice'} ${invoice.invoiceNumber}`,

@@ -1201,13 +1201,19 @@ export default function DashboardPage() {
                     </PieChart>
                   </ResponsiveContainer>
                   <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">NET TOTAL</span>
-                    <span className="text-sm sm:text-base font-black text-slate-900 font-mono tracking-tight">
-                      {indianNumberFormat(totalCollectedAmount)}
-                    </span>
-                    <span className="text-[10px] font-bold text-emerald-700 font-mono mt-0.5">
-                      {totalBilledCount} Bills
-                    </span>
+                    <div
+                      onClick={() => router.push(`/dashboard/reports?type=all&dateFilter=${encodeURIComponent(dateFilter)}`)}
+                      className="w-24 h-24 rounded-full flex flex-col items-center justify-center pointer-events-auto cursor-pointer hover:bg-slate-50 transition-colors group"
+                      title="View full ledger"
+                    >
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider group-hover:text-[#3F63AD]">NET TOTAL</span>
+                      <span className="text-sm sm:text-base font-black text-slate-900 font-mono tracking-tight group-hover:text-[#3F63AD]">
+                        {indianNumberFormat(totalCollectedAmount)}
+                      </span>
+                      <span className="text-[10px] font-bold text-emerald-700 font-mono mt-0.5">
+                        {totalBilledCount} Bills
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1236,27 +1242,6 @@ export default function DashboardPage() {
                     </div>
                   );
                 })}
-
-                {/* DUES COLLECTED ROW (via Receive Payment) */}
-                {(metrics.duesCollected > 0 || metrics.duesCollectedCount > 0) && (
-                  <div
-                    onClick={() => router.push("/sales/payments")}
-                    className="flex items-center justify-between text-sm cursor-pointer bg-emerald-50/70 hover:bg-emerald-100/70 p-2 rounded-xl border border-emerald-200 transition-all group"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <span className="w-3 h-3 rounded-full bg-emerald-500" />
-                      <span className="text-emerald-900 font-bold text-xs sm:text-sm">Dues Collected (Receive Payment)</span>
-                    </div>
-                    <div className="flex items-center gap-2.5">
-                      <span className="text-xs font-mono font-bold px-2 py-0.5 bg-emerald-200/80 text-emerald-900 rounded-md">
-                        {metrics.duesCollectedCount || 0} Receipts
-                      </span>
-                      <span className="font-black text-emerald-700 font-mono text-xs sm:text-sm">
-                        {formatCurrency(metrics.duesCollected || 0)}
-                      </span>
-                    </div>
-                  </div>
-                )}
 
                 {/* PENDING DUE ROW */}
                 {(metrics.dueRevenue > 0 || metrics.dueCount > 0) && (

@@ -7,10 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { 
-  Plus, Trash2, ClipboardList, FileMinus, ShoppingBag, Phone, UserCheck, UserPlus, X, 
+import {
+  Plus, Trash2, ClipboardList, FileMinus, ShoppingBag, Phone, UserCheck, UserPlus, X,
   AlertCircle, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Barcode, ShieldAlert, Sparkles, ArrowRight,
-  Store, Building2, Lock, Warehouse as WarehouseIcon
+  Store, Building2, Lock, Warehouse as WarehouseIcon, PackagePlus
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -18,6 +18,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSession } from "next-auth/react";
 import { useBranch } from "@/context/BranchContext";
 import { PurchaseBillPrintModal } from "@/components/PurchaseBillPrintModal";
+import { QuickAddItemModal } from "@/components/QuickAddItemModal";
 
 function formatCurrency(val: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(val);
@@ -158,6 +159,36 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
       return json.success ? json.data : [];
     }
   });
+
+  // Fetched once so product search can also match by serial number (reverse-lookup to
+  // the parent item), the same way name/code/vpCode already match.
+  const { data: allSerials = [] } = useQuery({
+    queryKey: ["all-serial-numbers"],
+    queryFn: async () => {
+      const res = await fetch("/api/serial-numbers?status=AVAILABLE");
+      const json = await res.json();
+      return json.success ? json.data : [];
+    }
+  });
+
+  const [activeSearchRowId, setActiveSearchRowId] = useState<string | null>(null);
+  const [quickAddContext, setQuickAddContext] = useState<{ rowId: string; initialName: string } | null>(null);
+
+  const getCandidatesForQuery = (query: string) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    const byNameCode = catalogItems.filter((c: any) =>
+      (c.name || "").toLowerCase().includes(q) ||
+      (c.code || "").toLowerCase().includes(q) ||
+      (c.vpCode || "").toLowerCase().includes(q)
+    );
+    const matchedIds = new Set(byNameCode.map((c: any) => c._id));
+    const bySerial = allSerials
+      .filter((s: any) => (s.serialNumber || "").toLowerCase().includes(q))
+      .map((s: any) => catalogItems.find((c: any) => c._id === s.itemId || c.vpCode === s.vpCode || c.code === s.vpCode))
+      .filter((c: any) => c && !matchedIds.has(c._id));
+    return [...byNameCode, ...bySerial].slice(0, 20);
+  };
 
   const { data: purchaseEntries = [] } = useQuery({
     queryKey: ["purchase-entries"],
@@ -328,10 +359,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
     }));
   };
 
-  const handleItemSelect = (rowId: string, itemId: string) => {
-    const catalogItem = catalogItems.find((i: any) => i._id === itemId);
-    if (!catalogItem) return;
-
+  const applyItemToRow = (rowId: string, catalogItem: any) => {
     setForm(prev => ({
       ...prev,
       items: prev.items.map(item =>
@@ -346,6 +374,13 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
           : item
       )
     }));
+    setActiveSearchRowId(null);
+  };
+
+  const handleItemSelect = (rowId: string, itemId: string) => {
+    const catalogItem = catalogItems.find((i: any) => i._id === itemId);
+    if (!catalogItem) return;
+    applyItemToRow(rowId, catalogItem);
   };
 
   const updateLineItem = (rowId: string, field: string, value: any) => {
@@ -510,14 +545,6 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
       return;
     }
 
-    // MANDATORY PO CHECK FOR PURCHASE ENTRY
-    if (currentMode === "entry") {
-      if (!form.linkedPoNo) {
-        toast.error("Please select and link an approved Purchase Order first.");
-        return;
-      }
-    }
-
     if (form.items.length === 0) {
       toast.error("Please add or load at least one product item");
       return;
@@ -590,6 +617,10 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
   const isDebit = currentMode === "debit-note";
   const isOrder = currentMode === "order";
   const isEntry = currentMode === "entry";
+  // A Purchase Entry no longer requires a linked PO — when none is linked, items are
+  // picked/edited manually just like Order/Debit-note mode. Only a PO-linked entry
+  // keeps its items locked to the agreed PO quantities/rates.
+  const itemsAreEditable = !isEntry || !form.linkedPoNo;
 
   return (
     <>
@@ -641,7 +672,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
               <span className="flex items-center gap-2">1. Supplier & Voucher Details</span>
               {isEntry && (
                 <span className="text-[11px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
-                  * PO Linkage & Unit IMEI Required
+                  * Unit IMEI Required (PO Link Optional)
                 </span>
               )}
             </h4>
@@ -779,12 +810,12 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
               </div>
             </div>
 
-            {/* ─── MANDATORY LINK PURCHASE ORDER SECTION (FOR ENTRY MODE) ──── */}
+            {/* ─── LINK PURCHASE ORDER SECTION (OPTIONAL, FOR ENTRY MODE) ──── */}
             {isEntry && (
               <div className="mt-4 pt-4 border-t border-slate-100">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-2">
                   <Label className="text-xs font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wide">
-                    <Barcode className="w-4 h-4 text-[#3F63AD]" /> 2. Link Approved Purchase Order (Mandatory) *
+                    <Barcode className="w-4 h-4 text-[#3F63AD]" /> 2. Link Purchase Order (Optional)
                   </Label>
 
                   {form.supplierName && supplierPendingPOs.length > 0 && (
@@ -797,10 +828,10 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
                 {!form.supplierName ? (
                   <div className="bg-slate-100/80 border border-slate-200 p-4 rounded-xl text-xs text-slate-500 flex items-center gap-2.5">
                     <AlertCircle className="w-4 h-4 text-slate-400 shrink-0" />
-                    <span>Please enter or select a Supplier above to check available Purchase Orders.</span>
+                    <span>Please enter or select a Supplier above to check available Purchase Orders (or skip this and add products directly below).</span>
                   </div>
                 ) : supplierPendingPOs.length === 0 ? (
-                  // NO PO EXISTS FOR THIS SUPPLIER - SHOW EXPLICIT ENGLISH WARNING & CREATE PO BUTTON
+                  // NO PO EXISTS FOR THIS SUPPLIER — LINKING IS OPTIONAL, SO OFFER BOTH PATHS
                   <div className="bg-amber-50/90 border-2 border-amber-200 p-5 rounded-xl space-y-3">
                     <div className="flex items-start gap-3">
                       <div className="p-2 bg-amber-100 rounded-lg text-amber-800 shrink-0 mt-0.5">
@@ -809,15 +840,18 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
                       <div>
                         <h5 className="text-sm font-bold text-amber-950">No Active Purchase Order Found</h5>
                         <p className="text-xs text-amber-800 mt-1 leading-relaxed">
-                          You do not have any pending or active Purchase Orders for <span className="font-bold underline">{form.supplierName}</span>. 
-                          In ValuePlus ERP, a Purchase Inward Entry must be linked to an approved Purchase Order to track ordered stock and agreed pricing.
+                          You do not have any pending or active Purchase Orders for <span className="font-bold underline">{form.supplierName}</span>.
+                          That's fine — you can add products directly below without a PO, or create one first if you'd like formal order tracking.
                         </p>
                       </div>
                     </div>
-                    
-                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-amber-200">
-                      <Button 
-                        size="sm" 
+
+                    <div className="flex items-center justify-between gap-2 pt-2 border-t border-amber-200">
+                      <span className="text-xs font-semibold text-amber-800 flex items-center gap-1">
+                        <ArrowRight className="w-3.5 h-3.5" /> Or just add products directly in section 3 below.
+                      </span>
+                      <Button
+                        size="sm"
                         onClick={() => {
                           setCurrentMode("order");
                           setForm(prev => ({ ...prev, linkedPoNo: "", items: [] }));
@@ -856,7 +890,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
                     {!form.linkedPoNo && (
                       <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg text-xs text-blue-800 flex items-center gap-2">
                         <AlertCircle className="w-4 h-4 text-blue-600 shrink-0" />
-                        <span>First select an approved Purchase Order from the dropdown above to load products, quantities, and rates.</span>
+                        <span>Optionally select a Purchase Order above to auto-load its products, quantities, and rates — or skip this and add products directly in section 3 below.</span>
                       </div>
                     )}
                   </div>
@@ -879,22 +913,14 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
                 )}
               </div>
 
-              {!isEntry && (
+              {itemsAreEditable && (
                 <Button size="sm" variant="outline" onClick={addLineItem} className="h-8 border-dashed">
                   <Plus className="w-4 h-4 mr-1" /> Add Product
                 </Button>
               )}
             </div>
 
-            {isEntry && !form.linkedPoNo ? (
-              <div className="border-2 border-dashed border-slate-200 rounded-xl p-8 text-center space-y-2 bg-slate-50/50">
-                <Barcode className="w-8 h-8 text-slate-400 mx-auto" />
-                <h5 className="text-sm font-bold text-slate-700">No Purchase Order Linked</h5>
-                <p className="text-xs text-slate-500 max-w-md mx-auto">
-                  Please link a Purchase Order in step 2 above. All ordered electronics, quantities, and inward IMEI slots will load automatically.
-                </p>
-              </div>
-            ) : form.items.length === 0 ? (
+            {form.items.length === 0 ? (
               <div className="border border-dashed rounded-lg p-8 text-center text-muted-foreground text-sm">
                 No items added. Click "Add Product" to begin.
               </div>
@@ -914,23 +940,50 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
                             {index + 1}
                           </span>
 
-                          <div className="flex-1">
-                            {isEntry ? (
+                          <div className="flex-1 relative">
+                            {!itemsAreEditable ? (
                               <div>
                                 <p className="text-sm font-bold text-slate-900">{item.name}</p>
                                 <p className="text-xs text-slate-500">Agreed Rate: {formatCurrency(item.rate)} + {item.gstRate}% GST</p>
                               </div>
                             ) : (
-                              <Select value={item.itemId} onValueChange={(val) => handleItemSelect(item.id, val)}>
-                                <SelectTrigger className="h-9 text-xs bg-white border-slate-300">
-                                  <SelectValue placeholder="Search product catalog..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {catalogItems.map((c: any) => (
-                                    <SelectItem key={c._id} value={c._id}>{c.name} — {formatCurrency(c.purchasePrice || 0)}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                              <>
+                                <Input
+                                  placeholder="Search product by name, code, or serial number..."
+                                  value={item.name}
+                                  onChange={(e) => {
+                                    updateLineItem(item.id, "name", e.target.value);
+                                    if (item.itemId) updateLineItem(item.id, "itemId", "");
+                                    setActiveSearchRowId(item.id);
+                                  }}
+                                  onFocus={() => setActiveSearchRowId(item.id)}
+                                  onBlur={() => setTimeout(() => setActiveSearchRowId(null), 250)}
+                                  className="h-9 text-xs bg-white border-slate-300"
+                                />
+                                {activeSearchRowId === item.id && item.name.trim().length > 0 && !item.itemId && (
+                                  <div className="absolute z-50 left-0 top-10 w-full bg-white border-2 border-[#3F63AD] shadow-2xl rounded-lg max-h-56 overflow-y-auto">
+                                    {getCandidatesForQuery(item.name).length > 0 ? (
+                                      getCandidatesForQuery(item.name).map((c: any) => (
+                                        <div
+                                          key={c._id}
+                                          onMouseDown={() => handleItemSelect(item.id, c._id)}
+                                          className="px-3 py-2 text-xs hover:bg-blue-50 cursor-pointer border-b border-slate-100 flex justify-between"
+                                        >
+                                          <span className="font-semibold text-slate-800">{c.name}</span>
+                                          <span className="text-slate-500 font-mono">{formatCurrency(c.purchasePrice || 0)}</span>
+                                        </div>
+                                      ))
+                                    ) : (
+                                      <div
+                                        onMouseDown={() => setQuickAddContext({ rowId: item.id, initialName: item.name })}
+                                        className="px-3 py-2.5 text-xs text-[#3F63AD] font-bold hover:bg-blue-50 cursor-pointer flex items-center gap-1.5"
+                                      >
+                                        <PackagePlus className="w-3.5 h-3.5" /> Add New Product "{item.name}"
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </>
                             )}
                           </div>
                         </div>
@@ -943,7 +996,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
                               type="number"
                               min={1}
                               value={item.quantity}
-                              disabled={isEntry}
+                              disabled={!itemsAreEditable}
                               onChange={(e) => updateLineItem(item.id, "quantity", Math.max(1, Number(e.target.value)))}
                               className="h-8 w-20 text-xs text-center font-bold bg-white"
                             />
@@ -955,7 +1008,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
                               type="number"
                               min={0}
                               value={item.rate}
-                              disabled={isEntry}
+                              disabled={!itemsAreEditable}
                               onChange={(e) => updateLineItem(item.id, "rate", Math.max(0, Number(e.target.value)))}
                               className="h-8 w-24 text-xs text-right font-bold bg-white"
                             />
@@ -971,7 +1024,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
                             <span className="text-sm font-black text-slate-900 block mt-1">{formatCurrency(amount)}</span>
                           </div>
 
-                          {!isEntry && (
+                          {itemsAreEditable && (
                             <Button
                               variant="ghost"
                               size="icon"
@@ -1089,6 +1142,16 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
         queryClient.invalidateQueries({ queryKey: ["purchase-entries"] });
       }}
       billData={createdBillToPrint}
+    />
+
+    <QuickAddItemModal
+      isOpen={!!quickAddContext}
+      onClose={() => setQuickAddContext(null)}
+      initialName={quickAddContext?.initialName || ""}
+      onCreated={(newItem) => {
+        if (quickAddContext) applyItemToRow(quickAddContext.rowId, newItem);
+        setQuickAddContext(null);
+      }}
     />
     </>
   );

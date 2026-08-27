@@ -19,6 +19,8 @@ export interface IItem extends Document {
   purchasePrice: number;
   sellingPrice: number;
   minSellingPrice?: number;
+  maxDiscountPercent?: number;
+  maxDiscountAmount?: number;
   incentiveTargetAmount?: number;
   incentiveAmount?: number;
   incentiveType?: "none" | "fixed" | "percentage";
@@ -58,6 +60,8 @@ const ItemSchema = new Schema<IItem>(
     purchasePrice: { type: Number, required: true },
     sellingPrice: { type: Number, required: true },
     minSellingPrice: { type: Number, default: 0 },
+    maxDiscountPercent: { type: Number, default: 0 },
+    maxDiscountAmount: { type: Number, default: 0 },
     incentiveTargetAmount: { type: Number, default: 0 },
     incentiveAmount: { type: Number, default: 0 },
     incentiveType: { type: String, enum: ["none", "fixed", "percentage"], default: "none" },

@@ -6,6 +6,7 @@ import Customer from "@/models/Customer";
 import Supplier from "@/models/Supplier";
 import Expense from "@/models/Expense";
 import PaymentTransaction from "@/models/PaymentTransaction";
+import FinanceTransaction from "@/models/FinanceTransaction";
 
 export async function GET(request: Request) {
   try {
@@ -16,13 +17,14 @@ export async function GET(request: Request) {
     const endDateParam = searchParams.get("endDate");
     const warehouseParam = searchParams.get("warehouse") || searchParams.get("location") || "";
 
-    const [allInvoicesRaw, allCustomersRaw, allItemsRaw, allSuppliersRaw, allExpensesRaw, allPaymentsRaw] = await Promise.all([
+    const [allInvoicesRaw, allCustomersRaw, allItemsRaw, allSuppliersRaw, allExpensesRaw, allPaymentsRaw, allFinanceTxnsRaw] = await Promise.all([
       Invoice.find({}).sort({ createdAt: -1 }).lean(),
       Customer.find({}).sort({ createdAt: -1 }).lean(),
       Item.find({}).sort({ createdAt: -1 }).lean(),
       Supplier.find({}).sort({ createdAt: -1 }).lean(),
       Expense.find({}).sort({ createdAt: -1 }).lean(),
       PaymentTransaction.find({}).sort({ createdAt: -1 }).lean(),
+      FinanceTransaction.find({}, { invoiceNumber: 1, approvalStatus: 1 }).lean(),
     ]);
 
     let allInvoices = allInvoicesRaw;
@@ -31,6 +33,14 @@ export async function GET(request: Request) {
     let allSuppliers = allSuppliersRaw;
     let allExpenses = allExpensesRaw;
     let allPayments = allPaymentsRaw;
+
+    // Invoices whose finance loan amount has actually been credited to the store's bank
+    // account — once disbursed, that amount stops being "pending Finance" revenue and
+    // is instead counted as realized "Online" revenue on its actual credit date (see the
+    // Finance Disbursement payment-ledger loop below).
+    const disbursedInvoiceNumbers = new Set(
+      allFinanceTxnsRaw.filter((f: any) => f.approvalStatus === "Disbursed").map((f: any) => f.invoiceNumber)
+    );
 
     // Multi-Warehouse Isolation Filter
     // Only enforce strict per-warehouse isolation on an entity type once records of that
@@ -126,10 +136,14 @@ export async function GET(request: Request) {
       }
       return !isNaN(d.getTime()) && d >= rangeStart && d <= rangeEnd;
     });
+    // Finance Disbursement entries are bank settlements from the finance company, not a
+    // customer clearing an owed due, so they're excluded from this "dues collected" metric
+    // (they're still counted as revenue via the Online bucket below).
+    const isGenuineDueReceipt = (p: any) => p.type === "received" && p.partyType === "Customer" && p.paymentMode !== "Finance Disbursement";
     const duesCollected = paymentsInRange
-      .filter((p: any) => p.type === "received" && p.partyType === "Customer")
+      .filter(isGenuineDueReceipt)
       .reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
-    const duesCollectedCount = paymentsInRange.filter((p: any) => p.type === "received" && p.partyType === "Customer").length;
+    const duesCollectedCount = paymentsInRange.filter(isGenuineDueReceipt).length;
     const supplierPayouts = paymentsInRange
       .filter((p: any) => p.type === "paid" && p.partyType === "Supplier")
       .reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
@@ -236,8 +250,68 @@ export async function GET(request: Request) {
       const actualCollectedOnInvoice = (hasSeparatePaymentReceipt || inv.status === "pending" || inv.status === "unpaid") ? 0 : paid;
 
       const rawMode = (inv.paymentMode || "").toLowerCase();
+      const isFinanceInvoice = Boolean(inv.financeProvider) || rawMode.includes("finance") || rawMode.includes("bajaj") || rawMode.includes("hdb") || rawMode.includes("emi") || rawMode.includes("loan");
 
-      if (actualCollectedOnInvoice > 0) {
+      if (isFinanceInvoice) {
+        // Split a financed sale: the down payment counts under whichever mode it was
+        // actually collected in (cash/UPI/card/online); only the remaining loan amount
+        // that the finance company pays out is "Finance" revenue.
+        const downPayAmt = Math.min(total, Number(inv.financeDownPayment) || Number(inv.downPayment) || 0);
+        const financedAmt = Math.max(0, total - downPayAmt);
+        const downPayMode = (inv.financeDownPaymentMode || inv.downPaymentMode || "Cash").toLowerCase();
+
+        if (downPayAmt > 0 && !hasSeparatePaymentReceipt) {
+          const downPayTxn = {
+            id: inv.invoiceNumber,
+            customer: inv.customerName,
+            amount: downPayAmt,
+            paidAmount: downPayAmt,
+            dueAmount: due,
+            time: inv.date ? `${inv.date} 03:00 PM` : "Today",
+            mode: `${inv.financeDownPaymentMode || inv.downPaymentMode || "Cash"} (Finance Down Payment)`,
+            status: inv.status,
+            reprintCount: inv.reprintCount || 0,
+            lastPrintedAt: inv.lastPrintedAt,
+          };
+          if (downPayMode.includes("cash")) {
+            cashRevenue += downPayAmt;
+            cashTxns.push(downPayTxn);
+          } else if (downPayMode.includes("upi") || downPayMode.includes("phonepe") || downPayMode.includes("gpay") || downPayMode.includes("paytm") || downPayMode.includes("qr")) {
+            upiRevenue += downPayAmt;
+            upiTxns.push(downPayTxn);
+          } else if (downPayMode.includes("card") || downPayMode.includes("pos") || downPayMode.includes("debit") || downPayMode.includes("swipe")) {
+            cardRevenue += downPayAmt;
+            cardTxns.push(downPayTxn);
+          } else if (downPayMode.includes("online") || downPayMode.includes("bank") || downPayMode.includes("netbanking") || downPayMode.includes("neft") || downPayMode.includes("rtgs") || downPayMode.includes("imps")) {
+            onlineRevenue += downPayAmt;
+            onlineTxns.push(downPayTxn);
+          } else {
+            cashRevenue += downPayAmt;
+            cashTxns.push(downPayTxn);
+          }
+        }
+
+        // Only still "pending Finance" if the bank hasn't actually paid it out yet —
+        // once disbursed, this amount is counted as "Online" on its credit date instead
+        // (see the Finance Disbursement payment-ledger loop further below).
+        if (financedAmt > 0 && !disbursedInvoiceNumbers.has(inv.invoiceNumber)) {
+          financeRevenue += financedAmt;
+          financeTxns.push({
+            id: inv.invoiceNumber,
+            customer: inv.customerName,
+            amount: financedAmt,
+            paidAmount: paid,
+            dueAmount: due,
+            time: inv.date ? `${inv.date} 04:45 PM` : "Today",
+            mode: (inv.paymentMode && inv.financeCompany) ? `${inv.paymentMode} (${inv.financeCompany})` : inv.paymentMode || "Finance (Bajaj / HDB)",
+            status: inv.status,
+            dueDate: inv.dueDate,
+            balanceAmount: inv.balanceAmount || total,
+            reprintCount: inv.reprintCount || 0,
+            lastPrintedAt: inv.lastPrintedAt,
+          });
+        }
+      } else if (actualCollectedOnInvoice > 0) {
         if (rawMode.includes("cash") || (!rawMode && inv.status === "paid")) {
           cashRevenue += actualCollectedOnInvoice;
           cashTxns.push({
@@ -295,22 +369,6 @@ export async function GET(request: Request) {
             lastPrintedAt: inv.lastPrintedAt,
           });
         }
-      } else if (rawMode.includes("finance") || rawMode.includes("bajaj") || rawMode.includes("hdb") || rawMode.includes("emi") || rawMode.includes("loan") || inv.financeProvider) {
-        financeRevenue += total;
-        financeTxns.push({
-          id: inv.invoiceNumber,
-          customer: inv.customerName,
-          amount: total,
-          paidAmount: paid,
-          dueAmount: due,
-          time: inv.date ? `${inv.date} 04:45 PM` : "Today",
-          mode: (inv.paymentMode && inv.financeCompany) ? `${inv.paymentMode} (${inv.financeCompany})` : inv.paymentMode || "Finance (Bajaj / HDB)",
-          status: inv.status,
-          dueDate: inv.dueDate,
-          balanceAmount: inv.balanceAmount || total,
-          reprintCount: inv.reprintCount || 0,
-          lastPrintedAt: inv.lastPrintedAt,
-        });
       }
 
 
@@ -351,17 +409,40 @@ export async function GET(request: Request) {
       dailyRevenueMap[bucketKey].revenue += inv.total || 0;
       dailyRevenueMap[bucketKey].profit += 1;
       
-      const pMode = (inv.paymentMode || "").toLowerCase();
-      if (pMode.includes("cash")) {
-        dailyRevenueMap[bucketKey].cash += inv.total || 0;
-      } else if (pMode.includes("upi") || pMode.includes("phonepe") || pMode.includes("gpay") || pMode.includes("paytm") || pMode.includes("qr")) {
-        dailyRevenueMap[bucketKey].upi += inv.total || 0;
-      } else if (pMode.includes("card") || pMode.includes("pos") || pMode.includes("debit") || pMode.includes("swipe")) {
-        dailyRevenueMap[bucketKey].card += inv.total || 0;
-      } else if (pMode.includes("online") || pMode.includes("bank") || pMode.includes("netbanking") || pMode.includes("neft") || pMode.includes("rtgs") || pMode.includes("imps")) {
-        dailyRevenueMap[bucketKey].online += inv.total || 0;
+      if (isFinanceInvoice) {
+        // Same split as the payment-mode breakdown above: down payment counts under its
+        // own mode, only the remaining financed amount counts as "finance" in the trend.
+        const dayDownPayAmt = Math.min(total, Number(inv.financeDownPayment) || Number(inv.downPayment) || 0);
+        const dayFinancedAmt = Math.max(0, total - dayDownPayAmt);
+        const dayDownPayMode = (inv.financeDownPaymentMode || inv.downPaymentMode || "Cash").toLowerCase();
+
+        if (dayDownPayAmt > 0) {
+          if (dayDownPayMode.includes("cash")) {
+            dailyRevenueMap[bucketKey].cash += dayDownPayAmt;
+          } else if (dayDownPayMode.includes("upi") || dayDownPayMode.includes("phonepe") || dayDownPayMode.includes("gpay") || dayDownPayMode.includes("paytm") || dayDownPayMode.includes("qr")) {
+            dailyRevenueMap[bucketKey].upi += dayDownPayAmt;
+          } else if (dayDownPayMode.includes("card") || dayDownPayMode.includes("pos") || dayDownPayMode.includes("debit") || dayDownPayMode.includes("swipe")) {
+            dailyRevenueMap[bucketKey].card += dayDownPayAmt;
+          } else if (dayDownPayMode.includes("online") || dayDownPayMode.includes("bank") || dayDownPayMode.includes("netbanking") || dayDownPayMode.includes("neft") || dayDownPayMode.includes("rtgs") || dayDownPayMode.includes("imps")) {
+            dailyRevenueMap[bucketKey].online += dayDownPayAmt;
+          } else {
+            dailyRevenueMap[bucketKey].cash += dayDownPayAmt;
+          }
+        }
+        if (!disbursedInvoiceNumbers.has(inv.invoiceNumber)) {
+          dailyRevenueMap[bucketKey].finance += dayFinancedAmt;
+        }
       } else {
-        dailyRevenueMap[bucketKey].finance += inv.total || 0;
+        const pMode = (inv.paymentMode || "").toLowerCase();
+        if (pMode.includes("cash")) {
+          dailyRevenueMap[bucketKey].cash += inv.total || 0;
+        } else if (pMode.includes("upi") || pMode.includes("phonepe") || pMode.includes("gpay") || pMode.includes("paytm") || pMode.includes("qr")) {
+          dailyRevenueMap[bucketKey].upi += inv.total || 0;
+        } else if (pMode.includes("card") || pMode.includes("pos") || pMode.includes("debit") || pMode.includes("swipe")) {
+          dailyRevenueMap[bucketKey].card += inv.total || 0;
+        } else if (pMode.includes("online") || pMode.includes("bank") || pMode.includes("netbanking") || pMode.includes("neft") || pMode.includes("rtgs") || pMode.includes("imps")) {
+          dailyRevenueMap[bucketKey].online += inv.total || 0;
+        }
       }
 
       if (due > 0 || inv.status === "pending" || inv.status === "partial" || inv.status === "unpaid") {

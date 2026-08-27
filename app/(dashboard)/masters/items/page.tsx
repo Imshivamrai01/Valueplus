@@ -47,6 +47,8 @@ interface ItemFormData {
   purchasePrice: string;
   sellingPrice: string;
   minSellingPrice: string;
+  maxDiscountPercent: string;
+  maxDiscountAmount: string;
   incentiveTargetAmount: string;
   incentiveAmount: string;
   incentiveType: string;
@@ -71,6 +73,8 @@ const EMPTY_FORM: ItemFormData = {
   purchasePrice: "",
   sellingPrice: "",
   minSellingPrice: "",
+  maxDiscountPercent: "",
+  maxDiscountAmount: "",
   incentiveTargetAmount: "",
   incentiveAmount: "0",
   incentiveType: "fixed",
@@ -314,6 +318,8 @@ function ItemsPageContent() {
       purchasePrice: String(item.purchasePrice || ""), 
       sellingPrice: String(item.sellingPrice || ""),
       minSellingPrice: String(item.minSellingPrice || item.purchasePrice || ""),
+      maxDiscountPercent: String(item.maxDiscountPercent || ""),
+      maxDiscountAmount: String(item.maxDiscountAmount || ""),
       incentiveTargetAmount: String(item.incentiveTargetAmount || item.sellingPrice || ""),
       incentiveAmount: String(item.incentiveAmount || item.incentiveValue || 0),
       incentiveType: item.incentiveType || "fixed",
@@ -463,6 +469,8 @@ function ItemsPageContent() {
       purchasePrice: Number(formData.purchasePrice),
       sellingPrice: Number(formData.sellingPrice),
       minSellingPrice: Number(formData.minSellingPrice) || Number(formData.purchasePrice) || 0,
+      maxDiscountPercent: Number(formData.maxDiscountPercent) || 0,
+      maxDiscountAmount: Number(formData.maxDiscountAmount) || 0,
       incentiveTargetAmount: Number(formData.incentiveTargetAmount) || Number(formData.sellingPrice) || 0,
       incentiveAmount: Number(formData.incentiveAmount) || Number(formData.incentiveValue) || 0,
       incentiveType: formData.incentiveType || "fixed",
@@ -1271,6 +1279,30 @@ function ItemsPageContent() {
                     placeholder="e.g. 135000"
                     value={formData.minSellingPrice}
                     onChange={(e) => setFormData((f) => ({ ...f, minSellingPrice: e.target.value }))}
+                    className="bg-amber-50/50 border-amber-300 font-mono font-semibold"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-amber-700 flex items-center gap-1">
+                    Max Discount (%) <span className="text-[10px] text-amber-600 font-normal">(Hard Cap)</span>
+                  </Label>
+                  <Input
+                    type="number"
+                    placeholder="e.g. 10"
+                    value={formData.maxDiscountPercent}
+                    onChange={(e) => setFormData((f) => ({ ...f, maxDiscountPercent: e.target.value }))}
+                    className="bg-amber-50/50 border-amber-300 font-mono font-semibold"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-amber-700 flex items-center gap-1">
+                    Max Discount (₹) <span className="text-[10px] text-amber-600 font-normal">(Hard Cap)</span>
+                  </Label>
+                  <Input
+                    type="number"
+                    placeholder="e.g. 500"
+                    value={formData.maxDiscountAmount}
+                    onChange={(e) => setFormData((f) => ({ ...f, maxDiscountAmount: e.target.value }))}
                     className="bg-amber-50/50 border-amber-300 font-mono font-semibold"
                   />
                 </div>

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { 
   Receipt, Users, CreditCard, Sparkles, ShoppingCart, Plus, Trash2, Printer,
-  XCircle, Phone, UserCheck, UserPlus, X, Shield, AlertTriangle, FileText, CheckCircle2, Truck, Clock
+  XCircle, Phone, UserCheck, UserPlus, X, Shield, AlertTriangle, FileText, CheckCircle2, Truck, Clock, ChevronsDownUp
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -285,12 +285,24 @@ export function InvoiceCreationModal({
 
   const [activeSuggestRow, setActiveSuggestRow] = useState<number | null>(null);
 
-  // Admin PIN Floor Price Override States
+  // Filled-in product rows collapse to a compact single line (like Vyapaar) so many
+  // products can be added quickly without the list growing too tall.
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
+
+  // Scroll/focus the row just added via "Add Product Item" so the cashier can keep
+  // adding products without manually scrolling down each time.
+  const [justAddedId, setJustAddedId] = useState<string | null>(null);
+  const lastRowRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (justAddedId) {
+      lastRowRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [justAddedId]);
+
+  // Admin PIN Floor Price Override States — asked once at submit time, covering every
+  // below-floor line item at once, rather than interrupting per keystroke.
   const [pinPrompt, setPinPrompt] = useState<{
-    idx: number;
-    proposedRate: number;
-    minPrice: number;
-    itemName: string;
+    items: { idx: number; proposedRate: number; minPrice: number; itemName: string }[];
   } | null>(null);
   const [enteredPin, setEnteredPin] = useState("");
   const [pinError, setPinError] = useState(false);
@@ -434,6 +446,8 @@ export function InvoiceCreationModal({
             qty,
             rate,
             minSellingPrice: matchedCatalog?.minSellingPrice || 0,
+            maxDiscountPercent: matchedCatalog?.maxDiscountPercent || 0,
+            maxDiscountAmount: matchedCatalog?.maxDiscountAmount || 0,
             incentiveTargetAmount: matchedCatalog?.incentiveTargetAmount || 0,
             incentiveAmount: matchedCatalog?.incentiveAmount || 0,
             adminApprovedRate: false,
@@ -463,6 +477,8 @@ export function InvoiceCreationModal({
             qty: 1,
             rate: Number(est.total) || 1000,
             minSellingPrice: 0,
+            maxDiscountPercent: 0,
+            maxDiscountAmount: 0,
             incentiveTargetAmount: 0,
             incentiveAmount: 0,
             adminApprovedRate: false,
@@ -589,20 +605,30 @@ export function InvoiceCreationModal({
   };
 
   const addLineItem = () => {
+    const newId = String(Date.now());
+    setJustAddedId(newId);
+    // Collapse any already-filled-in rows so the list stays compact as more are added.
+    setCollapsedIds(prev => {
+      const next = new Set(prev);
+      billingForm.lineItems.forEach((it) => { if (it.name) next.add(it.id); });
+      return next;
+    });
     setBillingForm((prev) => ({
       ...prev,
       lineItems: [
         ...prev.lineItems,
-        { 
-          id: String(Date.now()), 
-          name: "", 
+        {
+          id: newId,
+          name: "",
           itemCode: "", 
           vpCode: "", 
           serialNumber: "", 
           batchNumber: "", 
           qty: 1, 
-          rate: 0, 
+          rate: 0,
           minSellingPrice: 0,
+          maxDiscountPercent: 0,
+          maxDiscountAmount: 0,
           incentiveTargetAmount: 0,
           incentiveAmount: 0,
           adminApprovedRate: false,
@@ -666,43 +692,37 @@ export function InvoiceCreationModal({
     setBillingForm((prev) => ({ ...prev, lineItems: updated }));
   };
 
-  // Rate change attempt with floor price protection & Admin PIN prompt
-  const handleRateChangeAttempt = (idx: number, newRate: number) => {
+  // Discount is hard-capped per product (admin-configured) — no PIN bypass, just clamp.
+  const handleDiscountChangeAttempt = (idx: number, newDiscount: number) => {
     const item = billingForm.lineItems[idx];
-    const minPrice = Number(item.minSellingPrice) || 0;
+    const capAmt = Number(item.maxDiscountAmount) > 0 ? Number(item.maxDiscountAmount) : Infinity;
+    const capPct = Number(item.maxDiscountPercent) > 0 ? (Number(item.rate) || 0) * Number(item.maxDiscountPercent) / 100 : Infinity;
+    const effectiveCap = Math.min(capAmt, capPct);
 
-    // Check if new rate is below min allowed price and not authorized yet
-    if (minPrice > 0 && newRate < minPrice && !item.adminApprovedRate) {
-      setPinPrompt({
-        idx,
-        proposedRate: newRate,
-        minPrice,
-        itemName: item.name || "Selected Product",
-      });
-      setEnteredPin("");
-      setPinError(false);
+    if (isFinite(effectiveCap) && newDiscount > effectiveCap) {
+      toast.warning(`Max discount for "${item.name || "this product"}" is ₹${effectiveCap.toFixed(2)}. Capped.`);
+      handleLineItemChange(idx, "discount", effectiveCap);
       return;
     }
 
-    handleLineItemChange(idx, "rate", newRate);
+    handleLineItemChange(idx, "discount", newDiscount);
   };
 
-  const handleVerifyAdminPin = () => {
+  const handleVerifyAdminPin = async () => {
     const ADMIN_PIN = "1234";
     if (enteredPin.trim() === ADMIN_PIN) {
       if (pinPrompt) {
-        const updated = [...billingForm.lineItems];
-        updated[pinPrompt.idx] = {
-          ...updated[pinPrompt.idx],
-          rate: pinPrompt.proposedRate,
-          adminApprovedRate: true,
-        };
-        setBillingForm((prev) => ({ ...prev, lineItems: updated }));
-        toast.success(`✅ Admin Authorization Approved! Below-floor rate ₹${pinPrompt.proposedRate} unlocked for ${pinPrompt.itemName}`);
+        const approvedIdx = new Set(pinPrompt.items.map((i) => i.idx));
+        const updatedLineItems = billingForm.lineItems.map((it, i) =>
+          approvedIdx.has(i) ? { ...it, adminApprovedRate: true } : it
+        );
+        setBillingForm((prev) => ({ ...prev, lineItems: updatedLineItems }));
+        toast.success(`✅ Admin Authorization Approved for ${pinPrompt.items.length} item(s) below floor price!`);
+        setPinPrompt(null);
+        setEnteredPin("");
+        setPinError(false);
+        await proceedToFinalize(updatedLineItems);
       }
-      setPinPrompt(null);
-      setEnteredPin("");
-      setPinError(false);
     } else {
       setPinError(true);
       toast.error("❌ Invalid Admin PIN! Cannot bill below minimum price without supervisor authorization.");
@@ -727,6 +747,8 @@ export function InvoiceCreationModal({
       name: prod.name,
       rate: prod.sellingPrice || prod.rate || 0,
       minSellingPrice: prod.minSellingPrice || prod.purchasePrice || 0,
+      maxDiscountPercent: prod.maxDiscountPercent || 0,
+      maxDiscountAmount: prod.maxDiscountAmount || 0,
       incentiveTargetAmount: prod.incentiveTargetAmount || prod.sellingPrice || 0,
       incentiveAmount: prod.incentiveAmount || prod.incentiveValue || 0,
       incentiveType: prod.incentiveType || "fixed",
@@ -761,9 +783,9 @@ export function InvoiceCreationModal({
         return { isOffline: true, data: offlineRecord };
       }
 
-      if (payload.type === "estimate") {
+      if (mode === "estimate") {
         try {
-          await fetch("/api/estimates", {
+          const estRes = await fetch("/api/estimates", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -777,17 +799,29 @@ export function InvoiceCreationModal({
               createdBy: payload.createdBy,
               date: payload.date,
               expiryDate: payload.dueDate,
-              items: payload.items,
-              subtotal: payload.subtotal,
-              taxableAmount: payload.taxableAmount,
-              totalGST: payload.totalGST,
+              items: (payload.items || []).map((it: any) => ({
+                itemCode: it.itemCode || it.vpCode || "GEN",
+                name: it.itemName || it.name || "Item",
+                quantity: it.quantity || 1,
+                rate: it.rate || 0,
+                tax: it.gstRate || 0,
+                amount: it.amount || 0,
+              })),
+              subTotal: payload.subtotal,
+              taxTotal: payload.totalGST,
               total: payload.total,
               status: "Sent",
               notes: payload.notes || "Official Estimate Generated",
             }),
           });
+          const estJson = await estRes.json();
+          if (!estJson.success) {
+            console.error("Error creating Estimate record:", estJson.error);
+            toast.warning("Invoice saved, but the Estimate list entry failed to save: " + (estJson.error || "unknown error"));
+          }
         } catch (e) {
           console.error("Error creating Estimate record:", e);
+          toast.warning("Invoice saved, but the Estimate list entry failed to save.");
         }
       }
 
@@ -855,7 +889,33 @@ export function InvoiceCreationModal({
       }
     }
 
-    const formattedItems = billingForm.lineItems.map(item => {
+    // Floor-price protection: ask for one Admin PIN covering every below-floor item,
+    // right at submit time — not while the cashier is still typing the rate.
+    const belowFloor = billingForm.lineItems
+      .map((it, idx) => ({ it, idx }))
+      .filter(({ it }) => Number(it.minSellingPrice) > 0 && Number(it.rate) < Number(it.minSellingPrice) && !it.adminApprovedRate);
+
+    if (belowFloor.length > 0) {
+      setPinPrompt({
+        items: belowFloor.map(({ it, idx }) => ({
+          idx,
+          proposedRate: Number(it.rate) || 0,
+          minPrice: Number(it.minSellingPrice) || 0,
+          itemName: it.name || "Selected Product",
+        })),
+      });
+      setEnteredPin("");
+      setPinError(false);
+      return;
+    }
+
+    await proceedToFinalize();
+  };
+
+  const proceedToFinalize = async (lineItemsOverride?: typeof billingForm.lineItems) => {
+    const items = lineItemsOverride || billingForm.lineItems;
+
+    const formattedItems = items.map(item => {
       // Rate is GST-inclusive: split it back into taxable + GST instead of adding GST on top.
       const grossAmount = ((Number(item.rate) || 0) - (Number(item.discount) || 0)) * (Number(item.qty) || 1);
       const lineTaxable = grossAmount / (1 + ((Number(item.gstRate) || 0) / 100));
@@ -966,7 +1026,7 @@ export function InvoiceCreationModal({
     createInvoiceMutation.mutate({
       ...billingForm,
       invoiceNumber: billingForm.invoiceNo,
-      type: mode === "credit-note" ? "credit-note" : (mode === "sales-order" ? "sales-order" : (mode === "estimate" ? "estimate" : "tax-invoice")),
+      type: mode === "credit-note" ? "credit-note" : (mode === "sales-order" ? "sales-order" : (mode === "estimate" ? "proforma" : "tax-invoice")),
       salesExecutive: isIndividualStaff ? currentUserName : (billingForm.salesExecutive || currentUserName),
       salesperson: isIndividualStaff ? currentUserName : (billingForm.salesExecutive || currentUserName),
       createdBy: currentUserName,
@@ -996,7 +1056,7 @@ export function InvoiceCreationModal({
       vehicleNumber: billingForm.vehicleNumber,
       
       salesExecutiveIncentive: billCalculations.totalIncentive,
-      adminOverridePinUsed: billingForm.lineItems.some(i => i.adminApprovedRate),
+      adminOverridePinUsed: items.some(i => i.adminApprovedRate),
       
       items: formattedItems,
       subtotal: billCalculations.subtotal,
@@ -1483,8 +1543,41 @@ export function InvoiceCreationModal({
                     return false;
                   });
 
+                  const isCollapsed = collapsedIds.has(item.id) && !!item.name;
+
+                  if (isCollapsed) {
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => setCollapsedIds(prev => { const next = new Set(prev); next.delete(item.id); return next; })}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/40 cursor-pointer transition-colors text-xs"
+                      >
+                        <span className="w-5 h-5 shrink-0 rounded-full bg-[#3F63AD] text-white flex items-center justify-center text-[10px] font-bold">
+                          {idx + 1}
+                        </span>
+                        <span className="font-bold text-slate-800 truncate flex-1 min-w-0">{item.name}</span>
+                        <span className="text-slate-500 font-mono shrink-0">{item.qty} × {formatCurrency(item.rate)}</span>
+                        {Number(item.discount) > 0 && (
+                          <span className="text-emerald-700 font-mono shrink-0">-{formatCurrency(item.discount)}</span>
+                        )}
+                        <span className="font-black text-[#3F63AD] font-mono shrink-0">{formatCurrency(lineTotal)}</span>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); removeLineItem(idx); }}
+                          className="text-red-400 hover:text-red-600 p-0.5 shrink-0"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  }
+
                   return (
-                    <div key={item.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3 relative hover:border-blue-300 transition-colors">
+                    <div
+                      key={item.id}
+                      ref={item.id === justAddedId ? lastRowRef : undefined}
+                      className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3 relative hover:border-blue-300 transition-colors"
+                    >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="w-6 h-6 rounded-full bg-[#3F63AD] text-white flex items-center justify-center text-xs font-bold">
@@ -1538,9 +1631,21 @@ export function InvoiceCreationModal({
                             </Badge>
                           )}
                         </div>
-                        <button type="button" onClick={() => removeLineItem(idx)} className="text-red-500 hover:text-red-700 p-1 flex items-center gap-1 text-xs">
-                          <Trash2 className="w-3.5 h-3.5" /> Remove
-                        </button>
+                        <div className="flex items-center gap-2">
+                          {item.name && (
+                            <button
+                              type="button"
+                              onClick={() => setCollapsedIds(prev => new Set(prev).add(item.id))}
+                              className="text-slate-500 hover:text-[#3F63AD] p-1 flex items-center gap-1 text-xs"
+                              title="Collapse this row"
+                            >
+                              <ChevronsDownUp className="w-3.5 h-3.5" /> Collapse
+                            </button>
+                          )}
+                          <button type="button" onClick={() => removeLineItem(idx)} className="text-red-500 hover:text-red-700 p-1 flex items-center gap-1 text-xs">
+                            <Trash2 className="w-3.5 h-3.5" /> Remove
+                          </button>
+                        </div>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
@@ -1553,6 +1658,7 @@ export function InvoiceCreationModal({
                             onChange={(e) => { handleLineItemChange(idx, "name", e.target.value); setActiveSuggestRow(idx); }}
                             onFocus={() => setActiveSuggestRow(idx)}
                             onBlur={() => setTimeout(() => setActiveSuggestRow(null), 300)}
+                            autoFocus={item.id === justAddedId}
                             className="h-8 text-xs bg-white border-slate-300 font-semibold"
                           />
                           {activeSuggestRow === idx && suggestions.length > 0 && (
@@ -1671,10 +1777,10 @@ export function InvoiceCreationModal({
                               </span>
                             )}
                           </div>
-                          <Input 
-                            type="number" min="0" 
-                            value={item.rate === 0 ? "" : item.rate} 
-                            onChange={(e) => handleRateChangeAttempt(idx, Math.max(0, Number(e.target.value)))} 
+                          <Input
+                            type="number" min="0"
+                            value={item.rate === 0 ? "" : item.rate}
+                            onChange={(e) => handleLineItemChange(idx, "rate", Math.max(0, Number(e.target.value)))}
                             className={cn(
                               "h-8 text-xs bg-white border-slate-300 text-right font-semibold",
                               item.adminApprovedRate && "border-emerald-500 bg-emerald-50 text-emerald-900 font-bold",
@@ -1685,11 +1791,18 @@ export function InvoiceCreationModal({
 
                         {/* DISCOUNT */}
                         <div>
-                          <Label className="text-[11px] font-semibold text-slate-700">Disc (₹)</Label>
-                          <Input 
-                            type="number" min="0" 
-                            value={item.discount === 0 ? "" : item.discount} 
-                            onChange={(e) => handleLineItemChange(idx, "discount", Math.max(0, Number(e.target.value)))} 
+                          <div className="flex items-center justify-between mb-1">
+                            <Label className="text-[11px] font-semibold text-slate-700">Disc (₹)</Label>
+                            {(item.maxDiscountAmount > 0 || item.maxDiscountPercent > 0) && (
+                              <span className="text-[8.5px] font-mono text-amber-800 bg-amber-50 px-1 rounded border border-amber-200" title="Maximum allowed discount for this product">
+                                Max: {item.maxDiscountAmount > 0 ? `₹${item.maxDiscountAmount}` : ""}{item.maxDiscountAmount > 0 && item.maxDiscountPercent > 0 ? " / " : ""}{item.maxDiscountPercent > 0 ? `${item.maxDiscountPercent}%` : ""}
+                              </span>
+                            )}
+                          </div>
+                          <Input
+                            type="number" min="0"
+                            value={item.discount === 0 ? "" : item.discount}
+                            onChange={(e) => handleDiscountChangeAttempt(idx, Math.max(0, Number(e.target.value)))}
                             className="h-8 text-xs bg-white border-slate-300 text-right font-semibold text-emerald-700"
                           />
                         </div>
@@ -1935,7 +2048,10 @@ export function InvoiceCreationModal({
                       {mode === "estimate" ? "3. TOKEN ADVANCE PAYMENT MODE SPECIFICATIONS" : "3. PAYMENT MODE SPECIFICATIONS & RECONCILIATION"}
                     </h4>
                     <div className="flex flex-wrap items-center gap-1 bg-slate-100 p-1 rounded-lg">
-                      {(["Cash", "UPI", "Credit Card", "Debit Card", "Online", "Finance", "Due / Credit"] as const).map((modeKey) => (
+                      {(mode === "estimate"
+                        ? (["Cash", "UPI", "Credit Card", "Debit Card"] as const)
+                        : (["Cash", "UPI", "Credit Card", "Debit Card", "Online", "Finance", "Due / Credit"] as const)
+                      ).map((modeKey) => (
                         <button
                           key={modeKey}
                           type="button"
@@ -2496,16 +2612,20 @@ export function InvoiceCreationModal({
           </div>
 
           <div className="p-5 space-y-4">
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs space-y-1.5">
-              <p className="font-bold text-amber-950 line-clamp-1">{pinPrompt?.itemName}</p>
-              <div className="flex justify-between text-amber-900 pt-1 border-t border-amber-200">
-                <span>Minimum Allowed Floor Price:</span>
-                <span className="font-mono font-bold">{formatCurrency(pinPrompt?.minPrice || 0)}</span>
-              </div>
-              <div className="flex justify-between text-red-700 font-bold">
-                <span>Attempted Selling Rate:</span>
-                <span className="font-mono">{formatCurrency(pinPrompt?.proposedRate || 0)}</span>
-              </div>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs space-y-2 max-h-40 overflow-y-auto">
+              {(pinPrompt?.items || []).map((it, i) => (
+                <div key={i} className={cn("space-y-1", i > 0 && "pt-2 border-t border-amber-200")}>
+                  <p className="font-bold text-amber-950 line-clamp-1">{it.itemName}</p>
+                  <div className="flex justify-between text-amber-900">
+                    <span>Minimum Allowed Floor Price:</span>
+                    <span className="font-mono font-bold">{formatCurrency(it.minPrice)}</span>
+                  </div>
+                  <div className="flex justify-between text-red-700 font-bold">
+                    <span>Attempted Selling Rate:</span>
+                    <span className="font-mono">{formatCurrency(it.proposedRate)}</span>
+                  </div>
+                </div>
+              ))}
             </div>
 
             <div className="space-y-1.5">

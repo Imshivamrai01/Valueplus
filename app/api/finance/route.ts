@@ -196,6 +196,7 @@ export async function PUT(req: Request) {
     if (remarks) updateData.remarks = remarks;
     if (body.uploadedPdfUrl) updateData.uploadedPdfUrl = body.uploadedPdfUrl;
     
+    const wasAlreadyDisbursed = financeRecord.approvalStatus === "Disbursed";
     const updated = await FinanceTransaction.findOneAndUpdate({ doId }, updateData, { new: true });
 
     // Sync status with invoice
@@ -208,7 +209,25 @@ export async function PUT(req: Request) {
         }
       );
     }
-    
+
+    // First time this DO is confirmed disbursed: record a customer-facing ledger credit.
+    // (Re-saving UTR/bank details on an already-disbursed record must NOT create a duplicate.)
+    if (updated && approvalStatus === "Disbursed" && !wasAlreadyDisbursed) {
+      const PaymentTransaction = (await import("@/models/PaymentTransaction")).default;
+      await PaymentTransaction.create({
+        transactionId: `TXN-FIN-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        partyId: updated.customerId || updated.doId,
+        partyType: "Customer",
+        partyName: updated.customerName,
+        amount: Number(actualReceivedAmount) || updated.netDisbursement,
+        paymentMode: "Finance Disbursement",
+        date: body.paymentReceivedDate || new Date().toISOString().split("T")[0],
+        referenceId: updated.invoiceNumber,
+        notes: `Bank disbursement credited for DO ${updated.doId} (${updated.financeProvider}), UTR: ${transactionRef || "-"}`,
+        type: "received",
+      });
+    }
+
     return NextResponse.json({ success: true, data: updated });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
