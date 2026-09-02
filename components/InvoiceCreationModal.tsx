@@ -249,6 +249,15 @@ export function InvoiceCreationModal({
   const [preBookingPaymentMode, setPreBookingPaymentMode] = useState<string>("UPI");
   const [preBookingTransactionRef, setPreBookingTransactionRef] = useState<string>("");
 
+  /**
+   * Local placeholder only — shown for the instant before the server responds.
+   *
+   * The real number is allocated by /api/invoices/next-number from the highest
+   * number actually stored. Deriving it here from the cached list length (plus a
+   * hardcoded +602 offset) produced numbers that already existed, and the save
+   * endpoint then returned that older invoice as a "success" — so the bill printed
+   * but was never recorded.
+   */
   const generateDocNumber = (type: string) => {
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
     if (type === "estimate") {
@@ -258,8 +267,25 @@ export function InvoiceCreationModal({
     } else if (type === "credit-note") {
       return `CN-2026-${String(invoices.filter((i:any) => i.type === "credit-note").length + 1).padStart(4, "0")}-${randomSuffix}`;
     } else {
-      return `SVAK2026RI${String(invoices.filter((i:any) => i.type !== "credit-note").length + 602).padStart(5, "0")}`;
+      return "";
     }
+  };
+
+  /** Ask the server for the next free document number. */
+  const fetchNextDocNumber = async (docMode: string): Promise<string> => {
+    const apiType =
+      docMode === "estimate" ? "estimate"
+      : docMode === "sales-order" ? "sales-order"
+      : docMode === "credit-note" ? "credit-note"
+      : "tax-invoice";
+    try {
+      const res = await fetch(`/api/invoices/next-number?type=${apiType}`);
+      const json = await res.json();
+      if (json.success && json.number) return json.number;
+    } catch (e) {
+      console.warn("Could not allocate document number from server:", e);
+    }
+    return generateDocNumber(docMode);
   };
 
   useEffect(() => {
@@ -274,14 +300,23 @@ export function InvoiceCreationModal({
   }, [isOpen, isIndividualStaff, currentUserName]);
 
   useEffect(() => {
-    if (isOpen && !billingForm.invoiceNo) {
-      setBillingForm(prev => ({
-        ...prev,
-        invoiceNo: generateDocNumber(mode),
-        salesExecutive: isIndividualStaff ? currentUserName : prev.salesExecutive
-      }));
-    }
-  }, [invoices.length, estimatesList.length, ordersList.length, isOpen, billingForm.invoiceNo, mode, isIndividualStaff, currentUserName]);
+    if (!isOpen || billingForm.invoiceNo) return;
+    let cancelled = false;
+    (async () => {
+      const number = await fetchNextDocNumber(mode);
+      if (cancelled) return;
+      setBillingForm(prev => (
+        prev.invoiceNo
+          ? prev
+          : {
+              ...prev,
+              invoiceNo: number,
+              salesExecutive: isIndividualStaff ? currentUserName : prev.salesExecutive,
+            }
+      ));
+    })();
+    return () => { cancelled = true; };
+  }, [isOpen, billingForm.invoiceNo, mode, isIndividualStaff, currentUserName]);
 
   const [activeSuggestRow, setActiveSuggestRow] = useState<number | null>(null);
 
@@ -862,7 +897,12 @@ export function InvoiceCreationModal({
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error || "Failed to generate invoice");
-      return { isOffline: false, data: json.data };
+      return {
+        isOffline: false,
+        data: json.data,
+        numberReassignedFrom: json.numberReassignedFrom,
+        warning: json.warning,
+      };
     },
     onSuccess: (result: any) => {
       if (result.isOffline) {
@@ -870,6 +910,15 @@ export function InvoiceCreationModal({
         setOfflineInvoiceToPrint(result.data);
       } else {
         toast.success(mode === "estimate" ? `Estimate ${result.data?.invoiceNumber || ""} created & recorded!` : `Invoice ${result.data?.invoiceNumber || ""} finalized successfully!`);
+        if (result.numberReassignedFrom) {
+          toast.warning(
+            `Number ${result.numberReassignedFrom} was already taken — this bill was saved as ${result.data?.invoiceNumber}.`,
+            { duration: 8000 }
+          );
+        }
+        if (result.warning) {
+          toast.warning(result.warning, { duration: 8000 });
+        }
         queryClient.invalidateQueries({ queryKey: ["invoices"] });
         queryClient.invalidateQueries({ queryKey: ["estimates"] });
         queryClient.invalidateQueries({ queryKey: ["dashboard"] });

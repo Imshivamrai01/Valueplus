@@ -56,12 +56,16 @@ export async function GET(request: Request) {
     if (warehouseParam && warehouseParam !== "all") {
       const isAshoka = warehouseParam.toLowerCase().includes("ashoka") || warehouseParam.toLowerCase().includes("kunraghat") || warehouseParam === "VP-KUN";
       if (!isAshoka) {
-        // Strict filter for other warehouses (only meaningful once that entity type is tagged)
+        // Strict filter for other warehouses (only meaningful once that entity type is tagged).
+        // If the location matches no invoice at all, keep the full set rather than
+        // reporting an empty dashboard — the branch selector defaults to a warehouse
+        // name ("Main Central Warehouse") that no bill is tagged with.
         if (invoicesTagged) {
-          allInvoices = allInvoices.filter((inv: any) =>
+          const scopedInvoices = allInvoices.filter((inv: any) =>
             inv.warehouse?.toLowerCase() === warehouseParam.toLowerCase() ||
             inv.branchName?.toLowerCase() === warehouseParam.toLowerCase()
           );
+          if (scopedInvoices.length > 0) allInvoices = scopedInvoices;
         }
         if (itemsTagged) {
           allItems = allItems.filter((it: any) =>

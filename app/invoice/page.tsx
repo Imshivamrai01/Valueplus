@@ -110,6 +110,7 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
       );
 
       return {
+        isSpecimen: false,
         isEstimate: isEst,
         companyName: "M/S ASHOKA ENTERPRISES",
         companyAddress: "H. NO. 116, NEAR SHANTI MARRIAGE HOUSE DEORIA ROAD, KUNRAGHAT GORAKHPUR",
@@ -250,8 +251,15 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
         
         paymentMode: invoice.paymentMode || "Cash",
         payments: Array.isArray(invoice.payments) ? invoice.payments : [],
-        paidAmount: invoice.paidAmount || invoice.total || 25500.00,
-        balanceAmount: invoice.balanceAmount || 0,
+        // Never invent a paid figure. `paidAmount || total || 25500` meant a bill with
+        // nothing collected printed as fully paid, and a missing value printed a
+        // hardcoded ₹25,500 from the demo specimen — so the amount shown had no
+        // relation to what the customer actually handed over.
+        paidAmount: Number(invoice.paidAmount) || 0,
+        balanceAmount:
+          invoice.balanceAmount !== undefined && invoice.balanceAmount !== null
+            ? Number(invoice.balanceAmount)
+            : Math.max(0, (Number(invoice.total) || 0) - (Number(invoice.paidAmount) || 0)),
         vehicleNumber: invoice.vehicleNumber || "",
         financeProvider: invoice.financeProvider || "",
         financeDoId: invoice.financeDoId || "",
@@ -271,8 +279,12 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
       };
     }
 
-    // Default reference specimen matching VP.pdf
+    // Default reference specimen matching VP.pdf. Rendered only when no invoice was
+    // supplied — it carries placeholder figures (₹25,500 LG TV), so it is flagged and
+    // watermarked to make sure it can never be mistaken for, or handed over as, a real bill.
     return {
+      isSpecimen: true,
+      isEstimate: false,
       companyName: "M/S ASHOKA ENTERPRISES",
       companyAddress: "H. NO. 116, NEAR SHANTI MARRIAGE HOUSE DEORIA ROAD, KUNRAGHAT GORAKHPUR",
       companyPhone: "9140860604",
@@ -414,6 +426,21 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
 
   return (
     <div className="min-h-screen bg-slate-100 p-4 md:p-8 print:p-0 print:min-h-0 print:bg-white text-slate-900 font-sans">
+      {/* No invoice was supplied, so the layout specimen with placeholder figures is
+          being shown. Say so loudly, on screen and on paper, so it is never mistaken
+          for a real bill. */}
+      {(activeData as any).isSpecimen && (
+        <div className="max-w-[860px] mx-auto mb-4 rounded-xl border-2 border-dashed border-amber-500 bg-amber-50 px-4 py-3">
+          <p className="text-sm font-black text-amber-900 uppercase tracking-wide">
+            ⚠️ Specimen / Layout Preview — not a real invoice
+          </p>
+          <p className="text-xs text-amber-800 mt-0.5">
+            No invoice was loaded, so placeholder figures are shown. Do not issue this to a customer.
+            Open a bill from Sales → Invoices to print the real document.
+          </p>
+        </div>
+      )}
+
       {/* ─── ACTION BAR (HIDDEN IN PRINT) ────────────────────────── */}
       <div className="max-w-[860px] mx-auto mb-6 bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-3 print:hidden">
         <div className="flex items-center gap-2">

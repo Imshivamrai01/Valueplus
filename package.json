@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "next dev",
     "dev:turbo": "next dev --turbopack",
+    "dev:isolated": "node scripts/next-isolated.js dev",
     "build": "next build",
+    "build:verify": "node scripts/next-isolated.js build",
     "start": "next start",
     "lint": "next lint"
   },

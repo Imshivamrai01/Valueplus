@@ -1,9 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Production builds default to `.next`, so deploys are unchanged. Setting
-  // BUILD_DIST_DIR lets a verification build write somewhere else, so running
-  // `next build` never overwrites the chunks a running `next dev` is serving
-  // (which shows up in the browser as ChunkLoadError).
+  // Production builds default to `.next`, so deploys are unchanged.
+  //
+  // Set BUILD_DIST_DIR to give a second Next process its own output directory.
+  // This applies to `next dev` just as much as `next build`: ANY two Next
+  // processes sharing one `.next` will overwrite each other's chunk manifests,
+  // and the browser then fails with ChunkLoadError. Use `npm run dev:isolated`
+  // (or set BUILD_DIST_DIR yourself) whenever a second server runs alongside
+  // your main `npm run dev`.
   distDir: process.env.BUILD_DIST_DIR || ".next",
   images: {
     remotePatterns: [],

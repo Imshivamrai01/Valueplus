@@ -32,12 +32,18 @@ export interface ICustomer extends Document {
   status: "active" | "inactive";
 }
 
+// Counter billing must never be blocked by an address field a walk-in customer
+// simply didn't give. `required: true` on pincode rejected the empty string the
+// billing flow sends, so creating the customer threw and took the whole invoice
+// POST down with it — bills silently failed to save. These stay optional with
+// empty defaults; the Customer master form does its own validation for the
+// fields it genuinely needs.
 const AddressSchema = new Schema({
-  line1: { type: String, required: true },
-  line2: { type: String },
-  city: { type: String, required: true },
-  state: { type: String, required: true },
-  pincode: { type: String, required: true },
+  line1: { type: String, default: "" },
+  line2: { type: String, default: "" },
+  city: { type: String, default: "" },
+  state: { type: String, default: "" },
+  pincode: { type: String, default: "" },
   country: { type: String, default: "India" },
 });
 

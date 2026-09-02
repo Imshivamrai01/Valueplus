@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import mongoose from "mongoose";
 import connectToDatabase from "@/lib/db";
 import Invoice from "@/models/Invoice";
 import Customer from "@/models/Customer";
@@ -16,24 +17,41 @@ export async function GET(req: Request) {
     
     const query: any = type ? { type } : { type: { $ne: "sales-order" } };
 
+    // Invoices are not tagged with a warehouse anywhere in the billing flow, so a
+    // strict location filter matched nothing and returned an empty list — the branch
+    // selector defaults to "Main Central Warehouse", which hid every bill in the app.
+    // Filter only when it actually selects something; otherwise show the full ledger.
+    const SHOWROOM_PATTERN = /showroom|ashoka|kunraghat|vp-?kun|main\s*store/i;
+    let warehouseScoped = false;
+
     if (warehouse && warehouse !== "all") {
-      const isAshoka = warehouse.toLowerCase().includes("ashoka") || warehouse.toLowerCase().includes("kunraghat") || warehouse === "VP-KUN";
-      if (!isAshoka) {
-        query.$or = [
-          { warehouse: { $regex: new RegExp(`^${warehouse.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, "i") } },
-          { branchName: { $regex: new RegExp(`^${warehouse.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, "i") } },
-        ];
-      } else {
-        query.$or = [
-          { warehouse: { $exists: false } },
-          { warehouse: "" },
-          { warehouse: { $regex: /ashoka|kunraghat/i } }
-        ];
+      const escaped = warehouse.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const locationClause = SHOWROOM_PATTERN.test(warehouse)
+        ? [
+            { warehouse: { $exists: false } },
+            { warehouse: "" },
+            { warehouse: null },
+            { warehouse: { $regex: SHOWROOM_PATTERN } },
+          ]
+        : [
+            { warehouse: { $regex: new RegExp(`^${escaped}$`, "i") } },
+            { branchName: { $regex: new RegExp(`^${escaped}$`, "i") } },
+          ];
+
+      const scopedCount = await Invoice.countDocuments({ ...query, $or: locationClause });
+      if (scopedCount > 0) {
+        query.$or = locationClause;
+        warehouseScoped = true;
       }
     }
-    
+
     const invoices = await Invoice.find(query).sort({ createdAt: -1 }).lean();
-    return NextResponse.json({ success: true, data: invoices });
+    return NextResponse.json({
+      success: true,
+      data: invoices,
+      warehouseScoped,
+      warehouseRequested: warehouse || "all",
+    });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
@@ -45,36 +63,92 @@ export async function POST(req: Request) {
     await connectToDatabase();
     
     // 1. Customer Auto-Add Logic & Offline Sync Reconciliation
+    //
+    // A problem here must never lose the bill. Previously an exception thrown while
+    // creating the customer (an address field failing validation, a duplicate code
+    // under concurrent billing) propagated out and failed the whole POST with a 400,
+    // so the invoice was never written even though the counter had taken the money.
     if (body.customerId === "new" || !body.customerId || body.customerId.startsWith("OFFLINE-CUST-")) {
-      let matchedCust = body.customerPhone ? await Customer.findOne({ phone: body.customerPhone }) : null;
-      if (!matchedCust) {
-        const count = await Customer.countDocuments();
-        const nextNum = count + 1;
-        const custCode = `CUST-${String(nextNum).padStart(3, "0")}`;
-        
-        matchedCust = await Customer.create({
-          code: custCode,
-          name: body.customerName,
-          phone: body.customerPhone || "0000000000",
-          email: body.customerEmail || "",
-          gstNumber: body.customerGST || "",
-          billingAddress: {
-            line1: body.customerAddress || "Address not provided",
-            city: body.customerCity || "City Not Specified",
-            state: body.placeOfSupply ? body.placeOfSupply.replace(/ —.*$/, '').replace(/ \(\d+\)/, '').trim() : "Unknown",
-            pincode: body.customerPin || "",
-            country: "India"
-          }
-        });
+      try {
+        let matchedCust = body.customerPhone ? await Customer.findOne({ phone: body.customerPhone }) : null;
+        if (!matchedCust) {
+          // Derive the code from the highest existing one rather than the document
+          // count, so a deleted customer can't cause a duplicate-key collision.
+          const last = await Customer.findOne({ code: /^CUST-\d+$/ }).sort({ code: -1 }).lean();
+          const lastNum = last?.code ? parseInt(String(last.code).replace("CUST-", ""), 10) || 0 : 0;
+          const custCode = `CUST-${String(lastNum + 1).padStart(3, "0")}`;
+
+          matchedCust = await Customer.create({
+            code: custCode,
+            name: body.customerName || "Walk-in Customer",
+            phone: body.customerPhone || "0000000000",
+            email: body.customerEmail || "",
+            gstNumber: body.customerGST || "",
+            billingAddress: {
+              line1: body.customerAddress || "Address not provided",
+              city: body.customerCity || "City Not Specified",
+              state: body.placeOfSupply ? body.placeOfSupply.replace(/ —.*$/, '').replace(/ \(\d+\)/, '').trim() : "Unknown",
+              pincode: body.customerPin || "",
+              country: "India"
+            }
+          });
+        }
+        body.customerId = matchedCust._id.toString();
+      } catch (custErr: any) {
+        // Fall back to a synthetic id so the sale is still recorded; the bill matters
+        // more than the customer master row, and the name/phone are on the invoice.
+        console.error("Customer auto-add failed, saving invoice anyway:", custErr?.message);
+        body.customerId = body.customerId && !String(body.customerId).startsWith("OFFLINE-CUST-")
+          ? body.customerId
+          : new mongoose.Types.ObjectId().toString();
       }
-      body.customerId = matchedCust._id.toString();
     }
     
-    // 2. Create Invoice with offline deduplication check
-    const existingInvoice = await Invoice.findOne({ invoiceNumber: body.invoiceNumber });
+    // 2. Number collision handling.
+    //
+    // This dedupe exists so an offline bill re-posted on reconnect isn't duplicated.
+    // But it used to return the stored invoice for ANY number match, so when the
+    // client generated a number that already existed the counter got {success:true}
+    // plus somebody else's older bill — the new sale was silently discarded and
+    // never appeared in the list or on the dashboard.
+    //
+    // A genuine resync is the same bill: same customer, same amount, same date.
+    // Anything else is a fresh sale that merely collided, and must get its own
+    // number rather than being thrown away.
+    let numberReassignedFrom: string | null = null;
+    const existingInvoice: any = await Invoice.findOne({ invoiceNumber: body.invoiceNumber }).lean();
     if (existingInvoice) {
-      return NextResponse.json({ success: true, data: existingInvoice, message: "Invoice already synced" });
-    }    // Generate 4-digit Delivery OTP if delayed delivery is chosen
+      const sameBill =
+        String(existingInvoice.customerPhone || "") === String(body.customerPhone || "") &&
+        Math.abs(Number(existingInvoice.total || 0) - Number(body.total || 0)) < 1 &&
+        String(existingInvoice.date || "").slice(0, 10) === String(body.date || "").slice(0, 10);
+
+      if (sameBill) {
+        return NextResponse.json({ success: true, data: existingInvoice, message: "Invoice already synced" });
+      }
+
+      // Collision: allocate the next free number from the database.
+      const prefixMatch = String(body.invoiceNumber || "").match(/^([A-Za-z0-9-]*?)(\d+)(-\d+)?$/);
+      const prefix = prefixMatch ? prefixMatch[1] : "SVAK2026RI";
+      const width = prefixMatch ? prefixMatch[2].length : 5;
+      const siblings = await Invoice.find(
+        { invoiceNumber: { $regex: `^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\d+` } },
+        { invoiceNumber: 1 }
+      ).lean();
+      let max = 0;
+      for (const s of siblings as any[]) {
+        const d = String(s.invoiceNumber).slice(prefix.length).match(/^\d+/);
+        if (d) max = Math.max(max, parseInt(d[0], 10) || 0);
+      }
+      const reassigned = `${prefix}${String(max + 1).padStart(width, "0")}`;
+      console.warn(
+        `Invoice number ${body.invoiceNumber} already belongs to a different bill; reassigned to ${reassigned}`
+      );
+      numberReassignedFrom = body.invoiceNumber;
+      body.invoiceNumber = reassigned;
+    }
+
+    // Generate 4-digit Delivery OTP if delayed delivery is chosen
     if (body.dispatchType === "delayed_delivery" && !body.deliveryOtp) {
       body.deliveryOtp = Math.floor(1000 + Math.random() * 9000).toString();
       body.deliveryStatus = "pending_dispatch";
@@ -507,10 +581,29 @@ export async function POST(req: Request) {
         }
       }
 
-      return NextResponse.json({ success: true, data: invoice });
+      return NextResponse.json({
+        success: true,
+        data: invoice,
+        ...(numberReassignedFrom
+          ? {
+              numberReassignedFrom,
+              message: `Number ${numberReassignedFrom} was already in use; this bill was saved as ${invoice.invoiceNumber}.`,
+            }
+          : {}),
+      });
     } catch (error: any) {
-      await Invoice.findByIdAndDelete(invoice._id);
-      throw new Error(error.message);
+      // The invoice itself is already written and the customer has been billed.
+      // Deleting it because a follow-up step failed (stock decrement, serial
+      // allocation, estimate linking) threw the sale away entirely — the bill
+      // vanished from the list and the dashboard with no trace. Keep the record and
+      // report what didn't finish so it can be reconciled.
+      console.error(`Post-save step failed for ${invoice.invoiceNumber}:`, error?.message);
+      return NextResponse.json({
+        success: true,
+        data: invoice,
+        warning: `Invoice saved, but a follow-up step did not complete: ${error?.message || "unknown error"}`,
+        ...(numberReassignedFrom ? { numberReassignedFrom } : {}),
+      });
     }
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 400 });
