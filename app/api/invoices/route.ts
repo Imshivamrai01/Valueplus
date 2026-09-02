@@ -4,6 +4,7 @@ import Invoice from "@/models/Invoice";
 import Customer from "@/models/Customer";
 import Item from "@/models/Item";
 import Estimate from "@/models/Estimate";
+import { derivePaymentModeLabel, isCollectedMode } from "@/lib/payment-modes";
 
 export async function GET(req: Request) {
   try {
@@ -79,11 +80,65 @@ export async function POST(req: Request) {
       body.deliveryStatus = "pending_dispatch";
     }
 
+    // ─── SPLIT PAYMENT NORMALISATION ────────────────────────────────────────
+    // A bill can be settled across several modes (₹10,000 cash + ₹40,000 online).
+    // The rows are the source of truth, so paymentMode/paidAmount/balanceAmount are
+    // derived here rather than trusted from the client. Invoices posted without a
+    // `payments` array are untouched and behave exactly as before.
+    const splitRows = Array.isArray(body.payments)
+      ? body.payments
+          .map((p: any) => ({
+            mode: String(p?.mode || "Cash"),
+            amount: Math.max(0, Number(p?.amount) || 0),
+            txnId: p?.txnId || "",
+            reference: p?.reference || "",
+            receivedBy: p?.receivedBy || "",
+            notes: p?.notes || "",
+          }))
+          .filter((p: any) => p.amount > 0)
+      : [];
+
+    const isSplitInvoice = splitRows.length > 1;
+
+    if (splitRows.length > 0) {
+      const invoiceTotal = Number(body.total) || 0;
+      const allocated = splitRows.reduce((s: number, p: any) => s + p.amount, 0);
+      // Allow a rupee of tolerance for GST rounding, but reject a genuine mismatch
+      // rather than silently saving a bill whose parts do not add up.
+      if (Math.abs(allocated - invoiceTotal) > 1) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Split payments (₹${allocated.toFixed(2)}) do not match the invoice total (₹${invoiceTotal.toFixed(2)}).`,
+          },
+          { status: 400 }
+        );
+      }
+
+      body.payments = splitRows;
+      body.paymentMode = derivePaymentModeLabel(splitRows);
+      // Only Cash/UPI/Card/Online are money in hand. Finance and Due rows are
+      // receivables and stay in the balance, matching how financeDownPayment and
+      // dueAdvanceAmount have always behaved.
+      const collected = splitRows
+        .filter((p: any) => isCollectedMode(p.mode))
+        .reduce((s: number, p: any) => s + p.amount, 0);
+      body.paidAmount = collected;
+      body.balanceAmount = Math.max(0, invoiceTotal - collected);
+      if (body.balanceAmount <= 1 && collected > 0) body.status = body.status === "draft" ? "draft" : "paid";
+      else if (collected > 0) body.status = body.status === "draft" ? "draft" : "partial";
+    }
+
     const invoice = await Invoice.create(body);
-    
+
     try {
       // 2.5 Create Payment Transaction if paidAmount > 0
-      if (body.paidAmount > 0) {
+      //
+      // Skipped for split invoices: the per-mode breakdown already lives on the
+      // invoice, and a single receipt could only carry one mode ("Multiple"), which
+      // the dashboard's receipt loop would bucket entirely as Online. Single-mode
+      // invoices still create their receipt exactly as before.
+      if (body.paidAmount > 0 && !isSplitInvoice) {
         const PaymentTransaction = (await import("@/models/PaymentTransaction")).default;
         await PaymentTransaction.create({
           transactionId: `TXN-${Date.now()}-${Math.floor(Math.random() * 1000)}`,

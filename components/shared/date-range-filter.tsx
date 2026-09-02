@@ -96,6 +96,7 @@ interface DateRangeFilterProps {
   className?: string;
   size?: "sm" | "default";
   showIcon?: boolean;
+  placeholder?: string;
 }
 
 export function DateRangeFilter({
@@ -104,6 +105,7 @@ export function DateRangeFilter({
   className = "w-[140px]",
   size = "sm",
   showIcon = false,
+  placeholder = "Select Date",
 }: DateRangeFilterProps) {
   const [customModalOpen, setCustomModalOpen] = useState(false);
   const [tempStart, setTempStart] = useState(() => new Date().toISOString().split("T")[0]);
@@ -129,7 +131,7 @@ export function DateRangeFilter({
         <SelectTrigger className={`h-8 text-xs font-semibold bg-slate-50 border-slate-300 text-slate-700 shadow-sm hover:bg-slate-100/80 transition-colors ${className}`}>
           <div className="flex items-center gap-1.5 truncate">
             {showIcon && <CalendarIcon className="w-3.5 h-3.5 text-slate-500 shrink-0" />}
-            <SelectValue placeholder="Select Date" />
+            <SelectValue placeholder={placeholder} />
           </div>
         </SelectTrigger>
         <SelectContent className="text-xs">

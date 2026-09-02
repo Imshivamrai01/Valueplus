@@ -126,6 +126,28 @@ function SalesInvoicesContent() {
     return [...pending, ...invoices];
   }, [invoices, offlineInvoices]);
 
+  // Single source of truth for the visible rows. The table body and the pagination
+  // footer used to filter separately — the footer left out the date range, so it
+  // reported "60 entries" while the body rendered none for a range with no invoices.
+  const filteredInvoices = useMemo(() => {
+    const q = search.toLowerCase();
+    return allInvoices.filter((inv: any) => {
+      const matchesSearch =
+        !q ||
+        inv.invoiceNumber?.toLowerCase().includes(q) ||
+        inv.customerName?.toLowerCase().includes(q);
+      const matchesStatus = statusFilter === "all" || inv.status === statusFilter;
+      const matchesDate = isDateInRange(inv.date || inv.createdAt, dateRange.start, dateRange.end);
+      return matchesSearch && matchesStatus && matchesDate;
+    });
+  }, [allInvoices, search, statusFilter, dateRange.start, dateRange.end]);
+
+  // A filter change can leave `page` past the end of the new result set, which renders
+  // an empty table with no way back except paging backwards.
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter, dateRange.start, dateRange.end]);
+
   const { data: customers = [] } = useQuery({
     queryKey: ["customers"],
     queryFn: async () => {
@@ -234,7 +256,11 @@ function SalesInvoicesContent() {
   return (
     <PageShell
       title="Invoices & GST Billing"
-      subtitle={`${allInvoices.length} GST Tax Invoices (${offlineInvoices.length} queued offline)`}
+      subtitle={
+        filteredInvoices.length === allInvoices.length
+          ? `${allInvoices.length} GST Tax Invoices (${offlineInvoices.length} queued offline)`
+          : `${filteredInvoices.length} of ${allInvoices.length} GST Tax Invoices shown • ${dateFilter} (${offlineInvoices.length} queued offline)`
+      }
       breadcrumbs={[{ label: "Sales", href: "/sales/invoices" }, { label: "Invoices" }]}
       actions={
         <>
@@ -342,15 +368,46 @@ function SalesInvoicesContent() {
                 <tr><td colSpan={11} className="p-0"><TableShimmer rows={7} cols={11} /></td></tr>
               ) : allInvoices.length === 0 ? (
                 <tr><td colSpan={11} className="py-16 text-center text-muted-foreground">No invoices found</td></tr>
+              ) : filteredInvoices.length === 0 ? (
+                <tr>
+                  <td colSpan={11} className="py-16 text-center">
+                    <p className="text-sm font-semibold text-foreground">
+                      No invoices match the current filters
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {allInvoices.length} invoice{allInvoices.length === 1 ? "" : "s"} exist, but none fall in
+                      {" "}<span className="font-semibold">{dateFilter}</span>
+                      {statusFilter !== "all" && <> with status <span className="font-semibold">{statusFilter}</span></>}
+                      {search && <> matching “{search}”</>}.
+                    </p>
+                    <div className="flex items-center justify-center gap-2 mt-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setDateFilter("Last Year");
+                          setDateRange(resolveDateRange("Last Year"));
+                        }}
+                      >
+                        Widen to Last Year
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setSearch("");
+                          setStatusFilter("all");
+                          setDateFilter("Last Year");
+                          setDateRange(resolveDateRange("Last Year"));
+                        }}
+                      >
+                        Clear all filters
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
               ) : (
-                allInvoices
-                  .filter((inv: any) => {
-                    const matchesSearch = inv.invoiceNumber?.toLowerCase().includes(search.toLowerCase()) || 
-                                          inv.customerName?.toLowerCase().includes(search.toLowerCase());
-                    const matchesStatus = statusFilter === "all" || inv.status === statusFilter;
-                    const matchesDate = isDateInRange(inv.date || inv.createdAt, dateRange.start, dateRange.end);
-                    return matchesSearch && matchesStatus && matchesDate;
-                  })
+                filteredInvoices
                   .slice((page - 1) * 10, page * 10)
                   .map((inv: any) => {
                     const isDraft = inv.status === "draft";
@@ -472,12 +529,7 @@ function SalesInvoicesContent() {
           </table>
         </div>
         {(() => {
-          const filtered = allInvoices.filter((inv: any) => {
-            const matchesSearch = inv.invoiceNumber?.toLowerCase().includes(search.toLowerCase()) || 
-                                  inv.customerName?.toLowerCase().includes(search.toLowerCase());
-            const matchesStatus = statusFilter === "all" || inv.status === statusFilter;
-            return matchesSearch && matchesStatus;
-          });
+          const filtered = filteredInvoices;
           if (filtered.length > 10) {
             return (
               <div className="p-4 border-t flex items-center justify-between bg-slate-50 rounded-b-xl mt-auto">

@@ -33,6 +33,26 @@ export interface ILineItem {
   extendedWarrantyPolicyNo?: string;
 }
 
+/**
+ * One allocation of an invoice's value to a payment mode.
+ *
+ * An invoice may be settled across several modes at once (₹10,000 cash + ₹40,000
+ * online against a ₹50,000 bill). The rows always add up to the invoice total.
+ *
+ * Collected modes (Cash/UPI/Card/Online) count towards `paidAmount` immediately.
+ * "Finance" and "Due" are receivables — from the financier and the customer
+ * respectively — so they stay in `balanceAmount`, which is exactly how the older
+ * `financeDownPayment` and `dueAdvanceAmount` fields already behaved.
+ */
+export interface IInvoicePayment {
+  mode: string;
+  amount: number;
+  txnId?: string;
+  reference?: string;
+  receivedBy?: string;
+  notes?: string;
+}
+
 export interface IInvoice extends Document {
   invoiceNumber: string;
   type: "tax-invoice" | "proforma" | "credit-note" | "sales-order";
@@ -63,6 +83,12 @@ export interface IInvoice extends Document {
   totalGST: number;
   extendedWarrantyTotal?: number;
   paymentMode: "Cash" | "UPI" | "Online" | "Card" | "Credit Card" | "Debit Card" | "Finance" | "Due / Credit" | "Multiple";
+  /**
+   * Split payment breakdown. Empty/absent on every invoice created before split
+   * payments existed — all readers fall back to `paymentMode` + `paidAmount`, so
+   * historical invoices keep reporting exactly as they did.
+   */
+  payments?: IInvoicePayment[];
   paymentTerms: string;
   
   // Payment Details
@@ -184,6 +210,18 @@ const LineItemSchema = new Schema({
   extendedWarrantyPolicyNo: { type: String, default: "" },
 });
 
+const PaymentSplitSchema = new Schema<IInvoicePayment>(
+  {
+    mode: { type: String, required: true },
+    amount: { type: Number, required: true, default: 0 },
+    txnId: { type: String, default: "" },
+    reference: { type: String, default: "" },
+    receivedBy: { type: String, default: "" },
+    notes: { type: String, default: "" },
+  },
+  { _id: false }
+);
+
 const InvoiceSchema = new Schema<IInvoice>(
   {
     invoiceNumber: { type: String, required: true, unique: true, index: true },
@@ -219,6 +257,7 @@ const InvoiceSchema = new Schema<IInvoice>(
     paidAmount: { type: Number, default: 0 },
     balanceAmount: { type: Number, required: true },
     paymentMode: { type: String, default: "Cash" },
+    payments: { type: [PaymentSplitSchema], default: [] },
     paymentTerms: { type: String, default: "Net 30" },
 
     cashReceivedBy: String,

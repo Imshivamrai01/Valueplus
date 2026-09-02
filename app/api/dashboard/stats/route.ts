@@ -7,6 +7,7 @@ import Supplier from "@/models/Supplier";
 import Expense from "@/models/Expense";
 import PaymentTransaction from "@/models/PaymentTransaction";
 import FinanceTransaction from "@/models/FinanceTransaction";
+import { resolveInvoicePayments } from "@/lib/payment-modes";
 
 export async function GET(request: Request) {
   try {
@@ -247,130 +248,68 @@ export async function GET(request: Request) {
 
       // Only count upfront collection on the invoice if it is NOT already recorded as a separate payment receipt
       const hasSeparatePaymentReceipt = paymentInvoiceRefs.has(inv.invoiceNumber);
-      const actualCollectedOnInvoice = (hasSeparatePaymentReceipt || inv.status === "pending" || inv.status === "unpaid") ? 0 : paid;
 
-      const rawMode = (inv.paymentMode || "").toLowerCase();
-      const isFinanceInvoice = Boolean(inv.financeProvider) || rawMode.includes("finance") || rawMode.includes("bajaj") || rawMode.includes("hdb") || rawMode.includes("emi") || rawMode.includes("loan");
+      // ─── SPLIT-AWARE REVENUE ALLOCATION ────────────────────────────────
+      // An invoice can now be settled across several modes at once (₹10,000 cash +
+      // ₹40,000 online). `resolveInvoicePayments` returns those rows, and rebuilds
+      // the equivalent rows from the legacy single-mode fields for every invoice
+      // created before split payments existed — so historical figures are unchanged.
+      //
+      // Due rows are deliberately skipped here: `dueRevenue` is already accumulated
+      // from `balanceAmount` further above, for every invoice regardless of mode.
+      // Counting them again here would double-count the outstanding amount.
+      const splitRows = resolveInvoicePayments(inv);
+      const suppressCollected = hasSeparatePaymentReceipt || inv.status === "pending" || inv.status === "unpaid";
 
-      if (isFinanceInvoice) {
-        // Split a financed sale: the down payment counts under whichever mode it was
-        // actually collected in (cash/UPI/card/online); only the remaining loan amount
-        // that the finance company pays out is "Finance" revenue.
-        const downPayAmt = Math.min(total, Number(inv.financeDownPayment) || Number(inv.downPayment) || 0);
-        const financedAmt = Math.max(0, total - downPayAmt);
-        const downPayMode = (inv.financeDownPaymentMode || inv.downPaymentMode || "Cash").toLowerCase();
+      for (const row of splitRows) {
+        if (row.bucket === "due") continue;
 
-        if (downPayAmt > 0 && !hasSeparatePaymentReceipt) {
-          const downPayTxn = {
-            id: inv.invoiceNumber,
-            customer: inv.customerName,
-            amount: downPayAmt,
-            paidAmount: downPayAmt,
-            dueAmount: due,
-            time: inv.date ? `${inv.date} 03:00 PM` : "Today",
-            mode: `${inv.financeDownPaymentMode || inv.downPaymentMode || "Cash"} (Finance Down Payment)`,
-            status: inv.status,
-            reprintCount: inv.reprintCount || 0,
-            lastPrintedAt: inv.lastPrintedAt,
-          };
-          if (downPayMode.includes("cash")) {
-            cashRevenue += downPayAmt;
-            cashTxns.push(downPayTxn);
-          } else if (downPayMode.includes("upi") || downPayMode.includes("phonepe") || downPayMode.includes("gpay") || downPayMode.includes("paytm") || downPayMode.includes("qr")) {
-            upiRevenue += downPayAmt;
-            upiTxns.push(downPayTxn);
-          } else if (downPayMode.includes("card") || downPayMode.includes("pos") || downPayMode.includes("debit") || downPayMode.includes("swipe")) {
-            cardRevenue += downPayAmt;
-            cardTxns.push(downPayTxn);
-          } else if (downPayMode.includes("online") || downPayMode.includes("bank") || downPayMode.includes("netbanking") || downPayMode.includes("neft") || downPayMode.includes("rtgs") || downPayMode.includes("imps")) {
-            onlineRevenue += downPayAmt;
-            onlineTxns.push(downPayTxn);
-          } else {
-            cashRevenue += downPayAmt;
-            cashTxns.push(downPayTxn);
-          }
-        }
-
-        // Only still "pending Finance" if the bank hasn't actually paid it out yet —
-        // once disbursed, this amount is counted as "Online" on its credit date instead
-        // (see the Finance Disbursement payment-ledger loop further below).
-        if (financedAmt > 0 && !disbursedInvoiceNumbers.has(inv.invoiceNumber)) {
-          financeRevenue += financedAmt;
+        if (row.bucket === "finance") {
+          // Only still "pending Finance" if the bank hasn't actually paid it out yet —
+          // once disbursed, this amount is counted as "Online" on its credit date instead
+          // (see the Finance Disbursement payment-ledger loop further below).
+          if (disbursedInvoiceNumbers.has(inv.invoiceNumber)) continue;
+          financeRevenue += row.amount;
           financeTxns.push({
             id: inv.invoiceNumber,
             customer: inv.customerName,
-            amount: financedAmt,
+            amount: row.amount,
             paidAmount: paid,
             dueAmount: due,
             time: inv.date ? `${inv.date} 04:45 PM` : "Today",
-            mode: (inv.paymentMode && inv.financeCompany) ? `${inv.paymentMode} (${inv.financeCompany})` : inv.paymentMode || "Finance (Bajaj / HDB)",
+            mode: (inv.paymentMode && inv.financeCompany) ? `${inv.paymentMode} (${inv.financeCompany})` : (row.mode || "Finance (Bajaj / HDB)"),
             status: inv.status,
             dueDate: inv.dueDate,
             balanceAmount: inv.balanceAmount || total,
             reprintCount: inv.reprintCount || 0,
             lastPrintedAt: inv.lastPrintedAt,
           });
+          continue;
         }
-      } else if (actualCollectedOnInvoice > 0) {
-        if (rawMode.includes("cash") || (!rawMode && inv.status === "paid")) {
-          cashRevenue += actualCollectedOnInvoice;
-          cashTxns.push({
-            id: inv.invoiceNumber,
-            customer: inv.customerName,
-            amount: actualCollectedOnInvoice,
-            paidAmount: actualCollectedOnInvoice,
-            dueAmount: due,
-            time: inv.date ? `${inv.date} 02:30 PM` : "Today",
-            mode: inv.paymentMode || "Cash Counter",
-            status: inv.status,
-            reprintCount: inv.reprintCount || 0,
-            lastPrintedAt: inv.lastPrintedAt,
-          });
-        } else if (rawMode.includes("upi") || rawMode.includes("phonepe") || rawMode.includes("gpay") || rawMode.includes("paytm") || rawMode.includes("qr")) {
-          upiRevenue += actualCollectedOnInvoice;
-          upiTxns.push({
-            id: inv.invoiceNumber,
-            customer: inv.customerName,
-            amount: actualCollectedOnInvoice,
-            paidAmount: actualCollectedOnInvoice,
-            dueAmount: due,
-            time: inv.date ? `${inv.date} 11:15 AM` : "Today",
-            mode: inv.paymentMode || "UPI / QR Code",
-            status: inv.status,
-            reprintCount: inv.reprintCount || 0,
-            lastPrintedAt: inv.lastPrintedAt,
-          });
-        } else if (rawMode.includes("card") || rawMode.includes("pos") || rawMode.includes("debit") || rawMode.includes("credit card") || rawMode.includes("swipe")) {
-          cardRevenue += actualCollectedOnInvoice;
-          cardTxns.push({
-            id: inv.invoiceNumber,
-            customer: inv.customerName,
-            amount: actualCollectedOnInvoice,
-            paidAmount: actualCollectedOnInvoice,
-            dueAmount: due,
-            time: inv.date ? `${inv.date} 01:20 PM` : "Today",
-            mode: inv.paymentMode || "Card (POS)",
-            status: inv.status,
-            reprintCount: inv.reprintCount || 0,
-            lastPrintedAt: inv.lastPrintedAt,
-          });
-        } else if (rawMode.includes("online") || rawMode.includes("bank") || rawMode.includes("netbanking") || rawMode.includes("neft") || rawMode.includes("rtgs") || rawMode.includes("imps")) {
-          onlineRevenue += actualCollectedOnInvoice;
-          onlineTxns.push({
-            id: inv.invoiceNumber,
-            customer: inv.customerName,
-            amount: actualCollectedOnInvoice,
-            paidAmount: actualCollectedOnInvoice,
-            dueAmount: due,
-            time: inv.date ? `${inv.date} 12:45 PM` : "Today",
-            mode: inv.paymentMode || "Online NetBanking",
-            status: inv.status,
-            reprintCount: inv.reprintCount || 0,
-            lastPrintedAt: inv.lastPrintedAt,
-          });
-        }
-      }
 
+        if (suppressCollected) continue;
+
+        const isSplitInvoice = splitRows.filter((r) => r.bucket !== "due").length > 1;
+        const txn = {
+          id: inv.invoiceNumber,
+          customer: inv.customerName,
+          amount: row.amount,
+          paidAmount: row.amount,
+          dueAmount: due,
+          time: inv.date ? `${inv.date} 02:30 PM` : "Today",
+          mode: isSplitInvoice
+            ? `${row.mode} (Split ₹${Math.round(row.amount).toLocaleString("en-IN")} of ₹${Math.round(total).toLocaleString("en-IN")})`
+            : (row.mode || inv.paymentMode || "Cash Counter"),
+          status: inv.status,
+          reprintCount: inv.reprintCount || 0,
+          lastPrintedAt: inv.lastPrintedAt,
+        };
+
+        if (row.bucket === "cash") { cashRevenue += row.amount; cashTxns.push(txn); }
+        else if (row.bucket === "upi") { upiRevenue += row.amount; upiTxns.push(txn); }
+        else if (row.bucket === "card") { cardRevenue += row.amount; cardTxns.push(txn); }
+        else if (row.bucket === "online") { onlineRevenue += row.amount; onlineTxns.push(txn); }
+      }
 
       let bucketKey = "";
       if (isSingleDay) {
@@ -409,40 +348,18 @@ export async function GET(request: Request) {
       dailyRevenueMap[bucketKey].revenue += inv.total || 0;
       dailyRevenueMap[bucketKey].profit += 1;
       
-      if (isFinanceInvoice) {
-        // Same split as the payment-mode breakdown above: down payment counts under its
-        // own mode, only the remaining financed amount counts as "finance" in the trend.
-        const dayDownPayAmt = Math.min(total, Number(inv.financeDownPayment) || Number(inv.downPayment) || 0);
-        const dayFinancedAmt = Math.max(0, total - dayDownPayAmt);
-        const dayDownPayMode = (inv.financeDownPaymentMode || inv.downPaymentMode || "Cash").toLowerCase();
-
-        if (dayDownPayAmt > 0) {
-          if (dayDownPayMode.includes("cash")) {
-            dailyRevenueMap[bucketKey].cash += dayDownPayAmt;
-          } else if (dayDownPayMode.includes("upi") || dayDownPayMode.includes("phonepe") || dayDownPayMode.includes("gpay") || dayDownPayMode.includes("paytm") || dayDownPayMode.includes("qr")) {
-            dailyRevenueMap[bucketKey].upi += dayDownPayAmt;
-          } else if (dayDownPayMode.includes("card") || dayDownPayMode.includes("pos") || dayDownPayMode.includes("debit") || dayDownPayMode.includes("swipe")) {
-            dailyRevenueMap[bucketKey].card += dayDownPayAmt;
-          } else if (dayDownPayMode.includes("online") || dayDownPayMode.includes("bank") || dayDownPayMode.includes("netbanking") || dayDownPayMode.includes("neft") || dayDownPayMode.includes("rtgs") || dayDownPayMode.includes("imps")) {
-            dailyRevenueMap[bucketKey].online += dayDownPayAmt;
-          } else {
-            dailyRevenueMap[bucketKey].cash += dayDownPayAmt;
+      // Trend chart uses the same allocation as the payment-mode breakdown above, so a
+      // split invoice contributes to each mode's line by its own share rather than
+      // dropping the whole bill into one series.
+      for (const row of splitRows) {
+        if (row.bucket === "due") continue;
+        if (row.bucket === "finance") {
+          if (!disbursedInvoiceNumbers.has(inv.invoiceNumber)) {
+            dailyRevenueMap[bucketKey].finance += row.amount;
           }
+          continue;
         }
-        if (!disbursedInvoiceNumbers.has(inv.invoiceNumber)) {
-          dailyRevenueMap[bucketKey].finance += dayFinancedAmt;
-        }
-      } else {
-        const pMode = (inv.paymentMode || "").toLowerCase();
-        if (pMode.includes("cash")) {
-          dailyRevenueMap[bucketKey].cash += inv.total || 0;
-        } else if (pMode.includes("upi") || pMode.includes("phonepe") || pMode.includes("gpay") || pMode.includes("paytm") || pMode.includes("qr")) {
-          dailyRevenueMap[bucketKey].upi += inv.total || 0;
-        } else if (pMode.includes("card") || pMode.includes("pos") || pMode.includes("debit") || pMode.includes("swipe")) {
-          dailyRevenueMap[bucketKey].card += inv.total || 0;
-        } else if (pMode.includes("online") || pMode.includes("bank") || pMode.includes("netbanking") || pMode.includes("neft") || pMode.includes("rtgs") || pMode.includes("imps")) {
-          dailyRevenueMap[bucketKey].online += inv.total || 0;
-        }
+        dailyRevenueMap[bucketKey][row.bucket] += row.amount;
       }
 
       if (due > 0 || inv.status === "pending" || inv.status === "partial" || inv.status === "unpaid") {
@@ -510,7 +427,7 @@ export async function GET(request: Request) {
             paidAmount: amt,
             dueAmount: 0,
             time: p.date ? `${p.date} (Receipt)` : "Today (Receipt)",
-            mode: p.paymentMode || "Online NetBanking",
+            mode: p.paymentMode || "NEFT / IMPS",
             status: "paid",
             notes: p.notes || `Due payment receipt (${p.referenceId || "Direct"})`,
             isReceipt: true,
@@ -582,9 +499,11 @@ export async function GET(request: Request) {
         return { type: "mobile", category, brand };
       } else {
         if (n.includes("tv") || n.includes("led") || n.includes("oled") || n.includes("qled") || n.includes("television")) category = "Smart TV";
-        else if (n.includes("ac") || n.includes("air conditioner") || n.includes("split ac") || n.includes("inverter ac")) category = "Inverter AC";
         else if (n.includes("fridge") || n.includes("refrigerator")) category = "Refrigerator";
         else if (n.includes("washing machine") || n.includes("washer") || n.includes("dryer")) category = "Washing Machine";
+        // "ac" must match as a whole word — plain includes("ac") also hits "Machine",
+        // which mislabelled every washing machine as an Inverter AC.
+        else if (/\bac\b/.test(n) || n.includes("air conditioner") || n.includes("split ac") || n.includes("inverter ac")) category = "Inverter AC";
         else if (n.includes("laptop") || n.includes("macbook") || n.includes("notebook")) category = "Laptop / PC";
         else if (n.includes("soundbar") || n.includes("speaker") || n.includes("home theatre") || n.includes("audio")) category = "Soundbar / Audio";
         else if (n.includes("microwave") || n.includes("oven") || n.includes("otg")) category = "Microwave & Oven";
@@ -677,8 +596,8 @@ export async function GET(request: Request) {
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 5);
 
-    // 1. TOP MOBiles
-    let topMobiles = Object.keys(mobileMap)
+    // 1. TOP MOBILES
+    const topMobiles = Object.keys(mobileMap)
       .map(name => ({
         name,
         brand: mobileMap[name].brand,
@@ -691,19 +610,11 @@ export async function GET(request: Request) {
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 5);
 
-    // Showroom defaults if none in filter range
-    if (topMobiles.length === 0) {
-      topMobiles = [
-        { name: "Apple iPhone 16 Pro Max (256GB Desert Titanium)", brand: "Apple", category: "5G Flagship", revenue: 434700, sales: 3, avgPrice: 144900, growth: 28 },
-        { name: "Apple iPhone 15 (128GB Black)", brand: "Apple", category: "Smartphone", revenue: 349500, sales: 5, avgPrice: 69900, growth: 22 },
-        { name: "Samsung Galaxy S24 Ultra 5G (12GB/256GB)", brand: "Samsung", category: "AI Flagship", revenue: 259998, sales: 2, avgPrice: 129999, growth: 19 },
-        { name: "OnePlus 12 5G (16GB/512GB Silky Black)", brand: "OnePlus", category: "Smartphone", revenue: 194997, sales: 3, avgPrice: 64999, growth: 15 },
-        { name: "Vivo V40 Pro 5G (Zeiss Optics 256GB)", brand: "Vivo", category: "Portrait Camera", revenue: 169996, sales: 4, avgPrice: 42499, growth: 14 },
-      ];
-    }
+    // NOTE: no demo fallback here. Returning placeholder rows for an empty range made
+    // every date filter look identical, since a range with no sales still rendered data.
 
     // 2. TOP ELECTRONICS & HOME APPLIANCES
-    let topElectronics = Object.keys(electronicsMap)
+    const topElectronics = Object.keys(electronicsMap)
       .map(name => ({
         name,
         brand: electronicsMap[name].brand,
@@ -715,16 +626,6 @@ export async function GET(request: Request) {
       }))
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 5);
-
-    if (topElectronics.length === 0) {
-      topElectronics = [
-        { name: 'Sony Bravia 55" 4K Ultra HD Smart Google TV', brand: "Sony", category: "Smart TV", revenue: 319960, sales: 4, avgPrice: 79990, growth: 24 },
-        { name: "Daikin 1.5 Ton 5 Star Inverter Split AC (Copper)", brand: "Daikin", category: "Inverter AC", revenue: 269940, sales: 6, avgPrice: 44990, growth: 31 },
-        { name: "LG 260L 3 Star Frost Free Double Door Refrigerator", brand: "LG", category: "Refrigerator", revenue: 194950, sales: 5, avgPrice: 38990, growth: 17 },
-        { name: "Whirlpool 7.5 Kg 5 Star Fully Automatic Washing Machine", brand: "Whirlpool", category: "Washing Machine", revenue: 139960, sales: 4, avgPrice: 34990, growth: 16 },
-        { name: "Dell Inspiron 15 (Core i5 13th Gen, 16GB/512GB SSD)", brand: "Dell", category: "Laptop / PC", revenue: 179970, sales: 3, avgPrice: 59990, growth: 12 },
-      ];
-    }
 
     // Calculate Expenses for date range
     let filteredExpenses = allExpenses;

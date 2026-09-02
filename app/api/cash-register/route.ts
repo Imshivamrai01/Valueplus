@@ -15,8 +15,15 @@ export async function GET(req: Request) {
     const recordedTxns = await CashTransaction.find({}).sort({ createdAt: -1 });
 
     // 2. Fetch Cash Invoices (Inflows) from MongoDB
+    // Split invoices carry paymentMode "Multiple", so an exact "Cash" match would miss
+    // the cash portion of a bill settled partly in cash. Fetch those too and pull out
+    // just their cash rows below.
     const cashInvoices = await Invoice.find({
-      $or: [{ paymentMode: "Cash" }, { paymentMode: "cash" }],
+      $or: [
+        { paymentMode: "Cash" },
+        { paymentMode: "cash" },
+        { "payments.mode": { $regex: /cash/i } },
+      ],
       status: { $ne: "cancelled" },
     }).sort({ createdAt: -1 });
 
@@ -52,19 +59,33 @@ export async function GET(req: Request) {
     });
 
     // B. Add Cash Invoices (if not already logged)
-    cashInvoices.forEach((inv) => {
+    cashInvoices.forEach((inv: any) => {
       if (!seenRefs.has(inv.invoiceNumber)) {
         seenRefs.add(inv.invoiceNumber);
         const invDate = inv.invoiceDate ? inv.invoiceDate.split("T")[0] : todayStr;
+
+        // For a split bill only the cash rows belong in the drawer, not the whole bill.
+        const cashRows = Array.isArray(inv.payments)
+          ? inv.payments.filter((p: any) => /cash/i.test(p?.mode || ""))
+          : [];
+        const isSplit = Array.isArray(inv.payments) && inv.payments.length > 1;
+        const cashAmount = isSplit
+          ? cashRows.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0)
+          : Number(inv.grandTotal || inv.totalAmount || inv.total || 0);
+
+        if (cashAmount <= 0) return;
+
         consolidatedLedger.push({
           _id: `INV-${inv._id}`,
           type: "INFLOW",
           category: "CASH_SALE",
-          amount: Number(inv.grandTotal || inv.totalAmount || 0),
+          amount: cashAmount,
           date: invDate,
           time: inv.createdAt ? new Date(inv.createdAt).toLocaleTimeString("en-IN") : "10:00 AM",
           referenceNo: inv.invoiceNumber,
-          description: `Cash Sale Bill · ${inv.customerName || "Customer"}`,
+          description: isSplit
+            ? `Cash portion of Split Bill · ${inv.customerName || "Customer"}`
+            : `Cash Sale Bill · ${inv.customerName || "Customer"}`,
           partyName: inv.customerName || "Walk-in Customer",
           recordedBy: "Sales Cashier",
           source: "INVOICE",

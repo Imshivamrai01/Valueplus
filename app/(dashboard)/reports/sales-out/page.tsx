@@ -197,7 +197,7 @@ function SalesOutReportContent() {
                 </div>
                 <SelectItem value="Cash">Cash Counter</SelectItem>
                 <SelectItem value="UPI">UPI / QR Code</SelectItem>
-                <SelectItem value="Online">Online NetBanking</SelectItem>
+                <SelectItem value="Online">NEFT / IMPS</SelectItem>
                 <SelectItem value="Card">Card (POS Swipe)</SelectItem>
               </SelectContent>
             </Select>

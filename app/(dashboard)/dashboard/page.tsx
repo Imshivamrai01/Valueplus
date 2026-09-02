@@ -34,10 +34,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { cn, formatCurrency, indianNumberFormat, formatDateShort } from "@/lib/utils";
+import { cn, formatCurrency, formatNumber, indianNumberFormat, formatDateShort } from "@/lib/utils";
 import ValueplusInvoice from "@/app/invoice/page";
 import { InvoiceCreationModal } from "@/components/InvoiceCreationModal";
-import { DateRangeFilter, resolveDateRange } from "@/components/shared/date-range-filter";
+import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/shared/date-range-filter";
 import { Skeleton, MetricCardsShimmer, TableShimmer, ChartShimmer, DistributionShimmer } from "@/components/shared/shimmer-skeleton";
 import {
   cacheDashboardStats,
@@ -49,6 +49,7 @@ import { AttendancePunchWidget } from "@/components/shared/AttendancePunchWidget
 import { useBranch } from "@/context/BranchContext";
 import { useSession } from "next-auth/react";
 import { SalesmanDashboardView } from "@/components/dashboard/SalesmanDashboardView";
+import { ProductLedgerModal } from "@/components/ProductLedgerModal";
 
 
 
@@ -167,6 +168,7 @@ export default function DashboardPage() {
   const [widgetFilters, setWidgetFilters] = useState({
     trends: "Today",
     pie: "Today",
+    kpi: "Today",
     expenses: "Today",
     products: "Today",
     customers: "Today",
@@ -178,6 +180,7 @@ export default function DashboardPage() {
   const [widgetLoading, setWidgetLoading] = useState({
     trends: false,
     pie: false,
+    kpi: false,
     expenses: false,
     products: false,
     customers: false,
@@ -219,9 +222,11 @@ export default function DashboardPage() {
     totalQuantity: number;
     totalStockValue: number;
     totalItemsCount?: number;
-    electronics: { quantity: number; value: number; count?: number };
-    mobile: { quantity: number; value: number; count?: number };
-    categories?: Array<{ name: string; quantity: number; value: number; itemCount: number }>;
+    warehouseFilterApplied?: boolean;
+    warehouseRequested?: string;
+    electronics: { quantity: number; value: number; count?: number; categories?: Array<{ name: string; quantity: number; value: number; itemCount: number }> };
+    mobile: { quantity: number; value: number; count?: number; categories?: Array<{ name: string; quantity: number; value: number; itemCount: number }> };
+    categories?: Array<{ name: string; group?: string; quantity: number; value: number; itemCount: number }>;
   }>({
     totalQuantity: 0,
     totalStockValue: 0,
@@ -230,6 +235,22 @@ export default function DashboardPage() {
     mobile: { quantity: 0, value: 0, count: 0 },
     categories: [],
   });
+  // Live product rows behind the category totals (the stock API returns these alongside `data`)
+  const [stockItems, setStockItems] = useState<any[]>([]);
+  const [stockCategoryFilter, setStockCategoryFilter] = useState<string>("all");
+  // "Electronics" is an umbrella group (fridge, cooler, AC, TV, appliances…), not a single category
+  const [stockGroupFilter, setStockGroupFilter] = useState<"all" | "electronics" | "mobile">("all");
+  // Product whose full stock/sales ledger is open
+  const [ledgerProduct, setLedgerProduct] = useState<{ id?: string; code?: string; vpCode?: string; name?: string } | null>(null);
+
+  // Open a product's ledger (purchases, sales, serials) from any stock list
+  const openProductLedger = (it: any) => {
+    setLedgerProduct({ id: it._id, code: it.code, vpCode: it.vpCode, name: it.name });
+  };
+  // Open the same product in Item Master
+  const openProductMaster = (it: any) => {
+    router.push(`/masters/items?search=${encodeURIComponent(it.vpCode || it.code || it.name || "")}`);
+  };
   const [isAuditPending, setIsAuditPending] = useState(false);
   const [warrantyData, setWarrantyData] = useState<{ totalSales: number; totalCount: number; conversionRate: number }>({
     totalSales: 0,
@@ -377,6 +398,9 @@ export default function DashboardPage() {
   // ─── DUE / CREDIT COLLECTIONS & SETTLEMENT STATE ───────────
   const [dueInvoices, setDueInvoices] = useState<any[]>([]);
   const [dueTabFilter, setDueTabFilter] = useState<"today" | "overdue" | "upcoming" | "cleared" | "all">("today");
+  // Date-wise filter for the due collections widget (empty = all dates)
+  const [dueDateFilter, setDueDateFilter] = useState<string>("");
+  const [dueDateRange, setDueDateRange] = useState<{ start: string; end: string }>({ start: "", end: "" });
   const [selectedDueInvoice, setSelectedDueInvoice] = useState<any | null>(null);
   const [clearDuePaymentMode, setClearDuePaymentMode] = useState<string>("Cash");
   const [clearDueTxnId, setClearDueTxnId] = useState<string>("");
@@ -595,6 +619,7 @@ export default function DashboardPage() {
       setWidgetData({
         trends: cachedStats,
         pie: cachedStats,
+        kpi: cachedStats,
         expenses: cachedStats,
         products: cachedStats,
         customers: cachedStats,
@@ -608,6 +633,7 @@ export default function DashboardPage() {
     const cachedExt = getCachedDashboardExtended();
     if (cachedExt) {
       if (cachedExt.stock) setStockBreakdown(cachedExt.stock);
+      if (Array.isArray(cachedExt.stockItems)) setStockItems(cachedExt.stockItems);
       if (typeof cachedExt.auditPending === "boolean") setIsAuditPending(cachedExt.auditPending);
       if (cachedExt.warranty) setWarrantyData(cachedExt.warranty);
       if (cachedExt.staffPerformance) setStaffPerformance(cachedExt.staffPerformance);
@@ -646,6 +672,7 @@ export default function DashboardPage() {
           setWidgetData({
             trends: statsJson,
             pie: statsJson,
+            kpi: statsJson,
             expenses: statsJson,
             products: statsJson,
             customers: statsJson,
@@ -675,6 +702,10 @@ export default function DashboardPage() {
         if (stockJson.success && stockJson.data) {
           setStockBreakdown(stockJson.data);
           extCacheUpdate.stock = stockJson.data;
+        }
+        if (stockJson.success && Array.isArray(stockJson.items)) {
+          setStockItems(stockJson.items);
+          extCacheUpdate.stockItems = stockJson.items;
         }
       }
 
@@ -832,6 +863,7 @@ export default function DashboardPage() {
     const newFilters = {
       trends: val,
       pie: val,
+      kpi: val,
       expenses: val,
       products: val,
       customers: val,
@@ -982,11 +1014,38 @@ export default function DashboardPage() {
   const PAYMENT_MODES = [
     { name: "Cash Counter", value: currentPieMetrics.cashRevenue || 0, count: currentPieTxns.cash?.length || 0, color: "#76C043", key: "cash", icon: Wallet },
     { name: "UPI / QR Code", value: currentPieMetrics.upiRevenue || 0, count: currentPieTxns.upi?.length || 0, color: "#8B5CF6", key: "upi", icon: Zap },
-    { name: "Online NetBanking", value: currentPieMetrics.onlineRevenue || 0, count: currentPieTxns.online?.length || 0, color: "#3F63AD", key: "online", icon: Activity },
+    { name: "NEFT / IMPS", value: currentPieMetrics.onlineRevenue || 0, count: currentPieTxns.online?.length || 0, color: "#3F63AD", key: "online", icon: Activity },
     { name: "Card (POS)", value: currentPieMetrics.cardRevenue || 0, count: currentPieTxns.card?.length || 0, color: "#06B6D4", key: "card", icon: CreditCard },
     { name: "Finance (Bajaj/HDB)", value: currentPieMetrics.financeRevenue || 0, count: currentPieTxns.finance?.length || 0, color: "#F59E0B", key: "finance", icon: Building2 },
     { name: "Due / Credit Bill", value: currentPieMetrics.dueRevenue || 0, count: currentPieTxns.due?.length || currentPieMetrics.dueCount || 0, color: "#EF4444", key: "due", icon: Clock },
   ];
+
+  // Highest contributing channel for the selected period (footnote in the distribution card)
+  const topPaymentMode = PAYMENT_MODES.reduce(
+    (best, m) => (m.value > (best?.value || 0) ? m : best),
+    PAYMENT_MODES[0]
+  );
+
+  // Human readable label for the distribution card period ("02 Sep", "Last 7 Days", ...)
+  const pieRangeLabel = (() => {
+    const f = widgetFilters.pie || "Today";
+    const asDay = (d: Date) =>
+      `${d.getDate()} ${d.toLocaleString("en-IN", { month: "short" })}`;
+    if (f === "Today") return asDay(new Date());
+    if (f === "Yesterday") {
+      const y = new Date();
+      y.setDate(y.getDate() - 1);
+      return asDay(y);
+    }
+    return f;
+  })();
+
+  // Key Business Performance card runs on its own date filter
+  const kpiMetrics = widgetData.kpi?.metrics || metrics;
+
+  // Sub-categories rolled up inside each stock group, ordered by stock value
+  const electronicsSubCategories = (stockBreakdown.electronics.categories || []).map((c) => c.name);
+  const mobileSubCategories = (stockBreakdown.mobile.categories || []).map((c) => c.name);
 
   const currentTrendsData = widgetData.trends || data;
   const DAILY_REVENUE = currentTrendsData?.dailyRevenue || data?.dailyRevenue || [];
@@ -1168,106 +1227,112 @@ export default function DashboardPage() {
               />
             </div>
 
-            {/* DONUT & BILL BREAKDOWN GRID */}
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center py-3">
-              {/* DONUT CHART */}
-              <div className="sm:col-span-5 flex flex-col items-center justify-center relative">
-                <div className="w-full h-[175px] relative flex items-center justify-center">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={PAYMENT_MODES}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={50}
-                        outerRadius={75}
-                        paddingAngle={3}
-                        dataKey="value"
-                      >
-                        {PAYMENT_MODES.map((entry, i) => (
-                          <Cell 
-                            key={i} 
-                            fill={entry.color} 
-                            className="cursor-pointer hover:opacity-80 transition-opacity"
-                            onClick={() => router.push(`/dashboard/reports?type=${entry.key}&dateFilter=${encodeURIComponent(dateFilter)}`)}
-                          />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        formatter={(v: any) => [`${indianNumberFormat(Number(v) || 0)}`, "Amount"]}
-                        position={{ x: 0, y: -10 }}
-                        wrapperStyle={{ zIndex: 20 }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                    <div
-                      onClick={() => router.push(`/dashboard/reports?type=all&dateFilter=${encodeURIComponent(dateFilter)}`)}
-                      className="w-24 h-24 rounded-full flex flex-col items-center justify-center pointer-events-auto cursor-pointer hover:bg-slate-50 transition-colors group"
-                      title="View full ledger"
-                    >
-                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider group-hover:text-[#3F63AD]">NET TOTAL</span>
-                      <span className="text-sm sm:text-base font-black text-slate-900 font-mono tracking-tight group-hover:text-[#3F63AD]">
-                        {indianNumberFormat(totalCollectedAmount)}
-                      </span>
-                      <span className="text-[10px] font-bold text-emerald-700 font-mono mt-0.5">
-                        {totalBilledCount} Bills
-                      </span>
-                    </div>
-                  </div>
+            {/* ─── TOTAL SALES SUMMARY PANEL (STACKED BAR + CHANNEL ROWS) ─── */}
+            <div className="py-3">
+              <div className="bg-slate-100/70 rounded-2xl p-5">
+                {/* HEADLINE */}
+                <div
+                  onClick={() => router.push(`/dashboard/reports?type=all&dateFilter=${encodeURIComponent(widgetFilters.pie)}`)}
+                  className="cursor-pointer group"
+                  title="View full ledger"
+                >
+                  <p className="text-sm font-bold text-slate-900 group-hover:text-[#3F63AD] transition-colors">Total Sales</p>
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">
+                    {pieRangeLabel} • {totalBilledCount} {totalBilledCount === 1 ? "order" : "orders"}
+                  </p>
+                  <p className="text-4xl sm:text-5xl font-black text-slate-900 tracking-tight mt-2 leading-none">
+                    ₹ {formatNumber(Math.round(totalCollectedAmount))}
+                  </p>
                 </div>
-              </div>
 
-              {/* PAYMENT MODES + BILLS LIST */}
-              <div className="sm:col-span-7 space-y-2">
-                {PAYMENT_MODES.map((item) => {
-                  const share = totalCollectedAmount > 0 ? Math.round((item.value / totalCollectedAmount) * 100) : 0;
-                  return (
-                    <div 
-                      key={item.name}
-                      onClick={() => router.push(`/dashboard/reports?type=${item.key}&dateFilter=${encodeURIComponent(dateFilter)}`)}
-                      className="flex items-center justify-between text-sm cursor-pointer hover:bg-slate-50 p-2 rounded-xl border border-transparent hover:border-slate-200 transition-all group"
+                {/* SEGMENTED DISTRIBUTION BAR */}
+                <div className="flex w-full h-2.5 rounded-full overflow-hidden bg-slate-300/70 mt-5">
+                  {totalCollectedAmount > 0 ? (
+                    PAYMENT_MODES.filter((m) => m.value > 0).map((m) => (
+                      <div
+                        key={m.key}
+                        title={`${m.name} — ${formatCurrency(m.value)}`}
+                        className="h-full transition-all"
+                        style={{
+                          width: `${(m.value / totalCollectedAmount) * 100}%`,
+                          backgroundColor: m.color,
+                        }}
+                      />
+                    ))
+                  ) : (
+                    <div className="h-full w-full bg-slate-300" />
+                  )}
+                </div>
+
+                {/* CHANNEL ROWS */}
+                <div className="mt-3 divide-y divide-slate-200/90">
+                  {PAYMENT_MODES.map((item) => {
+                    const share = totalCollectedAmount > 0 ? (item.value / totalCollectedAmount) * 100 : 0;
+                    return (
+                      <div
+                        key={item.key}
+                        onClick={() => router.push(`/dashboard/reports?type=${item.key}&dateFilter=${encodeURIComponent(widgetFilters.pie)}`)}
+                        className="flex items-center justify-between gap-3 py-2.5 cursor-pointer group"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }} />
+                          <span className="text-sm font-semibold text-slate-700 truncate group-hover:text-[#3F63AD] transition-colors">
+                            {item.name}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 flex-shrink-0">
+                          <span className="text-[10px] font-mono font-bold text-slate-500 bg-white/80 border border-slate-200 rounded px-1.5 py-0.5">
+                            {item.count}
+                          </span>
+                          <span className="text-sm font-bold text-slate-900 font-mono tabular-nums">
+                            ₹ {formatNumber(Math.round(item.value))}
+                          </span>
+                          <span className="text-xs font-medium text-slate-400 font-mono tabular-nums w-11 text-right">
+                            {share.toFixed(1)}%
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* PENDING DUE ROW */}
+                  {(metrics.dueRevenue > 0 || metrics.dueCount > 0) && (
+                    <div
+                      onClick={() => {
+                        const activeDate = dateFilter || "Today";
+                        let url = `/reports/sales-out?dueOnly=true&dateFilter=${encodeURIComponent(activeDate)}`;
+                        if (startDate && endDate) url += `&startDate=${startDate}&endDate=${endDate}`;
+                        router.push(url);
+                      }}
+                      className="flex items-center justify-between gap-3 py-2.5 cursor-pointer group"
                     >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }} />
-                        <span className="text-slate-800 font-bold text-xs sm:text-sm truncate group-hover:text-[#3F63AD] transition-colors">{item.name}</span>
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="w-2.5 h-2.5 rounded-full bg-rose-500 flex-shrink-0 animate-pulse" />
+                        <span className="text-sm font-semibold text-rose-700 truncate">Not paid (Pending Due)</span>
                       </div>
-                      <div className="flex items-center gap-2.5 flex-shrink-0">
-                        <span className="text-xs font-mono font-bold px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md border border-slate-200">
-                          {item.count} Bills
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        <span className="text-[10px] font-mono font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded px-1.5 py-0.5">
+                          {metrics.dueCount || 0}
                         </span>
-                        <span className="text-xs font-mono font-bold text-slate-400">({share}%)</span>
-                        <span className="font-black text-slate-900 font-mono text-xs sm:text-sm">{indianNumberFormat(item.value)}</span>
+                        <span className="text-sm font-bold text-rose-700 font-mono tabular-nums">
+                          ₹ {formatNumber(Math.round(metrics.dueRevenue || 0))}
+                        </span>
+                        <span className="text-xs font-medium text-slate-400 font-mono tabular-nums w-11 text-right">
+                          {(totalCollectedAmount > 0 ? ((metrics.dueRevenue || 0) / totalCollectedAmount) * 100 : 0).toFixed(1)}%
+                        </span>
                       </div>
                     </div>
-                  );
-                })}
+                  )}
+                </div>
 
-                {/* PENDING DUE ROW */}
-                {(metrics.dueRevenue > 0 || metrics.dueCount > 0) && (
-                  <div 
-                    onClick={() => {
-                      const activeDate = dateFilter || "Today";
-                      let url = `/reports/sales-out?dueOnly=true&dateFilter=${encodeURIComponent(activeDate)}`;
-                      if (startDate && endDate) url += `&startDate=${startDate}&endDate=${endDate}`;
-                      router.push(url);
-                    }}
-                    className="flex items-center justify-between text-sm cursor-pointer bg-rose-50/70 hover:bg-rose-100/70 p-2 rounded-xl border border-rose-200 transition-all group"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <span className="w-3 h-3 rounded-full bg-rose-500 animate-pulse" />
-                      <span className="text-rose-900 font-bold text-xs sm:text-sm">Pending Due / Balance</span>
-                    </div>
-                    <div className="flex items-center gap-2.5">
-                      <span className="text-xs font-mono font-bold px-2 py-0.5 bg-rose-200/80 text-rose-900 rounded-md">
-                        {metrics.dueCount || 0} Bills
-                      </span>
-                      <span className="font-black text-rose-600 font-mono text-xs sm:text-sm">
-                        {formatCurrency(metrics.dueRevenue || 0)}
-                      </span>
-                    </div>
-                  </div>
-                )}
+                {/* TOP CHANNEL FOOTNOTE */}
+                <p className="text-xs text-slate-400 font-medium mt-3">
+                  {topPaymentMode && topPaymentMode.value > 0 ? (
+                    <>— {topPaymentMode.name} — <span className="text-slate-600 font-semibold">₹ {formatNumber(Math.round(topPaymentMode.value))}</span> this period</>
+                  ) : (
+                    <>— No collections recorded this period</>
+                  )}
+                </p>
               </div>
             </div>
 
@@ -1655,15 +1720,17 @@ export default function DashboardPage() {
                   <p className="text-xs text-slate-500 font-medium">Core showroom revenue, bills count and average ticket size</p>
                 </div>
               </div>
-              <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-200">
-                Performance
-              </span>
+              <DateRangeFilter
+                value={widgetFilters.kpi}
+                onChange={(val, start, end) => handleWidgetFilterChange('kpi', val, start, end)}
+                className="w-[115px] h-8 text-xs font-semibold"
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-3.5 py-3.5">
               {/* GROSS SALES */}
               <div
-                onClick={() => router.push(`/dashboard/reports?type=all&dateFilter=${dateFilter}`)}
+                onClick={() => router.push(`/dashboard/reports?type=all&dateFilter=${widgetFilters.kpi}`)}
                 className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-white hover:border-[#76C043] hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
               >
                 <div className="flex items-center justify-between mb-2">
@@ -1671,7 +1738,7 @@ export default function DashboardPage() {
                   <IndianRupee className="w-4 h-4 text-[#76C043]" />
                 </div>
                 <p className="text-2xl font-black text-slate-900 font-mono">
-                  {formatCurrency(metrics.cashRevenue + metrics.onlineRevenue + metrics.financeRevenue + (metrics.upiRevenue || 0) + (metrics.cardRevenue || 0))}
+                  {formatCurrency((kpiMetrics.cashRevenue || 0) + (kpiMetrics.onlineRevenue || 0) + (kpiMetrics.financeRevenue || 0) + (kpiMetrics.upiRevenue || 0) + (kpiMetrics.cardRevenue || 0))}
                 </p>
                 <div className="mt-2.5 pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs font-bold text-emerald-600">
                   <span className="flex items-center gap-1"><TrendingUp className="w-3.5 h-3.5" /> +12.4% vs last</span>
@@ -1681,7 +1748,7 @@ export default function DashboardPage() {
 
               {/* TOTAL BILLS */}
               <div
-                onClick={() => router.push(`/dashboard/reports?type=orders&dateFilter=${dateFilter}`)}
+                onClick={() => router.push(`/dashboard/reports?type=orders&dateFilter=${widgetFilters.kpi}`)}
                 className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-white hover:border-blue-500 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
               >
                 <div className="flex items-center justify-between mb-2">
@@ -1689,7 +1756,7 @@ export default function DashboardPage() {
                   <Receipt className="w-4 h-4 text-blue-600" />
                 </div>
                 <p className="text-2xl font-black text-slate-900 font-mono">
-                  {metrics.totalOrders || 0} <span className="text-sm font-normal text-slate-500">Invoices</span>
+                  {kpiMetrics.totalOrders || 0} <span className="text-sm font-normal text-slate-500">Invoices</span>
                 </p>
                 <div className="mt-2.5 pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs font-semibold text-amber-600">
                   <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> Peak: 1PM-3PM</span>
@@ -1699,7 +1766,7 @@ export default function DashboardPage() {
 
               {/* AOV */}
               <div
-                onClick={() => router.push(`/dashboard/reports?type=aov&dateFilter=${dateFilter}`)}
+                onClick={() => router.push(`/dashboard/reports?type=aov&dateFilter=${widgetFilters.kpi}`)}
                 className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-white hover:border-indigo-500 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
               >
                 <div className="flex items-center justify-between mb-2">
@@ -1707,7 +1774,7 @@ export default function DashboardPage() {
                   <TrendingUp className="w-4 h-4 text-indigo-600" />
                 </div>
                 <p className="text-2xl font-black text-slate-900 font-mono">
-                  {formatCurrency(metrics.totalOrders ? ((metrics.cashRevenue + metrics.onlineRevenue + metrics.financeRevenue) / metrics.totalOrders) : 0)}
+                  {formatCurrency(kpiMetrics.totalOrders ? (((kpiMetrics.cashRevenue || 0) + (kpiMetrics.onlineRevenue || 0) + (kpiMetrics.financeRevenue || 0) + (kpiMetrics.upiRevenue || 0) + (kpiMetrics.cardRevenue || 0)) / kpiMetrics.totalOrders) : 0)}
                 </p>
                 <div className="mt-2.5 pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs font-medium text-slate-500">
                   <span>Revenue per bill</span>
@@ -1717,7 +1784,7 @@ export default function DashboardPage() {
 
               {/* TOTAL STOCKS */}
               <div
-                onClick={() => setOpenStockModal(true)}
+                onClick={() => { setStockGroupFilter("all"); setStockCategoryFilter("all"); setOpenStockModal(true); }}
                 className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-white hover:border-[#3F63AD] hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
               >
                 <div className="flex items-center justify-between mb-2">
@@ -2054,13 +2121,17 @@ export default function DashboardPage() {
                   <h3 className="text-base font-black text-slate-900 tracking-tight">
                     Category Stock & Warranty
                   </h3>
-                  <p className="text-xs text-slate-500 font-medium">Live showroom inventory valuations & protection plans</p>
+                  <p className="text-xs text-slate-500 font-medium">
+                    {stockBreakdown.warehouseFilterApplied === false && stockBreakdown.totalItemsCount
+                      ? `All locations — no stock is tagged to "${stockBreakdown.warehouseRequested}"`
+                      : "Live showroom inventory valuations & protection plans"}
+                  </p>
                 </div>
               </div>
               <Button 
                 variant="ghost" 
                 size="sm" 
-                onClick={() => setOpenStockModal(true)} 
+                onClick={() => { setStockGroupFilter("all"); setStockCategoryFilter("all"); setOpenStockModal(true); }}
                 className="text-xs font-bold text-[#3F63AD] hover:bg-blue-50 h-8 px-3"
               >
                 All Categories →
@@ -2068,9 +2139,9 @@ export default function DashboardPage() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 py-3.5">
-              {/* ELECTRONICS STOCK */}
+              {/* ELECTRONICS STOCK — umbrella group (fridge, cooler, AC, TV, appliances…) */}
               <div
-                onClick={() => router.push("/masters/items?category=Electronics")}
+                onClick={() => { setStockGroupFilter("electronics"); setStockCategoryFilter("all"); setOpenStockModal(true); }}
                 className="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200 hover:border-blue-500 hover:bg-white hover:shadow-sm transition-all cursor-pointer flex flex-col justify-start"
               >
                 <div className="flex items-center justify-between mb-2">
@@ -2078,18 +2149,26 @@ export default function DashboardPage() {
                     <Tv className="w-4 h-4 text-blue-600" /> Electronics
                   </span>
                   <Badge className="bg-blue-100 text-blue-800 text-[10px] font-bold px-1.5 py-0.5">
-                    {stockBreakdown.electronics.quantity} Qty
+                    {(stockBreakdown.electronics.quantity || 0).toLocaleString("en-IN")} Qty
                   </Badge>
                 </div>
                 <p className="text-lg font-black text-slate-900 font-mono my-1">
                   {formatCurrency(stockBreakdown.electronics.value)}
                 </p>
-                <span className="text-xs text-slate-400 font-medium">TV, Audio & AC</span>
+                <span className="text-xs text-slate-400 font-medium block truncate">
+                  {stockBreakdown.electronics.count || 0} Products
+                  {electronicsSubCategories.length > 0 && ` • ${electronicsSubCategories.slice(0, 3).join(", ")}`}
+                </span>
+                {electronicsSubCategories.length > 0 && (
+                  <span className="text-[10px] text-blue-600 font-bold mt-0.5">
+                    {electronicsSubCategories.length} categories inside
+                  </span>
+                )}
               </div>
 
               {/* MOBILE STOCK */}
               <div
-                onClick={() => router.push("/masters/items?category=Mobile")}
+                onClick={() => { setStockGroupFilter("mobile"); setStockCategoryFilter("all"); setOpenStockModal(true); }}
                 className="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200 hover:border-purple-500 hover:bg-white hover:shadow-sm transition-all cursor-pointer flex flex-col justify-start"
               >
                 <div className="flex items-center justify-between mb-2">
@@ -2097,13 +2176,21 @@ export default function DashboardPage() {
                     <Smartphone className="w-4 h-4 text-purple-600" /> Mobile
                   </span>
                   <Badge className="bg-purple-100 text-purple-800 text-[10px] font-bold px-1.5 py-0.5">
-                    {stockBreakdown.mobile.quantity} Qty
+                    {(stockBreakdown.mobile.quantity || 0).toLocaleString("en-IN")} Qty
                   </Badge>
                 </div>
                 <p className="text-lg font-black text-slate-900 font-mono my-1">
                   {formatCurrency(stockBreakdown.mobile.value)}
                 </p>
-                <span className="text-xs text-slate-400 font-medium">Smartphones</span>
+                <span className="text-xs text-slate-400 font-medium block truncate">
+                  {stockBreakdown.mobile.count || 0} Products
+                  {mobileSubCategories.length > 0 && ` • ${mobileSubCategories.slice(0, 3).join(", ")}`}
+                </span>
+                {mobileSubCategories.length > 0 && (
+                  <span className="text-[10px] text-purple-600 font-bold mt-0.5">
+                    {mobileSubCategories.length} categories inside
+                  </span>
+                )}
               </div>
 
               {/* WARRANTY SALES */}
@@ -2126,6 +2213,88 @@ export default function DashboardPage() {
                   {warrantyData.conversionRate || 0}% Conversion
                 </span>
               </div>
+            </div>
+
+            {/* TOP STOCKED PRODUCTS — real item rows behind the category totals */}
+            <div className="border-t border-slate-100 pt-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-black text-slate-500 uppercase tracking-wider">
+                  Top Stocked Products
+                </span>
+                <span className="text-[11px] font-bold text-slate-400">
+                  {stockBreakdown.totalItemsCount || stockItems.length} items in catalog
+                </span>
+              </div>
+
+              {stockItems.length === 0 ? (
+                <div className="py-6 flex flex-col items-center justify-center text-center border border-dashed border-slate-200 rounded-xl">
+                  <Package className="w-6 h-6 text-slate-300 mb-1.5" />
+                  <p className="text-xs font-bold text-slate-500">No stock items found</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Add products in Item Master to see them here.</p>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {[...stockItems]
+                    .sort((a, b) => (b.stockValue || 0) - (a.stockValue || 0))
+                    .slice(0, 4)
+                    .map((it: any) => (
+                      <div
+                        key={it._id || it.code}
+                        onClick={() => openProductLedger(it)}
+                        title="Open product ledger"
+                        className="flex items-center justify-between gap-2 p-2 rounded-lg border border-slate-100 bg-slate-50/70 hover:bg-white hover:border-purple-200 transition-all cursor-pointer group"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-bold text-slate-900 truncate group-hover:text-purple-800">
+                            {it.name}
+                          </p>
+                          <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mt-0.5">
+                            <span className="font-semibold text-purple-700">{it.brand}</span>
+                            <span>•</span>
+                            <span>{it.category}</span>
+                            <span
+                              className={cn(
+                                "px-1 rounded font-bold",
+                                it.group === "mobile" ? "bg-purple-50 text-purple-700" : "bg-blue-50 text-blue-700"
+                              )}
+                            >
+                              {it.group === "mobile" ? "Mobile" : "Electronics"}
+                            </span>
+                            {it.vpCode && (
+                              <>
+                                <span>•</span>
+                                <span className="font-mono">{it.vpCode}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <div className="text-right">
+                            <span className="text-xs font-mono font-black text-slate-900 block">
+                              {formatCurrency(it.stockValue || 0)}
+                            </span>
+                            <span
+                              className={cn(
+                                "text-[10px] font-mono font-bold",
+                                (it.availableQty || 0) > 0 ? "text-emerald-600" : "text-rose-600"
+                              )}
+                            >
+                              {it.availableQty || 0} in stock
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); openProductMaster(it); }}
+                            title="Open in Item Master"
+                            className="h-7 w-7 rounded-lg border border-slate-200 bg-white text-slate-500 hover:text-[#3F63AD] hover:border-[#3F63AD] flex items-center justify-center transition-colors"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
             </div>
 
             <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-medium">
@@ -2220,12 +2389,25 @@ export default function DashboardPage() {
                   <span className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200/60 px-1.5 py-0.2 rounded-md">
                     Fast Movers
                   </span>
+                  {widgetLoading.products && (
+                    <span className="text-[10px] font-bold text-slate-500 flex items-center gap-1">
+                      <span className="w-2.5 h-2.5 rounded-full border-2 border-slate-300 border-t-[#3F63AD] animate-spin" />
+                      Updating…
+                    </span>
+                  )}
                 </h3>
               </div>
             </div>
 
-            {/* COMPACT CATEGORY SWITCHER */}
-            <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200/80 text-xs">
+            {/* DATE FILTER + COMPACT CATEGORY SWITCHER */}
+            <div className="flex flex-wrap items-center gap-2">
+              <DateRangeFilter
+                value={widgetFilters.products}
+                onChange={(val, start, end) => handleWidgetFilterChange('products', val, start, end)}
+                showIcon={true}
+                className="w-[135px] h-8 text-xs font-semibold"
+              />
+              <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200/80 text-xs">
               <button
                 type="button"
                 onClick={() => setTopSellingCategoryTab("all")}
@@ -2255,19 +2437,15 @@ export default function DashboardPage() {
                 )}
               >
                 <Tv className="w-3 h-3" /> Electronics
-              </button>
+                </button>
+              </div>
             </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
             {/* 📱 CARD 1: TOP SELLING MOBILES (COMPACT) */}
             {(topSellingCategoryTab === "all" || topSellingCategoryTab === "mobiles") && (() => {
-              const mobilesList: any[] = ((data?.topMobiles && data.topMobiles.length > 0) ? data.topMobiles : [
-                { name: "Apple iPhone 16 Pro Max (256GB Desert Titanium)", brand: "Apple", category: "5G Flagship", revenue: 434700, sales: 3, avgPrice: 144900, growth: 28 },
-                { name: "Apple iPhone 15 (128GB Black)", brand: "Apple", category: "Smartphone", revenue: 349500, sales: 5, avgPrice: 69900, growth: 22 },
-                { name: "Samsung Galaxy S24 Ultra 5G (12GB/256GB)", brand: "Samsung", category: "AI Flagship", revenue: 259998, sales: 2, avgPrice: 129999, growth: 19 },
-                { name: "OnePlus 12 5G (16GB/512GB Silky Black)", brand: "OnePlus", category: "Smartphone", revenue: 194997, sales: 3, avgPrice: 64999, growth: 15 },
-              ]).slice(0, 4);
+              const mobilesList: any[] = (widgetData.products?.topMobiles ?? data?.topMobiles ?? []).slice(0, 4);
 
               const totalMobileRev = mobilesList.reduce((sum, m) => sum + (m.revenue || 0), 0);
               const totalMobileUnits = mobilesList.reduce((sum, m) => sum + (m.sales || 0), 0);
@@ -2294,6 +2472,13 @@ export default function DashboardPage() {
 
                     {/* COMPACT LIST */}
                     <div className="space-y-1.5 py-2.5">
+                      {mobilesList.length === 0 && (
+                        <div className="py-8 flex flex-col items-center justify-center text-center">
+                          <Smartphone className="w-7 h-7 text-slate-300 mb-2" />
+                          <p className="text-xs font-bold text-slate-500">No mobiles sold in this period</p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">Try a wider date range from the filter above.</p>
+                        </div>
+                      )}
                       {mobilesList.map((m: any, idx: number) => {
                         const share = totalMobileRev > 0 ? Math.round((m.revenue / totalMobileRev) * 100) : 0;
                         const rankColors = [
@@ -2365,12 +2550,7 @@ export default function DashboardPage() {
 
             {/* 📺 CARD 2: TOP SELLING ELECTRONICS (COMPACT) */}
             {(topSellingCategoryTab === "all" || topSellingCategoryTab === "electronics") && (() => {
-              const electronicsList: any[] = ((data?.topElectronics && data.topElectronics.length > 0) ? data.topElectronics : [
-                { name: 'Sony Bravia 55" 4K Ultra HD Smart Google TV', brand: "Sony", category: "Smart TV", revenue: 319960, sales: 4, avgPrice: 79990, growth: 24 },
-                { name: "Daikin 1.5 Ton 5 Star Inverter Split AC (Copper)", brand: "Daikin", category: "Inverter AC", revenue: 269940, sales: 6, avgPrice: 44990, growth: 31 },
-                { name: "LG 260L 3 Star Frost Free Double Door Refrigerator", brand: "LG", category: "Refrigerator", revenue: 194950, sales: 5, avgPrice: 38990, growth: 17 },
-                { name: "Whirlpool 7.5 Kg 5 Star Fully Automatic Washing Machine", brand: "Whirlpool", category: "Washing Machine", revenue: 139960, sales: 4, avgPrice: 34990, growth: 16 },
-              ]).slice(0, 4);
+              const electronicsList: any[] = (widgetData.products?.topElectronics ?? data?.topElectronics ?? []).slice(0, 4);
 
               const totalElecRev = electronicsList.reduce((sum, e) => sum + (e.revenue || 0), 0);
               const totalElecUnits = electronicsList.reduce((sum, e) => sum + (e.sales || 0), 0);
@@ -2397,6 +2577,13 @@ export default function DashboardPage() {
 
                     {/* COMPACT LIST */}
                     <div className="space-y-1.5 py-2.5">
+                      {electronicsList.length === 0 && (
+                        <div className="py-8 flex flex-col items-center justify-center text-center">
+                          <Tv className="w-7 h-7 text-slate-300 mb-2" />
+                          <p className="text-xs font-bold text-slate-500">No electronics sold in this period</p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">Try a wider date range from the filter above.</p>
+                        </div>
+                      )}
                       {electronicsList.map((e: any, idx: number) => {
                         const share = totalElecRev > 0 ? Math.round((e.revenue / totalElecRev) * 100) : 0;
                         const rankColors = [
@@ -3021,9 +3208,17 @@ export default function DashboardPage() {
       {/* ─── TODAY'S DUE COLLECTIONS & CREDIT KHATA SETTLEMENT WIDGET ─── */}
       {(() => {
         const todayStr = new Date().toISOString().split("T")[0];
-        
+
+        // Date-wise scope: when a range is chosen, keep only dues whose due date falls inside it
+        const isDueFilterActive = Boolean(dueDateFilter && dueDateRange.start && dueDateRange.end);
+        const scopedDues = isDueFilterActive
+          ? dueInvoices.filter((inv: any) =>
+              isDateInRange(inv.dueDate || inv.date, dueDateRange.start, dueDateRange.end)
+            )
+          : dueInvoices;
+
         // Dues with balance > 0
-        const pendingDues = dueInvoices.filter((inv: any) => (Number(inv.balanceAmount) > 0));
+        const pendingDues = scopedDues.filter((inv: any) => (Number(inv.balanceAmount) > 0));
         
         // Today's Due: dueDate is today
         const todayDues = pendingDues.filter((inv: any) => {
@@ -3044,7 +3239,10 @@ export default function DashboardPage() {
         });
 
         // Cleared dues: dueClearedAt exists or status === paid and balance === 0
-        const clearedDues = dueInvoices.filter((inv: any) => inv.dueClearedAt || (inv.paymentMode === "Due / Credit" && inv.status === "paid" && Number(inv.balanceAmount) === 0));
+        const clearedDues = scopedDues.filter((inv: any) => inv.dueClearedAt || (inv.paymentMode === "Due / Credit" && inv.status === "paid" && Number(inv.balanceAmount) === 0));
+
+        // Total outstanding across every pending due in the selected date scope
+        const totalPendingAmount = pendingDues.reduce((sum, inv) => sum + (Number(inv.balanceAmount) || 0), 0);
 
         const todayDueAmount = todayDues.reduce((sum, inv) => sum + (Number(inv.balanceAmount) || 0), 0);
         const overdueAmount = overdueDues.reduce((sum, inv) => sum + (Number(inv.balanceAmount) || 0), 0);
@@ -3064,39 +3262,101 @@ export default function DashboardPage() {
 
         return (
           <div className="bg-white rounded-2xl border border-rose-100 shadow-sm p-6 space-y-4">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600">
+            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+              {/* TITLE BLOCK */}
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600 flex-shrink-0">
                   <Clock className="w-5 h-5" />
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
-                      Today's Due Collections & Khata Settlement
-                    </h3>
-                    <Badge className="bg-rose-100 text-rose-800 border-rose-200 text-[10px] font-mono font-bold">
-                      {pendingDues.length} Pending Dues
-                    </Badge>
-                  </div>
+                <div className="min-w-0">
+                  <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
+                    Due Collections & Khata Settlement
+                  </h3>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Track customer promises, send reminders, and clear due payments in real-time.
+                    {isDueFilterActive ? (
+                      <>
+                        Showing dues from{" "}
+                        <span className="font-bold text-[#3F63AD]">{dueDateRange.start}</span> to{" "}
+                        <span className="font-bold text-[#3F63AD]">{dueDateRange.end}</span>
+                      </>
+                    ) : (
+                      <>Track customer promises, send reminders, and clear dues in real-time.</>
+                    )}
                   </p>
                 </div>
               </div>
 
-              {/* KPI Summary Highlights */}
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-200 text-right">
-                  <p className="text-[10px] font-bold text-rose-800 uppercase tracking-wider">Today's Due</p>
-                  <p className="text-sm font-black text-rose-950 font-mono">{indianNumberFormat(todayDueAmount)}</p>
+              {/* CONTROLS + KPI STRIP */}
+              <div className="flex flex-col sm:items-end gap-2.5 flex-shrink-0">
+                {/* ROW 1: DATE FILTER + TOTAL PENDING BUTTON */}
+                <div className="flex items-center gap-2">
+                  <DateRangeFilter
+                    value={dueDateFilter}
+                    onChange={(val, start, end) => {
+                      setDueDateFilter(val);
+                      setDueDateRange({ start: start || "", end: end || "" });
+                    }}
+                    showIcon={true}
+                    placeholder="All Dates"
+                    className="w-[145px] !h-9 text-xs font-semibold rounded-xl"
+                  />
+                  {isDueFilterActive && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDueDateFilter("");
+                        setDueDateRange({ start: "", end: "" });
+                      }}
+                      title="Clear date filter"
+                      className="h-9 w-9 flex items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors flex-shrink-0"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+
+                  <Button
+                    onClick={() => setDueTabFilter("all")}
+                    title="Show every pending due in the selected date range"
+                    className={cn(
+                      "h-9 px-3.5 rounded-xl font-bold text-xs shadow-sm border transition-all gap-2",
+                      dueTabFilter === "all"
+                        ? "bg-rose-600 hover:bg-rose-700 text-white border-rose-600"
+                        : "bg-rose-50 hover:bg-rose-100 text-rose-900 border-rose-200"
+                    )}
+                  >
+                    <Wallet className="w-3.5 h-3.5" />
+                    <span>Total Pending</span>
+                    <span className="font-mono font-black text-sm">{formatCurrency(totalPendingAmount)}</span>
+                    <span className={cn(
+                      "text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md",
+                      dueTabFilter === "all" ? "bg-white/25 text-white" : "bg-rose-200/70 text-rose-900"
+                    )}>
+                      {pendingDues.length}
+                    </span>
+                  </Button>
                 </div>
-                <div className="px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-right">
-                  <p className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">Overdue</p>
-                  <p className="text-sm font-black text-amber-950 font-mono">{indianNumberFormat(overdueAmount)}</p>
-                </div>
-                <div className="px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-right">
-                  <p className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">Cleared Today</p>
-                  <p className="text-sm font-black text-emerald-950 font-mono">{indianNumberFormat(clearedTodayAmount)}</p>
+
+                {/* ROW 2: UNIFIED KPI STRIP (equal cells, always one line) */}
+                <div className="grid grid-cols-3 rounded-xl border border-slate-200 bg-slate-50/70 overflow-hidden divide-x divide-slate-200">
+                  {[
+                    { label: "Today's Due", amount: todayDueAmount, dot: "bg-rose-500", text: "text-rose-700" },
+                    { label: "Overdue", amount: overdueAmount, dot: "bg-amber-500", text: "text-amber-700" },
+                    { label: "Cleared Today", amount: clearedTodayAmount, dot: "bg-emerald-500", text: "text-emerald-700" },
+                  ].map((kpi) => (
+                    <div
+                      key={kpi.label}
+                      title={`${kpi.label}: ${formatCurrency(kpi.amount)}`}
+                      className="px-3.5 py-2 min-w-[110px]"
+                    >
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
+                        <span className={cn("w-1.5 h-1.5 rounded-full", kpi.dot)} />
+                        {kpi.label}
+                      </p>
+                      <p className={cn("text-sm font-black font-mono mt-0.5", kpi.text)}>
+                        {indianNumberFormat(kpi.amount)}
+                      </p>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -3104,23 +3364,29 @@ export default function DashboardPage() {
             {/* Filter Tabs */}
             <div className="flex items-center gap-2 overflow-x-auto pb-1">
               {[
-                { key: "today", label: `⏰ Today's Due (${todayDues.length})` },
-                { key: "overdue", label: `⚠️ Overdue (${overdueDues.length})` },
-                { key: "upcoming", label: `📅 Upcoming (${upcomingDues.length})` },
-                { key: "cleared", label: `✅ Cleared Dues (${clearedDues.length})` },
-                { key: "all", label: `📋 All Pending (${pendingDues.length})` },
+                { key: "today", label: "⏰ Today's Due", count: todayDues.length },
+                { key: "overdue", label: "⚠️ Overdue", count: overdueDues.length },
+                { key: "upcoming", label: "📅 Upcoming", count: upcomingDues.length },
+                { key: "cleared", label: "✅ Cleared Dues", count: clearedDues.length },
+                { key: "all", label: "📋 All Pending", count: pendingDues.length },
               ].map(tab => (
                 <button
                   key={tab.key}
                   onClick={() => setDueTabFilter(tab.key as any)}
                   className={cn(
-                    "px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all border",
+                    "h-9 px-3 rounded-xl text-xs font-bold whitespace-nowrap transition-all border flex items-center gap-1.5 flex-shrink-0",
                     dueTabFilter === tab.key
                       ? "bg-slate-900 text-white border-slate-900 shadow-sm"
                       : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
                   )}
                 >
                   {tab.label}
+                  <span className={cn(
+                    "text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md",
+                    dueTabFilter === tab.key ? "bg-white/25 text-white" : "bg-slate-200/80 text-slate-700"
+                  )}>
+                    {tab.count}
+                  </span>
                 </button>
               ))}
             </div>
@@ -3977,7 +4243,7 @@ export default function DashboardPage() {
               <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 border border-white/10">
                 <p className="text-[11px] font-semibold text-slate-300 uppercase tracking-wider">Active Categories</p>
                 <p className="text-2xl font-black text-amber-300 mt-0.5">
-                  {(stockBreakdown.categories && stockBreakdown.categories.length > 0) ? stockBreakdown.categories.length : 2} <span className="text-xs font-normal text-slate-300">Groups</span>
+                  {(stockBreakdown.categories || []).length} <span className="text-xs font-normal text-slate-300">Groups</span>
                 </p>
               </div>
             </div>
@@ -3990,7 +4256,7 @@ export default function DashboardPage() {
               <div className="relative flex-1">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <Input
-                  placeholder="Search categories (e.g. LED, AC, Mobile, Refrigerator)..."
+                  placeholder="Search products or categories (e.g. LED, AC, iPhone, Samsung)..."
                   value={stockSearchQuery}
                   onChange={(e) => setStockSearchQuery(e.target.value)}
                   className="pl-9 bg-white border-slate-200 text-xs h-9"
@@ -4009,28 +4275,62 @@ export default function DashboardPage() {
               </Button>
             </div>
 
-            {/* Category Cards Grid */}
+            {/* GROUP TABS — Electronics is an umbrella over every appliance category */}
+            <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-slate-200 w-fit">
+              {([
+                { key: "all", label: "All Stock", icon: Package, qty: stockBreakdown.totalQuantity, value: stockBreakdown.totalStockValue },
+                { key: "electronics", label: "Electronics", icon: Tv, qty: stockBreakdown.electronics.quantity, value: stockBreakdown.electronics.value },
+                { key: "mobile", label: "Mobile", icon: Smartphone, qty: stockBreakdown.mobile.quantity, value: stockBreakdown.mobile.value },
+              ] as const).map((g) => {
+                const Icon = g.icon;
+                const isActive = stockGroupFilter === g.key;
+                return (
+                  <button
+                    key={g.key}
+                    type="button"
+                    onClick={() => { setStockGroupFilter(g.key as any); setStockCategoryFilter("all"); }}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5",
+                      isActive ? "bg-[#3F63AD] text-white shadow-sm" : "text-slate-600 hover:bg-slate-100"
+                    )}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    {g.label}
+                    <span className={cn(
+                      "text-[10px] font-mono font-bold px-1.5 py-0.5 rounded",
+                      isActive ? "bg-white/25 text-white" : "bg-slate-200/80 text-slate-700"
+                    )}>
+                      {(g.qty || 0).toLocaleString("en-IN")}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {stockGroupFilter === "electronics" && (
+              <p className="text-[11px] text-slate-500 -mt-1">
+                Electronics covers every appliance category — fridge, cooler, AC, TV, washing machine and more.
+              </p>
+            )}
+
+            {/* Category Cards Grid — clicking a card filters the product list below */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1">
-              {((stockBreakdown.categories && stockBreakdown.categories.length > 0)
-                ? stockBreakdown.categories
-                : [
-                    { name: "Electronics & LED TVs", quantity: stockBreakdown.electronics.quantity || 320, value: stockBreakdown.electronics.value || 38500000, itemCount: 45 },
-                    { name: "Mobile Phones & Tablets", quantity: stockBreakdown.mobile.quantity || 510, value: stockBreakdown.mobile.value || 9720000, itemCount: 63 },
-                    { name: "Home Appliances & ACs", quantity: 180, value: 4500000, itemCount: 28 },
-                    { name: "IT, Laptops & Accessories", quantity: 240, value: 2150000, itemCount: 35 },
-                  ]
-              )
+              {(stockBreakdown.categories || [])
+                .filter((cat) => stockGroupFilter === "all" || (cat.group || "electronics") === stockGroupFilter)
                 .filter((cat) => cat.name.toLowerCase().includes(stockSearchQuery.toLowerCase()))
                 .map((cat, idx) => {
                   const percentage = stockBreakdown.totalStockValue > 0 ? ((cat.value / stockBreakdown.totalStockValue) * 100).toFixed(1) : "0";
+                  const isActive = stockCategoryFilter.toLowerCase() === cat.name.toLowerCase();
                   return (
                     <div
                       key={idx}
-                      onClick={() => {
-                        setOpenStockModal(false);
-                        router.push(`/masters/items?category=${encodeURIComponent(cat.name)}`);
-                      }}
-                      className="bg-white p-4 rounded-xl border border-slate-200 hover:border-[#3F63AD] hover:shadow-md transition-all cursor-pointer flex flex-col justify-between group"
+                      onClick={() => setStockCategoryFilter(isActive ? "all" : cat.name)}
+                      className={cn(
+                        "bg-white p-4 rounded-xl border transition-all cursor-pointer flex flex-col justify-between group",
+                        isActive
+                          ? "border-[#3F63AD] ring-2 ring-[#3F63AD]/20 shadow-md"
+                          : "border-slate-200 hover:border-[#3F63AD] hover:shadow-md"
+                      )}
                     >
                       <div className="flex items-start justify-between">
                         <div>
@@ -4058,15 +4358,163 @@ export default function DashboardPage() {
                         </div>
                         <Button
                           size="sm"
-                          className="bg-[#3F63AD] hover:bg-[#2C3E5A] text-white text-xs h-8 px-3 font-semibold group-hover:shadow-sm"
+                          className={cn(
+                            "text-white text-xs h-8 px-3 font-semibold group-hover:shadow-sm",
+                            isActive ? "bg-[#2C3E5A] hover:bg-[#1B2537]" : "bg-[#3F63AD] hover:bg-[#2C3E5A]"
+                          )}
                         >
-                          View Stock Items <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                          {isActive ? "Showing Items" : "View Stock Items"} <ArrowRight className="w-3.5 h-3.5 ml-1" />
                         </Button>
                       </div>
                     </div>
                   );
                 })}
+
+              {(stockBreakdown.categories || [])
+                .filter((cat) => stockGroupFilter === "all" || (cat.group || "electronics") === stockGroupFilter)
+                .filter((cat) => cat.name.toLowerCase().includes(stockSearchQuery.toLowerCase()))
+                .length === 0 && (
+                <div className="md:col-span-2 py-10 flex flex-col items-center justify-center text-center bg-white rounded-xl border border-dashed border-slate-200">
+                  <Package className="w-8 h-8 text-slate-300 mb-2" />
+                  <p className="text-sm font-bold text-slate-600">No stock categories found</p>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {stockSearchQuery || stockGroupFilter !== "all"
+                      ? "Try clearing the search or switching group."
+                      : "Add products in Item Master to build your inventory catalog."}
+                  </p>
+                </div>
+              )}
             </div>
+
+            {/* PRODUCT LIST — actual items behind the category totals */}
+            {(() => {
+              const q = stockSearchQuery.trim().toLowerCase();
+              const visibleItems = stockItems
+                .filter((it: any) =>
+                  stockGroupFilter === "all" || (it.group || "electronics") === stockGroupFilter
+                )
+                .filter((it: any) =>
+                  stockCategoryFilter === "all" ||
+                  (it.category || "").toLowerCase() === stockCategoryFilter.toLowerCase()
+                )
+                .filter((it: any) =>
+                  !q ||
+                  (it.name || "").toLowerCase().includes(q) ||
+                  (it.brand || "").toLowerCase().includes(q) ||
+                  (it.category || "").toLowerCase().includes(q) ||
+                  (it.vpCode || "").toLowerCase().includes(q)
+                )
+                .sort((a: any, b: any) => (b.stockValue || 0) - (a.stockValue || 0));
+
+              return (
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-100 bg-slate-50/70">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black text-slate-700 uppercase tracking-wider">
+                        Stock Items
+                      </span>
+                      <Badge className="bg-slate-200 text-slate-700 border-slate-300 text-[10px] font-mono font-bold">
+                        {visibleItems.length}
+                      </Badge>
+                    </div>
+                    {stockCategoryFilter !== "all" && (
+                      <button
+                        type="button"
+                        onClick={() => setStockCategoryFilter("all")}
+                        className="text-[11px] font-bold text-[#3F63AD] hover:underline flex items-center gap-1"
+                      >
+                        <X className="w-3 h-3" /> Clear "{stockCategoryFilter}"
+                      </button>
+                    )}
+                  </div>
+
+                  {visibleItems.length === 0 ? (
+                    <div className="py-10 flex flex-col items-center justify-center text-center">
+                      <Search className="w-7 h-7 text-slate-300 mb-2" />
+                      <p className="text-xs font-bold text-slate-500">No products match this filter</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto max-h-[300px] overflow-y-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-white sticky top-0 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                          <tr>
+                            <th className="px-4 py-2">Product</th>
+                            <th className="px-4 py-2">Category</th>
+                            <th className="px-4 py-2 text-right">Qty</th>
+                            <th className="px-4 py-2 text-right">Rate</th>
+                            <th className="px-4 py-2 text-right">Stock Value</th>
+                            <th className="px-4 py-2 text-right">Open</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {visibleItems.slice(0, 100).map((it: any) => (
+                            <tr
+                              key={it._id || it.code}
+                              onClick={() => openProductLedger(it)}
+                              title="Open product ledger"
+                              className="hover:bg-slate-50 cursor-pointer transition-colors"
+                            >
+                              <td className="px-4 py-2.5">
+                                <p className="font-bold text-slate-900 truncate max-w-[240px]">{it.name}</p>
+                                <span className="text-[10px] text-slate-400 font-mono">
+                                  {it.vpCode || it.code} • {it.brand}
+                                </span>
+                              </td>
+                              <td className="px-4 py-2.5 text-slate-600">{it.category}</td>
+                              <td className="px-4 py-2.5 text-right">
+                                <span
+                                  className={cn(
+                                    "font-mono font-bold",
+                                    (it.availableQty || 0) > 0 ? "text-emerald-700" : "text-rose-600"
+                                  )}
+                                >
+                                  {it.availableQty || 0}
+                                </span>
+                              </td>
+                              <td className="px-4 py-2.5 text-right font-mono text-slate-700">
+                                {formatCurrency(it.sellingPrice || 0)}
+                              </td>
+                              <td className="px-4 py-2.5 text-right font-mono font-black text-slate-900">
+                                {formatCurrency(it.stockValue || 0)}
+                              </td>
+                              <td className="px-4 py-2.5 text-right">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); openProductLedger(it); }}
+                                    title="Open product ledger"
+                                    className="h-7 px-2 rounded-lg border border-slate-200 bg-white text-[10px] font-bold text-slate-600 hover:text-[#3F63AD] hover:border-[#3F63AD] transition-colors"
+                                  >
+                                    Ledger
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setOpenStockModal(false);
+                                      openProductMaster(it);
+                                    }}
+                                    title="Open in Item Master"
+                                    className="h-7 px-2 rounded-lg border border-slate-200 bg-white text-[10px] font-bold text-slate-600 hover:text-purple-700 hover:border-purple-400 transition-colors"
+                                  >
+                                    Master
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {visibleItems.length > 100 && (
+                        <p className="text-[11px] text-slate-400 text-center py-2 border-t border-slate-100">
+                          Showing first 100 of {visibleItems.length} items — use search to narrow down.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
           {/* Footer */}
@@ -4085,6 +4533,13 @@ export default function DashboardPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* ─── PRODUCT LEDGER (purchases, sales & serials for one item) ──── */}
+      <ProductLedgerModal
+        isOpen={!!ledgerProduct}
+        onClose={() => setLedgerProduct(null)}
+        productIdentifier={ledgerProduct}
+      />
 
       {/* ─── QUICK ASSIGN TASK MODAL ───────────────────────────────────── */}
       <Dialog open={isNewTaskModalOpen} onOpenChange={setIsNewTaskModalOpen}>

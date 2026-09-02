@@ -45,7 +45,8 @@ import {
   DialogFooter 
 } from "@/components/ui/dialog";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
-import { formatCurrency, downloadCSV, formatDate } from "@/lib/utils";
+import { formatCurrency, downloadCSV, formatDate, cn } from "@/lib/utils";
+import { DateRangeFilter } from "@/components/shared/date-range-filter";
 import { BrandLogo } from "@/components/shared/brand-logo";
 import { useBranch } from "@/context/BranchContext";
 
@@ -55,6 +56,12 @@ export default function StockFlowPage() {
   const [brandFilter, setBrandFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  // Date range for stock movement. Empty = all time, so the page opens showing the
+  // full history exactly as it did before.
+  const [dateFilter, setDateFilter] = useState("");
+  const [dateRange, setDateRange] = useState<{ start: string; end: string }>({ start: "", end: "" });
+  // "all" | "in" | "out" | "transfer"
+  const [movementFilter, setMovementFilter] = useState("all");
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
   const [isLedgerOpen, setIsLedgerOpen] = useState(false);
   const [page, setPage] = useState(1);
@@ -62,12 +69,17 @@ export default function StockFlowPage() {
 
   // 1. Fetch Stock Flow API
   const { data, isLoading, refetch, isFetching } = useQuery({
-    queryKey: ["stock-flow", brandFilter, categoryFilter, statusFilter, activeLocation?.name],
+    queryKey: ["stock-flow", brandFilter, categoryFilter, statusFilter, dateRange.start, dateRange.end, movementFilter, activeLocation?.name],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (brandFilter !== "all") params.append("brand", brandFilter);
       if (categoryFilter !== "all") params.append("category", categoryFilter);
       if (statusFilter !== "all") params.append("status", statusFilter);
+      if (movementFilter !== "all") params.append("movement", movementFilter);
+      if (dateRange.start && dateRange.end) {
+        params.append("startDate", dateRange.start);
+        params.append("endDate", dateRange.end);
+      }
       if (activeLocation?.name) params.append("warehouse", activeLocation.name);
 
       const res = await fetch(`/api/inventory/stock-flow?${params.toString()}`);
@@ -154,14 +166,24 @@ export default function StockFlowPage() {
       Warehouse: item.warehouse,
     }));
 
-    downloadCSV(exportRows, `Stock_Flow_Report_${new Date().toISOString().split("T")[0]}.csv`);
+    const periodTag = dateRange.start && dateRange.end
+      ? `${dateRange.start}_to_${dateRange.end}`
+      : new Date().toISOString().split("T")[0];
+    const movementTag = movementFilter === "all" ? "" : `_${movementFilter}`;
+    downloadCSV(exportRows, `Stock_Flow_Report${movementTag}_${periodTag}.csv`);
     toast.success("Stock Flow report exported successfully!");
   };
 
   return (
     <PageShell
       title="Stock Flow (In / Out)"
-      subtitle="Live inventory on-hand, recent inward receipts, outward sales & warehouse transfers"
+      subtitle={
+        dateFilter || movementFilter !== "all"
+          ? `${
+              movementFilter === "in" ? "Stock In only" : movementFilter === "out" ? "Stock Out only" : movementFilter === "transfer" ? "Transfers only" : "All movement"
+            }${dateFilter ? ` · ${dateFilter} (${dateRange.start} → ${dateRange.end})` : " · All time"} — on-hand stock always shows live quantity`
+          : "Live inventory on-hand, recent inward receipts, outward sales & warehouse transfers"
+      }
       breadcrumbs={[
         { label: "Inventory", href: "/inventory/stock-flow" },
         { label: "Stock Flow" },
@@ -214,12 +236,14 @@ export default function StockFlowPage() {
             <ArrowDownLeft className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total Stock In (Inward)</p>
+            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+              Stock In (Inward){dateFilter ? "" : " · All Time"}
+            </p>
             <h3 className="text-xl font-bold text-emerald-700 mt-0.5">
               +{summary.totalInwardUnits.toLocaleString()} <span className="text-xs font-normal text-emerald-600">Units</span>
             </h3>
             <p className="text-[11px] text-slate-500 mt-0.5">
-              Purchases & Inward Goods
+              {dateFilter ? `Purchases in ${dateFilter}` : "Purchases & Inward Goods"}
             </p>
           </div>
         </div>
@@ -230,12 +254,14 @@ export default function StockFlowPage() {
             <ArrowUpRight className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total Stock Out (Outward)</p>
+            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+              Stock Out (Outward){dateFilter ? "" : " · All Time"}
+            </p>
             <h3 className="text-xl font-bold text-[#3F63AD] mt-0.5">
               -{summary.totalOutwardUnits.toLocaleString()} <span className="text-xs font-normal text-[#3F63AD]/80">Units</span>
             </h3>
             <p className="text-[11px] text-slate-500 mt-0.5">
-              Billed Tax Invoices & Sales
+              {dateFilter ? `Sales in ${dateFilter}` : "Billed Tax Invoices & Sales"}
             </p>
           </div>
         </div>
@@ -335,7 +361,53 @@ export default function StockFlowPage() {
             </SelectContent>
           </Select>
 
-          {(search || brandFilter !== "all" || categoryFilter !== "all" || statusFilter !== "all") && (
+          {/* Movement Type: view only Stock In, only Stock Out, or transfers */}
+          <div className="flex items-center gap-0.5 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+            {[
+              { key: "all", label: "All" },
+              { key: "in", label: "Stock In" },
+              { key: "out", label: "Stock Out" },
+              { key: "transfer", label: "Transfers" },
+            ].map((m) => (
+              <button
+                key={m.key}
+                type="button"
+                onClick={() => {
+                  setMovementFilter(m.key);
+                  setPage(1);
+                }}
+                className={cn(
+                  "px-2.5 h-8 rounded-md text-[11px] font-bold transition-all whitespace-nowrap",
+                  movementFilter === m.key
+                    ? m.key === "in"
+                      ? "bg-emerald-600 text-white shadow-xs"
+                      : m.key === "out"
+                      ? "bg-[#3F63AD] text-white shadow-xs"
+                      : m.key === "transfer"
+                      ? "bg-purple-600 text-white shadow-xs"
+                      : "bg-white text-slate-900 shadow-xs"
+                    : "text-slate-600 hover:text-slate-900"
+                )}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Date Range: scopes Stock In / Stock Out to a period */}
+          <DateRangeFilter
+            value={dateFilter}
+            onChange={(val, start, end) => {
+              setDateFilter(val);
+              setDateRange({ start: start || "", end: end || "" });
+              setPage(1);
+            }}
+            showIcon={true}
+            placeholder="All Time"
+            className="w-[140px] h-9 text-xs"
+          />
+
+          {(search || brandFilter !== "all" || categoryFilter !== "all" || statusFilter !== "all" || dateFilter || movementFilter !== "all") && (
             <Button
               variant="ghost"
               size="sm"
@@ -344,6 +416,9 @@ export default function StockFlowPage() {
                 setBrandFilter("all");
                 setCategoryFilter("all");
                 setStatusFilter("all");
+                setDateFilter("");
+                setDateRange({ start: "", end: "" });
+                setMovementFilter("all");
                 setPage(1);
               }}
               className="h-9 text-xs text-slate-500 hover:text-red-600 px-2"
@@ -365,10 +440,29 @@ export default function StockFlowPage() {
             <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 mx-auto flex items-center justify-center mb-3">
               <Package className="w-6 h-6" />
             </div>
-            <h3 className="text-sm font-bold text-slate-800">No stock records found</h3>
+            <h3 className="text-sm font-bold text-slate-800">
+              {dateFilter || movementFilter !== "all" ? "No stock movement in this selection" : "No stock records found"}
+            </h3>
             <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-              No products match the selected search or filter criteria. Try adjusting your filters or search keywords.
+              {dateFilter
+                ? `No ${movementFilter === "in" ? "inward" : movementFilter === "out" ? "outward" : "stock"} movement recorded between ${dateRange.start} and ${dateRange.end}. Try a wider date range.`
+                : "No products match the selected search or filter criteria. Try adjusting your filters or search keywords."}
             </p>
+            {(dateFilter || movementFilter !== "all") && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3 text-xs h-8"
+                onClick={() => {
+                  setDateFilter("");
+                  setDateRange({ start: "", end: "" });
+                  setMovementFilter("all");
+                  setPage(1);
+                }}
+              >
+                Show all time
+              </Button>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">

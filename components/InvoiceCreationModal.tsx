@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { 
   Receipt, Users, CreditCard, Sparkles, ShoppingCart, Plus, Trash2, Printer,
-  XCircle, Phone, UserCheck, UserPlus, X, Shield, AlertTriangle, FileText, CheckCircle2, Truck, Clock, ChevronsDownUp
+  XCircle, Phone, UserCheck, UserPlus, X, Shield, AlertTriangle, FileText, CheckCircle2, Truck, Clock, ChevronsDownUp, Wallet
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -417,6 +417,36 @@ export function InvoiceCreationModal({
   const activePaymentAmount = (mode === "estimate" && estimateIncludesAdvance)
     ? preBookingAdvanceAmount
     : (mode === "invoice" ? netAmountPayableAfterAdvance : billCalculations.grandTotal);
+
+  // ─── SPLIT PAYMENT ────────────────────────────────────────────────────────
+  // Off by default, so the single-mode flow above is completely unchanged.
+  // When on, the bill is divided across several modes and the rows must add up
+  // to the amount payable before the invoice can be saved.
+  const [isSplitPayment, setIsSplitPayment] = useState(false);
+  const [splitRows, setSplitRows] = useState<Array<{ mode: string; amount: string; txnId: string }>>([
+    { mode: "Cash", amount: "", txnId: "" },
+    { mode: "UPI", amount: "", txnId: "" },
+  ]);
+
+  const SPLIT_MODE_OPTIONS = ["Cash", "UPI", "Credit Card", "Debit Card", "Online", "Finance", "Due / Credit"];
+
+  const splitAllocated = splitRows.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+  const splitRemaining = Number((activePaymentAmount - splitAllocated).toFixed(2));
+  const isSplitBalanced = Math.abs(splitRemaining) <= 1;
+  const splitCollected = splitRows
+    .filter((r) => !/finance|due|credit bill/i.test(r.mode) || /credit card/i.test(r.mode))
+    .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+
+  const updateSplitRow = (idx: number, patch: Partial<{ mode: string; amount: string; txnId: string }>) => {
+    setSplitRows((rows) => rows.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+  };
+  const addSplitRow = () => setSplitRows((rows) => [...rows, { mode: "Cash", amount: "", txnId: "" }]);
+  const removeSplitRow = (idx: number) =>
+    setSplitRows((rows) => (rows.length <= 2 ? rows : rows.filter((_, i) => i !== idx)));
+  const fillRemainingInRow = (idx: number) => {
+    const others = splitRows.reduce((sum, r, i) => (i === idx ? sum : sum + (Number(r.amount) || 0)), 0);
+    updateSplitRow(idx, { amount: String(Math.max(0, Number((activePaymentAmount - others).toFixed(2)))) });
+  };
 
   const [phoneLookupStatus, setPhoneLookupStatus] = useState<"idle" | "existing" | "new">("idle");
   const [matchedEstimate, setMatchedEstimate] = useState<any>(null);
@@ -1023,7 +1053,38 @@ export function InvoiceCreationModal({
       balanceAmt = Math.max(0, netBillAfterAdvance - paidAmt);
     }
 
+    // ─── SPLIT PAYMENT PAYLOAD ────────────────────────────────────────────
+    // The rows become the source of truth; the server re-derives paymentMode,
+    // paidAmount and balanceAmount from them so the two can never disagree.
+    let splitPaymentsPayload: Array<{ mode: string; amount: number; txnId: string }> | undefined;
+    if (isSplitPayment && !isEstimate) {
+      const rows = splitRows
+        .map((r) => ({ mode: r.mode, amount: Number(r.amount) || 0, txnId: r.txnId || "" }))
+        .filter((r) => r.amount > 0);
+
+      if (rows.length < 2) {
+        toast.error("Add at least two payment modes, or turn off Split Payment.");
+        return;
+      }
+      const allocated = rows.reduce((s, r) => s + r.amount, 0);
+      if (Math.abs(allocated - activePaymentAmount) > 1) {
+        toast.error(
+          `Split payments (${formatCurrency(allocated)}) must add up to the bill amount (${formatCurrency(activePaymentAmount)}).`
+        );
+        return;
+      }
+
+      splitPaymentsPayload = rows;
+      const collected = rows
+        .filter((r) => !/^finance$|^due/i.test(r.mode))
+        .reduce((s, r) => s + r.amount, 0);
+      paidAmt = collected;
+      balanceAmt = Math.max(0, activePaymentAmount - collected);
+      paymentModeToSave = (rows.length === 1 ? rows[0].mode : "Multiple") as any;
+    }
+
     createInvoiceMutation.mutate({
+      payments: splitPaymentsPayload,
       ...billingForm,
       invoiceNumber: billingForm.invoiceNo,
       type: mode === "credit-note" ? "credit-note" : (mode === "sales-order" ? "sales-order" : (mode === "estimate" ? "proforma" : "tax-invoice")),
@@ -2047,7 +2108,24 @@ export function InvoiceCreationModal({
                       <CreditCard className="w-4 h-4 text-[#3F63AD]" /> 
                       {mode === "estimate" ? "3. TOKEN ADVANCE PAYMENT MODE SPECIFICATIONS" : "3. PAYMENT MODE SPECIFICATIONS & RECONCILIATION"}
                     </h4>
-                    <div className="flex flex-wrap items-center gap-1 bg-slate-100 p-1 rounded-lg">
+                    <div className="flex flex-wrap items-center gap-2">
+                    {mode !== "estimate" && (
+                      <button
+                        type="button"
+                        onClick={() => setIsSplitPayment((v) => !v)}
+                        className={cn(
+                          "px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-1.5",
+                          isSplitPayment
+                            ? "bg-[#76C043] text-white border-[#76C043] shadow-sm"
+                            : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                        )}
+                        title="Collect one bill across several payment modes"
+                      >
+                        <Wallet className="w-3.5 h-3.5" />
+                        Split Payment
+                      </button>
+                    )}
+                    <div className={cn("flex flex-wrap items-center gap-1 bg-slate-100 p-1 rounded-lg", isSplitPayment && "opacity-40 pointer-events-none")}>
                       {(mode === "estimate"
                         ? (["Cash", "UPI", "Credit Card", "Debit Card"] as const)
                         : (["Cash", "UPI", "Credit Card", "Debit Card", "Online", "Finance", "Due / Credit"] as const)
@@ -2073,10 +2151,131 @@ export function InvoiceCreationModal({
                         </button>
                       ))}
                     </div>
+                    </div>
                   </div>
 
+                  {/* ─── SPLIT PAYMENT BUILDER ─────────────────────────────── */}
+                  {isSplitPayment && (
+                    <div className="p-4 bg-[#76C043]/5 rounded-xl border border-[#76C043]/40 space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-xs font-bold text-slate-700">
+                          Divide this bill across payment modes
+                        </p>
+                        <div className="flex items-center gap-3 text-xs font-mono">
+                          <span className="text-slate-500">
+                            Bill <span className="font-black text-slate-900">{formatCurrency(activePaymentAmount)}</span>
+                          </span>
+                          <span className="text-slate-500">
+                            Allocated <span className="font-black text-slate-900">{formatCurrency(splitAllocated)}</span>
+                          </span>
+                          <span
+                            className={cn(
+                              "px-2 py-1 rounded-md font-black border",
+                              isSplitBalanced
+                                ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                                : splitRemaining > 0
+                                ? "bg-amber-50 text-amber-800 border-amber-300"
+                                : "bg-rose-50 text-rose-800 border-rose-300"
+                            )}
+                          >
+                            {isSplitBalanced
+                              ? "Balanced ✓"
+                              : splitRemaining > 0
+                              ? `Remaining ${formatCurrency(splitRemaining)}`
+                              : `Over by ${formatCurrency(Math.abs(splitRemaining))}`}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        {splitRows.map((row, idx) => (
+                          <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+                            <div className="col-span-4 sm:col-span-3">
+                              <select
+                                value={row.mode}
+                                onChange={(e) => updateSplitRow(idx, { mode: e.target.value })}
+                                className="w-full h-9 rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-800"
+                              >
+                                {SPLIT_MODE_OPTIONS.map((m) => (
+                                  <option key={m} value={m}>{m}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="col-span-4 sm:col-span-3">
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                placeholder="Amount ₹"
+                                value={row.amount}
+                                onChange={(e) => updateSplitRow(idx, { amount: e.target.value })}
+                                className="h-9 text-xs font-mono font-bold bg-white"
+                              />
+                            </div>
+                            <div className="col-span-3 sm:col-span-4">
+                              <Input
+                                placeholder="Txn / UTR / Ref (optional)"
+                                value={row.txnId}
+                                onChange={(e) => updateSplitRow(idx, { txnId: e.target.value })}
+                                className="h-9 text-xs bg-white"
+                              />
+                            </div>
+                            <div className="col-span-1 sm:col-span-2 flex items-center gap-1 justify-end">
+                              <button
+                                type="button"
+                                onClick={() => fillRemainingInRow(idx)}
+                                title="Fill remaining amount here"
+                                className="h-8 px-2 rounded-lg border border-slate-300 bg-white text-[10px] font-bold text-slate-600 hover:border-[#76C043] hover:text-[#76C043] whitespace-nowrap"
+                              >
+                                Fill
+                              </button>
+                              {splitRows.length > 2 && (
+                                <button
+                                  type="button"
+                                  onClick={() => removeSplitRow(idx)}
+                                  title="Remove this row"
+                                  className="h-8 w-8 rounded-lg border border-slate-300 bg-white text-slate-500 hover:text-rose-600 hover:border-rose-300 flex items-center justify-center"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={addSplitRow}
+                          className="h-8 px-3 rounded-lg border border-slate-300 bg-white text-xs font-bold text-slate-700 hover:border-[#76C043] hover:text-[#76C043]"
+                        >
+                          + Add another mode
+                        </button>
+                        <p className="text-[11px] text-slate-500">
+                          Collected now{" "}
+                          <span className="font-mono font-bold text-emerald-700">{formatCurrency(splitCollected)}</span>
+                          {splitAllocated - splitCollected > 0 && (
+                            <>
+                              {" · "}Receivable{" "}
+                              <span className="font-mono font-bold text-rose-700">
+                                {formatCurrency(splitAllocated - splitCollected)}
+                              </span>
+                            </>
+                          )}
+                        </p>
+                      </div>
+
+                      {!isSplitBalanced && (
+                        <p className="text-[11px] font-bold text-rose-700">
+                          Rows must add up to {formatCurrency(activePaymentAmount)} before this bill can be saved.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
                   {/* 1. CASH PAYMENT MODE */}
-                  {billingForm.paymentMode === "Cash" && (
+                  {!isSplitPayment && billingForm.paymentMode === "Cash" && (
                     <div className="p-4 bg-emerald-50/50 rounded-xl border border-emerald-200 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
                       <div>
                         <Label className="font-bold text-emerald-950">Cash Amount Payable (₹)</Label>
@@ -2094,7 +2293,7 @@ export function InvoiceCreationModal({
                   )}
 
                   {/* 2. UPI PAYMENT MODE */}
-                  {billingForm.paymentMode === "UPI" && (
+                  {!isSplitPayment && billingForm.paymentMode === "UPI" && (
                     <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-200 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
                       <div>
                         <Label className="font-bold text-blue-950">UPI Amount (₹)</Label>
@@ -2112,7 +2311,7 @@ export function InvoiceCreationModal({
                   )}
 
                   {/* 3. ONLINE PAYMENT MODE */}
-                  {billingForm.paymentMode === "Online" && (
+                  {!isSplitPayment && billingForm.paymentMode === "Online" && (
                     <div className="p-4 bg-indigo-50/50 rounded-xl border border-indigo-200 grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
                       <div>
                         <Label className="font-bold text-indigo-950">Online Amount (₹)</Label>
@@ -2130,7 +2329,7 @@ export function InvoiceCreationModal({
                         <SelectItem value="Razorpay POS">Razorpay POS</SelectItem>
                         <SelectItem value="PineLabs Gateway">PineLabs Gateway</SelectItem>
                         <SelectItem value="HDFC SmartHub">HDFC SmartHub</SelectItem>
-                        <SelectItem value="Direct NetBanking">Direct NetBanking</SelectItem>
+                        <SelectItem value="Direct NetBanking">NEFT / IMPS</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -2142,7 +2341,7 @@ export function InvoiceCreationModal({
               )}
 
               {/* 4A. CREDIT CARD PAYMENT MODE WITH ADMIN-CONFIGURABLE MDR */}
-              {billingForm.paymentMode === "Credit Card" && (
+              {!isSplitPayment && billingForm.paymentMode === "Credit Card" && (
                 <div className="p-4 bg-amber-50/60 rounded-xl border border-amber-300 space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-amber-200 pb-2.5 gap-2">
                     <div>
@@ -2246,7 +2445,7 @@ export function InvoiceCreationModal({
               )}
 
               {/* 4B. DEBIT CARD PAYMENT MODE */}
-              {billingForm.paymentMode === "Debit Card" && (
+              {!isSplitPayment && billingForm.paymentMode === "Debit Card" && (
                 <div className="p-4 bg-blue-50/60 rounded-xl border border-blue-300 space-y-4">
                   <div className="flex items-center justify-between border-b border-blue-200 pb-2.5">
                     <div>
@@ -2324,7 +2523,7 @@ export function InvoiceCreationModal({
               )}
 
               {/* 5. FINANCE PAYMENT MODE */}
-              {billingForm.paymentMode === "Finance" && (
+              {!isSplitPayment && billingForm.paymentMode === "Finance" && (
                 <div className="p-4 bg-orange-50/60 rounded-xl border border-orange-200 space-y-4">
                   <div className="flex items-center justify-between border-b border-orange-200 pb-2">
                     <span className="text-xs font-black text-orange-950 flex items-center gap-1.5">
@@ -2406,7 +2605,7 @@ export function InvoiceCreationModal({
               )}
 
               {/* 6. DUE / CREDIT BILL MODE */}
-              {billingForm.paymentMode === "Due / Credit" && (
+              {!isSplitPayment && billingForm.paymentMode === "Due / Credit" && (
                 <div className="p-4 bg-rose-50/60 rounded-xl border border-rose-200 space-y-3 text-xs">
                   <div className="flex items-center justify-between border-b border-rose-200 pb-2">
                     <span className="text-xs font-black text-rose-950 flex items-center gap-1.5">

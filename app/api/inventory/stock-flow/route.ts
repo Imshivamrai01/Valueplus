@@ -13,6 +13,29 @@ export async function GET(req: Request) {
     const category = searchParams.get("category") || "";
     const warehouse = searchParams.get("warehouse") || "";
     const stockStatus = searchParams.get("status") || "all";
+    const startDate = searchParams.get("startDate") || "";
+    const endDate = searchParams.get("endDate") || "";
+    // "all" | "in" | "out" | "transfer" — lets the user look at only inward or only
+    // outward movement instead of the combined ledger.
+    const movement = searchParams.get("movement") || "all";
+
+    // When a date range is supplied, every movement (purchase, sale, transfer) is
+    // scoped to it, so "Stock In / Stock Out" report the period rather than all time.
+    // `currentStock` stays live — on-hand quantity is a present-day fact, not a
+    // period one — which is why it is deliberately left out of this filter.
+    const hasDateFilter = Boolean(startDate && endDate);
+    const rangeStart = hasDateFilter ? new Date(startDate) : null;
+    const rangeEnd = hasDateFilter ? new Date(endDate) : null;
+    if (rangeStart) rangeStart.setHours(0, 0, 0, 0);
+    if (rangeEnd) rangeEnd.setHours(23, 59, 59, 999);
+
+    const inRange = (value: any): boolean => {
+      if (!hasDateFilter) return true;
+      if (!value) return false; // undated rows can't be proven to fall in the window
+      const d = new Date(value);
+      if (isNaN(d.getTime())) return false;
+      return d >= (rangeStart as Date) && d <= (rangeEnd as Date);
+    };
 
     await connectToDatabase();
 
@@ -51,11 +74,12 @@ export async function GET(req: Request) {
 
       // --- MATCH INWARDS (PURCHASES) ---
       const inwards: any[] = [];
-      for (const pe of purchaseEntries) {
+      for (const pe of purchaseEntries as any[]) {
         if (Array.isArray(pe.items)) {
           for (const line of pe.items) {
             const lineId = (line.itemId || "").toString();
             const lineName = (line.name || "").toLowerCase().trim();
+            if (!inRange(pe.billDate || pe.createdAt)) continue;
             if (lineId === itemIdStr || lineName === itemName || (itemName && lineName && (itemName.includes(lineName) || lineName.includes(itemName)))) {
               inwards.push({
                 date: pe.billDate || pe.createdAt,
@@ -72,12 +96,13 @@ export async function GET(req: Request) {
 
       // --- MATCH OUTWARDS (SALES INVOICES) ---
       const outwards: any[] = [];
-      for (const inv of invoices) {
+      for (const inv of invoices as any[]) {
         if (Array.isArray(inv.items)) {
           for (const line of inv.items) {
             const lineId = (line.itemId || "").toString();
             const lineCode = (line.itemCode || "").toLowerCase();
             const lineName = (line.itemName || "").toLowerCase().trim();
+            if (!inRange(inv.date || inv.createdAt)) continue;
             if (lineId === itemIdStr || lineCode === itemCode || lineName === itemName || (itemName && lineName && (itemName.includes(lineName) || lineName.includes(itemName)))) {
               outwards.push({
                 date: inv.date || inv.createdAt,
@@ -94,11 +119,12 @@ export async function GET(req: Request) {
 
       // --- MATCH WAREHOUSE TRANSFERS ---
       const transfers: any[] = [];
-      for (const st of stockTransfers) {
+      for (const st of stockTransfers as any[]) {
         if (Array.isArray(st.items)) {
           for (const line of st.items) {
             const lineId = (line.itemId || "").toString();
             const lineName = (line.itemName || "").toLowerCase().trim();
+            if (!inRange(st.date || st.createdAt)) continue;
             if (lineId === itemIdStr || lineName === itemName || (itemName && lineName && (itemName.includes(lineName) || lineName.includes(itemName)))) {
               transfers.push({
                 date: st.date || st.createdAt,
@@ -114,8 +140,10 @@ export async function GET(req: Request) {
         }
       }
 
-      // Latest Inward
-      const lastInward = inwards.length > 0 ? inwards[0] : (item.openingStock > 0 ? {
+      // Latest Inward. Opening stock has no date, so it is only offered as a fallback
+      // when the whole history is being shown — inside a date range it would overstate
+      // the period's inward quantity.
+      const lastInward = inwards.length > 0 ? inwards[0] : (!hasDateFilter && item.openingStock > 0 ? {
         date: "Opening Stock",
         quantity: item.openingStock,
         rate: item.purchasePrice,
@@ -129,9 +157,14 @@ export async function GET(req: Request) {
       // Latest Transfer
       const lastTransfer = transfers.length > 0 ? transfers[0] : null;
 
-      // Combined Chronological Timeline
+      // Combined Chronological Timeline, honouring the movement-type filter so the
+      // ledger can show inward only, outward only, or transfers only.
+      const showIn = movement === "all" || movement === "in";
+      const showOut = movement === "all" || movement === "out";
+      const showTransfer = movement === "all" || movement === "transfer";
+
       const timeline = [
-        ...inwards.map((inw) => ({
+        ...(!showIn ? [] : inwards).map((inw) => ({
           type: "INWARD",
           title: `Stock In (${inw.billNo})`,
           badge: `+${inw.quantity} ${item.unit || "Pcs"}`,
@@ -141,7 +174,7 @@ export async function GET(req: Request) {
           partyName: inw.supplierName,
           warehouse: item.warehouse || "Main Store - Gorakhpur",
         })),
-        ...outwards.map((out) => ({
+        ...(!showOut ? [] : outwards).map((out) => ({
           type: "OUTWARD",
           title: `Stock Out (${out.invoiceNo})`,
           badge: `-${out.quantity} ${item.unit || "Pcs"}`,
@@ -151,7 +184,7 @@ export async function GET(req: Request) {
           partyName: out.customerName,
           warehouse: item.warehouse || "Showroom",
         })),
-        ...transfers.map((tr) => ({
+        ...(!showTransfer ? [] : transfers).map((tr) => ({
           type: "TRANSFER",
           title: `Warehouse Transfer (${tr.transferNo})`,
           badge: `${tr.quantity} ${item.unit || "Pcs"} (${tr.fromWarehouse} ➔ ${tr.toWarehouse})`,
@@ -163,7 +196,7 @@ export async function GET(req: Request) {
         })),
       ].sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
 
-      if (timeline.length === 0 && item.openingStock > 0) {
+      if (timeline.length === 0 && item.openingStock > 0 && !hasDateFilter && showIn) {
         timeline.push({
           type: "INWARD",
           title: "Opening Stock Register",
@@ -195,8 +228,12 @@ export async function GET(req: Request) {
         lastInward,
         lastOutward,
         lastTransfer,
-        totalInwardQty: inwards.reduce((acc, x) => acc + x.quantity, 0) + (item.openingStock || 0),
+        // Opening stock counts as inward only when reporting all time; within a date
+        // range it is a pre-existing balance, not movement that happened in the period.
+        totalInwardQty: inwards.reduce((acc, x) => acc + x.quantity, 0) + (hasDateFilter ? 0 : (item.openingStock || 0)),
         totalOutwardQty: outwards.reduce((acc, x) => acc + x.quantity, 0),
+        totalTransferQty: transfers.reduce((acc, x) => acc + x.quantity, 0),
+        movementCount: inwards.length + outwards.length + transfers.length,
         timeline,
       };
     });
@@ -225,13 +262,29 @@ export async function GET(req: Request) {
       filteredResults = filteredResults.filter((i) => !!i.lastInward);
     }
 
-    // High Level Summary Metrics
-    const totalSKUs = itemFlowList.length;
-    const totalCurrentStock = itemFlowList.reduce((acc, i) => acc + i.currentStock, 0);
-    const totalStockValuation = itemFlowList.reduce((acc, i) => acc + i.currentStock * i.purchasePrice, 0);
-    const totalInwardUnits = itemFlowList.reduce((acc, i) => acc + i.totalInwardQty, 0);
-    const totalOutwardUnits = itemFlowList.reduce((acc, i) => acc + i.totalOutwardQty, 0);
-    const totalTransfers = stockTransfers.length;
+    // When looking at a specific movement type — or a date range — only show items that
+    // actually moved that way, otherwise the list is mostly rows of zeroes.
+    if (movement === "in") {
+      filteredResults = filteredResults.filter((i) => i.totalInwardQty > 0);
+    } else if (movement === "out") {
+      filteredResults = filteredResults.filter((i) => i.totalOutwardQty > 0);
+    } else if (movement === "transfer") {
+      filteredResults = filteredResults.filter((i) => i.totalTransferQty > 0);
+    } else if (hasDateFilter) {
+      filteredResults = filteredResults.filter((i) => i.movementCount > 0);
+    }
+
+    // High Level Summary Metrics — computed from the same filtered set the table shows,
+    // so the cards and the rows below them always agree.
+    const summarySource = filteredResults;
+    const totalSKUs = summarySource.length;
+    const totalCurrentStock = summarySource.reduce((acc, i) => acc + i.currentStock, 0);
+    const totalStockValuation = summarySource.reduce((acc, i) => acc + i.currentStock * i.purchasePrice, 0);
+    const totalInwardUnits = summarySource.reduce((acc, i) => acc + i.totalInwardQty, 0);
+    const totalOutwardUnits = summarySource.reduce((acc, i) => acc + i.totalOutwardQty, 0);
+    const totalTransfers = hasDateFilter
+      ? stockTransfers.filter((st: any) => inRange(st.date || st.createdAt)).length
+      : stockTransfers.length;
 
     return NextResponse.json({
       success: true,
@@ -243,6 +296,7 @@ export async function GET(req: Request) {
         totalOutwardUnits,
         totalTransfers,
       },
+      filters: { startDate, endDate, movement, dateFiltered: hasDateFilter },
       data: filteredResults,
     });
   } catch (error: any) {

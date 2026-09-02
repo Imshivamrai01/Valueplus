@@ -33,23 +33,60 @@ export function Topnav() {
   const [approvalsList, setApprovalsList] = useState<any[]>([]);
   const [pendingApprovalsCount, setPendingApprovalsCount] = useState(0);
 
-  // Poll live approvals
+  // Poll live approvals.
+  // This runs for the whole session, so it has to tolerate the connection dropping:
+  // offline, a dev-server restart, or the tab navigating away mid-request all surface
+  // as a network-level "TypeError: Failed to fetch". Those are expected here, so we
+  // skip the request when we know we're offline, abort in-flight work on unmount, and
+  // keep the last known count instead of logging an error every 12 seconds.
   useEffect(() => {
+    let cancelled = false;
+    let controller: AbortController | null = null;
+
     const fetchPending = async () => {
+      // Don't bother the network when the browser already knows it's offline,
+      // or while the tab is hidden — nothing is being displayed to update.
+      if (typeof navigator !== "undefined" && !navigator.onLine) return;
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+
+      controller?.abort();
+      controller = new AbortController();
+
       try {
-        const res = await fetch("/api/approvals?status=pending");
+        const res = await fetch("/api/approvals?status=pending", { signal: controller.signal });
+        if (!res.ok) return; // server-side hiccup: keep the previous count
         const json = await res.json();
+        if (cancelled) return;
         if (json.success) {
           setApprovalsList(json.data || []);
           setPendingApprovalsCount(json.pendingCount || 0);
         }
-      } catch (e) {
-        console.error("Failed to fetch approvals in topnav", e);
+      } catch (e: any) {
+        // AbortError is us cancelling; "Failed to fetch" means the request never left
+        // the browser. Neither is actionable, so don't spam the console.
+        if (e?.name === "AbortError" || cancelled) return;
+        console.warn("Approvals poll skipped (network unavailable)");
       }
     };
+
     fetchPending();
     const interval = setInterval(fetchPending, 12000);
-    return () => clearInterval(interval);
+
+    // Catch up as soon as connectivity or focus comes back.
+    const handleOnline = () => fetchPending();
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") fetchPending();
+    };
+    window.addEventListener("online", handleOnline);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      cancelled = true;
+      controller?.abort();
+      clearInterval(interval);
+      window.removeEventListener("online", handleOnline);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, []);
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -64,22 +101,32 @@ export function Topnav() {
       return;
     }
 
+    const controller = new AbortController();
     const handler = setTimeout(async () => {
       setIsSearching(true);
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`);
+        const res = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`, {
+          signal: controller.signal,
+        });
+        if (!res.ok) return;
         const json = await res.json();
         if (json.success) {
           setSearchResults(json.results || []);
         }
-      } catch (e) {
-        console.error(e);
+      } catch (e: any) {
+        if (e?.name === "AbortError") return; // superseded by a newer keystroke
+        console.warn("Search unavailable", e?.message || e);
       } finally {
-        setIsSearching(false);
+        if (!controller.signal.aborted) setIsSearching(false);
       }
     }, 200);
 
-    return () => clearTimeout(handler);
+    // Cancelling the in-flight request stops a slow older query from overwriting
+    // the results of a newer one.
+    return () => {
+      clearTimeout(handler);
+      controller.abort();
+    };
   }, [searchQuery]);
 
   return (

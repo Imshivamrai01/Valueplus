@@ -249,6 +249,7 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
         })(),
         
         paymentMode: invoice.paymentMode || "Cash",
+        payments: Array.isArray(invoice.payments) ? invoice.payments : [],
         paidAmount: invoice.paidAmount || invoice.total || 25500.00,
         balanceAmount: invoice.balanceAmount || 0,
         vehicleNumber: invoice.vehicleNumber || "",
@@ -744,6 +745,26 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
                 <span className="font-bold">Remarks:</span> Commercial Price Quotation / Estimate valid for 15 days from issue date. No payment has been charged yet. Final billing will occur upon delivery.
               </p>
             )
+          ) : Array.isArray(activeData.payments) && activeData.payments.length > 1 ? (
+            <p>
+              <span className="font-bold">Remarks:</span> Payment Mode:{" "}
+              <span className="font-bold uppercase text-[#3F63AD]">SPLIT PAYMENT</span> •{" "}
+              {activeData.payments
+                .map(
+                  (p: any) =>
+                    `${p.mode} ₹${(Number(p.amount) || 0).toFixed(2)}${p.txnId ? ` (Ref: ${p.txnId})` : ""}`
+                )
+                .join(" + ")}{" "}
+              {activeData.balanceAmount > 0 ? (
+                <>
+                  • Balance Due:{" "}
+                  <span className="font-mono font-bold text-rose-800">
+                    ₹{activeData.balanceAmount?.toFixed(2)}
+                  </span>
+                </>
+              ) : null}{" "}
+              {activeData.vehicleNumber ? `• Vehicle: ${activeData.vehicleNumber}` : ""}
+            </p>
           ) : activeData.paymentMode === "Finance" ? (
             <p>
               <span className="font-bold">Remarks:</span> Payment Mode: <span className="font-bold uppercase text-orange-700">FINANCE ({activeData.financeProvider || "Bajaj Finance"})</span> • Sanctioned Loan: <span className="font-mono font-bold">₹{(activeData.financeGrossLoan || (activeData.netAmount - (activeData.financeDownPayment || 0)))?.toFixed(2)}</span> • Down Payment: <span className="font-mono font-bold">₹{(activeData.financeDownPayment || 0)?.toFixed(2)}</span> via <span className="font-bold uppercase">{activeData.financeDownPaymentMode || "Cash"}</span> • DO ID: <span className="font-mono font-bold">{activeData.financeDoId || "N/A"}</span> {activeData.vehicleNumber ? `• Vehicle: ${activeData.vehicleNumber}` : ""}
