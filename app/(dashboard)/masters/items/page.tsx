@@ -126,6 +126,7 @@ function ItemsPageContent() {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any | null>(null);
   const [viewingItem, setViewingItem] = useState<any | null>(null);
+  const [ledgerTab, setLedgerTab] = useState<string>("all");
   const [deletingCode, setDeletingCode] = useState<string | null>(null);
   const [formData, setFormData] = useState<ItemFormData>(EMPTY_FORM);
   const [formSerials, setFormSerials] = useState<FormSerialItem[]>([]);
@@ -178,8 +179,16 @@ function ItemsPageContent() {
     },
     enabled: !!viewingItem
   });
-  const ledgerTransactions = ledgerData?.transactions || [];
+  const allLedgerTransactions = ledgerData?.transactions || [];
   const ledgerSummary = ledgerData?.summary;
+  // "other" groups opening balance, adjustments, returns, journals and transfers —
+  // the movements that explain a stock change with no bill behind it.
+  const ledgerTransactions = allLedgerTransactions.filter((t: any) => {
+    if (ledgerTab === "all") return true;
+    if (ledgerTab === "purchase") return t.source === "purchase";
+    if (ledgerTab === "sales") return t.source === "sales";
+    return !["purchase", "sales"].includes(t.source);
+  });
 
   const { data: brands = [] } = useQuery({
     queryKey: ["brands"],
@@ -915,7 +924,12 @@ function ItemsPageContent() {
                   const rowBg = isSelected ? "bg-blue-50/50" : (stockStatus.low ? "bg-red-50/40 hover:bg-red-50/60" : "hover:bg-slate-50/70");
 
                   return (
-                    <tr key={item.code} className={`transition-colors ${rowBg}`}>
+                    <tr
+                      key={item.code}
+                      onClick={() => setViewingItem(item)}
+                      title="Open full product ledger"
+                      className={`transition-colors cursor-pointer ${rowBg}`}
+                    >
                       {isSuperAdminOrAdmin && (
                         <td className="px-4 py-3">
                           <Checkbox
@@ -953,7 +967,7 @@ function ItemsPageContent() {
                       </td>
                       
                       {/* Clickable Live Stock Cell: Opens Showroom & Godown Stock Breakdown Popover */}
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                         <Popover>
                           <PopoverTrigger asChild>
                             <button
@@ -1055,7 +1069,7 @@ function ItemsPageContent() {
                       <td className="px-4 py-3 text-center">
                         <Badge variant={stockStatus.variant}>{stockStatus.label}</Badge>
                       </td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1.5">
                           {isSalesperson ? (
                             <Button
@@ -1572,7 +1586,7 @@ function ItemsPageContent() {
 
       {/* View Item Modal */}
       <Dialog open={!!viewingItem} onOpenChange={(open) => !open && setViewingItem(null)}>
-        <DialogContent className="max-w-4xl p-0 rounded-2xl overflow-hidden border-none shadow-2xl">
+        <DialogContent className="max-w-6xl p-0 rounded-2xl overflow-hidden border-none shadow-2xl">
           <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-5 flex justify-between items-center">
             <div>
               <h3 className="text-lg font-bold tracking-tight">Product Details & Live Stock</h3>
@@ -1666,7 +1680,11 @@ function ItemsPageContent() {
             </div>
             
             {/* Right Side: Purchase & Sales Ledger */}
-            <div className="col-span-2 p-5 flex flex-col h-[400px]">
+            {/* Height grows with the viewport instead of a fixed 400px: the
+                reconciliation banner and the tab strip took ~90px out of that
+                budget, which left the list so short the first row was clipped
+                with its header cut off. */}
+            <div className="col-span-2 p-5 flex flex-col h-[min(70vh,640px)] min-h-[420px]">
               <div className="flex items-center justify-between border-b pb-2 mb-3">
                 <h4 className="text-sm font-bold text-slate-700 flex items-center gap-2">
                   <TrendingUp className="w-4 h-4 text-[#3F63AD]" /> Purchase & Sales Ledger
@@ -1684,6 +1702,7 @@ function ItemsPageContent() {
                       Party: t.party,
                       "Qty In": t.qtyIn,
                       "Qty Out": t.qtyOut,
+                      Balance: t.balance,
                       Rate: t.rate,
                       Amount: t.amount,
                       Profit: t.profit,
@@ -1693,6 +1712,64 @@ function ItemsPageContent() {
                 >
                   <Download className="w-3.5 h-3.5" /> Export
                 </Button>
+              </div>
+
+              {/* Stock reconciliation: opening + in − out must equal on-hand stock.
+                  Stating it explicitly means a partial history can't pass itself off
+                  as complete. */}
+              {ledgerSummary && (
+                <div className={cn(
+                  "mb-3 rounded-lg border px-3 py-2 text-[11px] font-semibold flex flex-wrap items-center gap-x-2 gap-y-1",
+                  ledgerSummary.reconciles
+                    ? "bg-emerald-50 border-emerald-200 text-emerald-900"
+                    : "bg-amber-50 border-amber-300 text-amber-900"
+                )}>
+                  <span>Opening <b>{ledgerSummary.openingQty}</b></span>
+                  <span className="text-slate-400">+</span>
+                  <span>In <b>{ledgerSummary.movementIn}</b></span>
+                  <span className="text-slate-400">−</span>
+                  <span>Out <b>{ledgerSummary.movementOut}</b></span>
+                  <span className="text-slate-400">=</span>
+                  <span>Balance <b>{ledgerSummary.ledgerClosingBalance}</b></span>
+                  <span className="ml-auto">
+                    {ledgerSummary.reconciles
+                      ? `✓ matches stock on hand (${ledgerSummary.currentStock} = showroom + godown)`
+                      : `⚠ stock on hand is ${ledgerSummary.currentStock} (off by ${ledgerSummary.reconcileDiff})`}
+                  </span>
+                </div>
+              )}
+
+              {/* An opening balance with no inward records isn't history — it's the
+                  absence of it. Say so, rather than letting a large "Opening" number
+                  imply the purchase trail exists. */}
+              {ledgerSummary && ledgerSummary.movementIn === 0 && ledgerSummary.openingQty > 0 && (
+                <div className="mb-3 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-[11px] text-slate-700">
+                  <b>No purchase bill recorded for this product.</b> All {ledgerSummary.openingQty} units come
+                  from the opening balance, so there is no supplier or purchase date to show. Record a purchase
+                  entry to start building its inward history.
+                </div>
+              )}
+
+              {/* Movement type filter */}
+              <div className="flex items-center gap-1 mb-3 bg-slate-100 p-0.5 rounded-lg border border-slate-200 w-fit">
+                {[
+                  { key: "all", label: "All" },
+                  { key: "purchase", label: "Purchases" },
+                  { key: "sales", label: "Sales" },
+                  { key: "other", label: "Adjustments" },
+                ].map((tab) => (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setLedgerTab(tab.key)}
+                    className={cn(
+                      "px-2.5 h-7 rounded-md text-[11px] font-bold transition-all",
+                      ledgerTab === tab.key ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
+                    )}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
               </div>
 
               {ledgerSummary && (
@@ -1727,37 +1804,71 @@ function ItemsPageContent() {
                     <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mb-3">
                       <TrendingUp className="w-5 h-5 text-slate-400" />
                     </div>
-                    <p className="text-slate-600 font-medium">No purchase or sale history yet</p>
-                    <p className="text-xs text-muted-foreground mt-1">Purchase entries and invoices for this item will appear here.</p>
+                    <p className="text-slate-600 font-medium">
+                      {ledgerTab === "purchase" ? "No purchase entries for this product"
+                        : ledgerTab === "sales" ? "Not sold yet"
+                        : ledgerTab === "other" ? "No stock adjustments or transfers"
+                        : "No stock movement recorded yet"}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {ledgerTab === "all"
+                        ? "Purchase bills, invoices and stock adjustments for this item will appear here."
+                        : "Switch to All to see the complete ledger."}
+                    </p>
                   </div>
                 ) : (
                   <div className="space-y-3">
                     {ledgerTransactions.map((t: any) => {
                       const isPurchase = t.source === "purchase";
+                      const isSale = t.source === "sales";
+                      const isOpening = t.source === "opening";
+                      const label = isOpening
+                        ? "Opening"
+                        : isPurchase
+                        ? (t.type === "PURCHASE_RETURN" ? "Purchase Return" : "Purchase In")
+                        : isSale
+                        ? "Sale"
+                        : String(t.type || "Movement").replace(/^STOCK_/, "").replace(/_/g, " ").toLowerCase();
+                      const tone = isOpening
+                        ? "bg-slate-200 text-slate-800"
+                        : isPurchase
+                        ? "bg-emerald-100 text-emerald-800"
+                        : isSale
+                        ? "bg-blue-100 text-blue-800"
+                        : "bg-amber-100 text-amber-900";
                       return (
                         <div key={t.id} className="bg-white border border-slate-200 rounded-lg p-3 hover:shadow-md transition-shadow">
                           <div className="flex justify-between items-start mb-2">
-                            <div>
-                              <div className="font-bold text-foreground text-sm flex items-center gap-2">
-                                {t.party}
-                                <Badge
-                                  variant="secondary"
-                                  className={cn(
-                                    "text-[10px] px-1.5 py-0 uppercase h-4 tracking-wider",
-                                    isPurchase ? "bg-emerald-100 text-emerald-800" : "bg-blue-100 text-blue-800"
-                                  )}
-                                >
-                                  {isPurchase ? (t.type === "PURCHASE_RETURN" ? "Purchase Return" : "Purchase In") : "Sale"}
+                            <div className="min-w-0">
+                              <div className="font-bold text-foreground text-sm flex items-center gap-2 flex-wrap">
+                                <span className="truncate">{t.party}</span>
+                                <Badge variant="secondary" className={cn("text-[10px] px-1.5 py-0 uppercase h-4 tracking-wider", tone)}>
+                                  {label}
                                 </Badge>
                               </div>
-                              <p className="text-xs text-muted-foreground">{formatDate(t.date)}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {isOpening ? "Before recorded movements" : formatDate(t.date)}
+                              </p>
                             </div>
-                            <Badge variant="outline" className="font-mono text-xs text-[#3F63AD] border-[#3F63AD]/20 bg-[#3F63AD]/5">{t.refNo}</Badge>
+                            <Badge variant="outline" className="font-mono text-xs text-[#3F63AD] border-[#3F63AD]/20 bg-[#3F63AD]/5 shrink-0">{t.refNo}</Badge>
                           </div>
-                          <div className="flex justify-between items-center bg-slate-50 p-2 rounded text-sm">
-                            <span className="text-slate-600">Qty: <span className="font-bold text-foreground">{isPurchase ? t.qtyIn : t.qtyOut}</span></span>
+                          <div className="flex justify-between items-center bg-slate-50 p-2 rounded text-sm gap-2 flex-wrap">
+                            <span className="text-slate-600">
+                              {t.qtyIn > 0 ? (
+                                <>In: <span className="font-bold text-emerald-700">+{t.qtyIn}</span></>
+                              ) : (
+                                <>Out: <span className="font-bold text-[#3F63AD]">−{t.qtyOut}</span></>
+                              )}
+                            </span>
                             <span className="text-slate-600">Rate: <span className="font-bold text-foreground">{formatCurrency(t.rate)}</span></span>
-                            <span className={cn("font-bold", isPurchase ? "text-emerald-700" : "text-[#3F63AD]")}>{formatCurrency(t.amount)}</span>
+                            {/* Stock after this movement — lets you trace how the
+                                current on-hand figure was arrived at, line by line. */}
+                            <span className="text-slate-600">
+                              Balance: <span className="font-black text-slate-900 font-mono">{t.balance}</span>
+                            </span>
+                            <span className={cn("font-bold", isPurchase || isOpening ? "text-emerald-700" : isSale ? "text-[#3F63AD]" : "text-amber-700")}>
+                              {formatCurrency(t.amount)}
+                            </span>
                           </div>
                         </div>
                       );

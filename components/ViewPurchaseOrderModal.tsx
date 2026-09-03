@@ -16,8 +16,12 @@ export function ViewPurchaseOrderModal({ isOpen, onClose, purchaseOrder }: ViewP
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-3xl p-0 overflow-hidden bg-white">
-        <div className="bg-gradient-to-r from-amber-900 via-amber-800 to-amber-900 text-white p-6 flex items-center justify-between">
+      {/* Capped to the viewport and laid out as a column: the body scrolls while the
+          header and footer stay put. Without the cap, a PO with a dozen-plus lines
+          grew taller than the screen and pushed its own title and Close button out
+          of view. */}
+      <DialogContent className="max-w-3xl p-0 overflow-hidden bg-white max-h-[90vh] flex flex-col gap-0">
+        <div className="bg-gradient-to-r from-amber-900 via-amber-800 to-amber-900 text-white p-6 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/20">
               <ShoppingBag className="w-6 h-6 text-amber-400" />
@@ -34,7 +38,7 @@ export function ViewPurchaseOrderModal({ isOpen, onClose, purchaseOrder }: ViewP
           </Button>
         </div>
 
-        <div className="p-6 space-y-6">
+        <div className="p-6 space-y-6 flex-1 overflow-y-auto min-h-0">
           {/* Header Info */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
             <div>
@@ -59,10 +63,17 @@ export function ViewPurchaseOrderModal({ isOpen, onClose, purchaseOrder }: ViewP
 
           {/* Items */}
           <div>
-            <h4 className="font-semibold text-slate-800 mb-3">Order Items</h4>
-            <div className="border rounded-xl overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 border-b">
+            <h4 className="font-semibold text-slate-800 mb-3">
+              Order Items
+              <span className="ml-2 text-xs font-medium text-slate-500">
+                ({(purchaseOrder.items || []).length} {(purchaseOrder.items || []).length === 1 ? "line" : "lines"})
+              </span>
+            </h4>
+            {/* Scrolls sideways on narrow screens instead of crushing long product
+                codes like "SM-E076BDBAINS SAMSUNG GALAXY F70E 4/128 BLUESAMSUNG". */}
+            <div className="border rounded-xl overflow-x-auto">
+              <table className="w-full text-sm min-w-[560px]">
+                <thead className="bg-slate-50 border-b sticky top-0 z-10">
                   <tr>
                     <th className="px-4 py-3 text-left font-semibold text-slate-600">Product</th>
                     <th className="px-4 py-3 text-right font-semibold text-slate-600">Qty</th>
@@ -108,7 +119,7 @@ export function ViewPurchaseOrderModal({ isOpen, onClose, purchaseOrder }: ViewP
           </div>
         </div>
 
-        <DialogFooter className="bg-slate-50 p-4 border-t">
+        <DialogFooter className="bg-slate-50 p-4 border-t shrink-0">
           <Button variant="outline" onClick={onClose}>Close</Button>
         </DialogFooter>
       </DialogContent>
