@@ -1148,7 +1148,7 @@ export default function DashboardPage() {
       <div className="page-container space-y-6 pb-10 animate-pulse">
         <div className="h-10 w-64 bg-slate-200 dark:bg-slate-800 rounded-xl" />
         <MetricCardsShimmer />
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <ChartShimmer />
           <ChartShimmer />
         </div>
@@ -1196,7 +1196,7 @@ export default function DashboardPage() {
       )}
 
       {/* ─── HEADER WITH PERIOD FILTER TABS ────────────────────────── */}
-      <div className="flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between bg-white px-5 py-3.5 rounded-xl border border-slate-200 shadow-sm">
+      <div className="flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between bg-white px-5 py-3 rounded-xl border border-slate-200 shadow-sm">
         <div className="flex items-center gap-4 flex-1">
           <div className="min-w-0">
             <div className="flex items-center gap-2.5">
@@ -1249,16 +1249,16 @@ export default function DashboardPage() {
         {/* ═══════════════════════════════════════════════════════════════════════════════
             🏆 SECTION 1: PAYMENT & BILL DISTRIBUTION + SALES & ORDER TRENDS (2 CARDS)
         ═══════════════════════════════════════════════════════════════════════════════ */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
           {/* CARD 1 (LEFT): PAYMENT & BILL DISTRIBUTION WITH DONUT */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col justify-between hover:shadow-md transition-all">
-            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-4 flex flex-col justify-between hover:shadow-md transition-all">
+            <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200/60 flex items-center justify-center text-[#3F63AD]">
+                <div className="w-9 h-9 rounded-lg bg-blue-50 border border-blue-200/60 flex items-center justify-center text-[#3F63AD]">
                   <PieChartIcon className="w-5 h-5" />
                 </div>
                 <div>
-                  <h2 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                  <h2 className="text-sm font-black text-slate-900 tracking-tight flex items-center gap-2">
                     Payment & Bill Distribution
                     <Badge className="bg-emerald-50 text-emerald-800 border-emerald-200 text-xs font-bold px-2 py-0.5">
                       {totalBilledCount} Total Bills
@@ -1275,8 +1275,8 @@ export default function DashboardPage() {
             </div>
 
             {/* ─── TOTAL SALES SUMMARY PANEL (STACKED BAR + CHANNEL ROWS) ─── */}
-            <div className="py-3">
-              <div className="bg-slate-100/70 rounded-2xl p-5">
+            <div className="py-2">
+              <div className="bg-slate-100/70 rounded-xl p-4">
                 {/* HEADLINE */}
                 <div
                   onClick={() => router.push(`/dashboard/reports?type=all&dateFilter=${encodeURIComponent(widgetFilters.pie)}`)}
@@ -1287,13 +1287,13 @@ export default function DashboardPage() {
                   <p className="text-xs text-slate-500 font-medium mt-0.5">
                     {pieRangeLabel} • {totalBilledCount} {totalBilledCount === 1 ? "order" : "orders"}
                   </p>
-                  <p className="text-4xl sm:text-5xl font-black text-slate-900 tracking-tight mt-2 leading-none">
+                  <p className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight mt-2 leading-none">
                     ₹ {formatNumber(Math.round(totalCollectedAmount))}
                   </p>
                 </div>
 
                 {/* SEGMENTED DISTRIBUTION BAR */}
-                <div className="flex w-full h-2.5 rounded-full overflow-hidden bg-slate-300/70 mt-5">
+                <div className="flex w-full h-2.5 rounded-full overflow-hidden bg-slate-300/70 mt-4">
                   {totalCollectedAmount > 0 ? (
                     PAYMENT_MODES.filter((m) => m.value > 0).map((m) => (
                       <div
@@ -1449,14 +1449,14 @@ export default function DashboardPage() {
           </div>
 
           {/* CARD 2 (RIGHT): SALES & ORDER TRENDS GRAPH */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col justify-between hover:shadow-md transition-all">
-            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-4 flex flex-col justify-between hover:shadow-md transition-all">
+            <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-200/60 flex items-center justify-center text-indigo-600">
+                <div className="w-9 h-9 rounded-lg bg-indigo-50 border border-indigo-200/60 flex items-center justify-center text-indigo-600">
                   <BarChart3 className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-slate-900 tracking-tight">
+                  <h3 className="text-sm font-black text-slate-900 tracking-tight">
                     Sales & Order Trends
                   </h3>
                   <p className="text-xs text-slate-500 font-medium">Hourly business trajectory & daily sales volume</p>
@@ -1512,16 +1512,16 @@ export default function DashboardPage() {
         {/* ═══════════════════════════════════════════════════════════════════════════════
             🛡️ SECTION 2: PAYMENT LEAKAGE & OPERATIONAL SECURITY (2 CARDS)
         ═══════════════════════════════════════════════════════════════════════════════ */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
           {/* CARD 1 (LEFT): 6 PAYMENT LEAKAGE SORT BOXES (PETPOOJA STYLE) */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col justify-between hover:shadow-md transition-all">
-            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-4 flex flex-col justify-between hover:shadow-md transition-all">
+            <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-200/60 flex items-center justify-center text-rose-600">
+                <div className="w-9 h-9 rounded-lg bg-rose-50 border border-rose-200/60 flex items-center justify-center text-rose-600">
                   <ShieldAlert className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                  <h3 className="text-sm font-black text-slate-900 tracking-tight flex items-center gap-2">
                     Payment Leakage & Void Audit
                     <span className="text-[10px] font-bold uppercase tracking-wider bg-rose-100 text-rose-800 px-2 py-0.5 rounded-full border border-rose-200">
                       Live Audit
@@ -1541,7 +1541,7 @@ export default function DashboardPage() {
             </div>
 
             {/* 6 LEAKAGE SORT BOXES GRID (PETPOOJA STYLE) */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 py-3.5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 py-3">
               {/* 1. CANCELLED */}
               <div
                 onClick={() => setLeakageModal({
@@ -1551,7 +1551,7 @@ export default function DashboardPage() {
                   invoices: leakage.cancelled?.invoices || [],
                   color: "#EF4444"
                 })}
-                className="p-3 rounded-xl border border-red-200 bg-red-50/50 hover:bg-red-100/60 hover:border-red-400 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
+                className="p-2.5 rounded-lg border border-red-200 bg-red-50/50 hover:bg-red-100/60 hover:border-red-400 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
               >
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-xs font-bold text-red-800 uppercase tracking-wider">Cancelled</span>
@@ -1559,7 +1559,7 @@ export default function DashboardPage() {
                     {leakage.cancelled?.count || 0} Bills
                   </Badge>
                 </div>
-                <p className="text-base font-black text-red-600 font-mono my-0.5">
+                <p className="text-sm font-black text-red-600 font-mono my-0.5">
                   {formatCurrency(leakage.cancelled?.amount || 0)}
                 </p>
                 <span className="text-xs text-red-700 font-semibold flex items-center justify-between pt-1.5 border-t border-red-200/60">
@@ -1576,7 +1576,7 @@ export default function DashboardPage() {
                   invoices: leakage.deleted?.invoices || [],
                   color: "#B91C1C"
                 })}
-                className="p-3 rounded-xl border border-red-300 bg-red-100/40 hover:bg-red-100 hover:border-red-500 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
+                className="p-2.5 rounded-lg border border-red-300 bg-red-100/40 hover:bg-red-100 hover:border-red-500 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
               >
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-xs font-bold text-red-900 uppercase tracking-wider">Deleted</span>
@@ -1584,7 +1584,7 @@ export default function DashboardPage() {
                     {leakage.deleted?.count || 0} Docs
                   </Badge>
                 </div>
-                <p className="text-base font-black text-red-700 font-mono my-0.5">
+                <p className="text-sm font-black text-red-700 font-mono my-0.5">
                   {formatCurrency(leakage.deleted?.amount || 0)}
                 </p>
                 <span className="text-xs text-red-800 font-semibold flex items-center justify-between pt-1.5 border-t border-red-300/60">
@@ -1601,7 +1601,7 @@ export default function DashboardPage() {
                   invoices: leakage.modified?.invoices || [],
                   color: "#F59E0B"
                 })}
-                className="p-3 rounded-xl border border-amber-200 bg-amber-50/50 hover:bg-amber-100/60 hover:border-amber-400 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
+                className="p-2.5 rounded-lg border border-amber-200 bg-amber-50/50 hover:bg-amber-100/60 hover:border-amber-400 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
               >
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-xs font-bold text-amber-800 uppercase tracking-wider">Modified</span>
@@ -1609,7 +1609,7 @@ export default function DashboardPage() {
                     {leakage.modified?.count || 0} Invoices
                   </Badge>
                 </div>
-                <p className="text-base font-black text-amber-700 font-mono my-0.5">
+                <p className="text-sm font-black text-amber-700 font-mono my-0.5">
                   {formatCurrency(leakage.modified?.amount || 0)}
                 </p>
                 <span className="text-xs text-amber-800 font-semibold flex items-center justify-between pt-1.5 border-t border-amber-200/60">
@@ -1626,7 +1626,7 @@ export default function DashboardPage() {
                   invoices: leakage.shifted?.invoices || [],
                   color: "#3B82F6"
                 })}
-                className="p-3 rounded-xl border border-blue-200 bg-blue-50/50 hover:bg-blue-100/60 hover:border-blue-400 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
+                className="p-2.5 rounded-lg border border-blue-200 bg-blue-50/50 hover:bg-blue-100/60 hover:border-blue-400 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
               >
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-xs font-bold text-blue-800 uppercase tracking-wider">Shifted</span>
@@ -1634,7 +1634,7 @@ export default function DashboardPage() {
                     {leakage.shifted?.count || 0} Orders
                   </Badge>
                 </div>
-                <p className="text-base font-black text-blue-700 font-mono my-0.5">
+                <p className="text-sm font-black text-blue-700 font-mono my-0.5">
                   {formatCurrency(leakage.shifted?.amount || 0)}
                 </p>
                 <span className="text-xs text-blue-800 font-semibold flex items-center justify-between pt-1.5 border-t border-blue-200/60">
@@ -1651,7 +1651,7 @@ export default function DashboardPage() {
                   invoices: leakage.billsModified?.invoices || [],
                   color: "#F97316"
                 })}
-                className="p-3 rounded-xl border border-orange-200 bg-orange-50/50 hover:bg-orange-100/60 hover:border-orange-400 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
+                className="p-2.5 rounded-lg border border-orange-200 bg-orange-50/50 hover:bg-orange-100/60 hover:border-orange-400 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
               >
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-xs font-bold text-orange-800 uppercase tracking-wider">Bills Modified</span>
@@ -1659,7 +1659,7 @@ export default function DashboardPage() {
                     {leakage.billsModified?.count || 0} Bills
                   </Badge>
                 </div>
-                <p className="text-base font-black text-orange-700 font-mono my-0.5">
+                <p className="text-sm font-black text-orange-700 font-mono my-0.5">
                   {formatCurrency(leakage.billsModified?.amount || 0)}
                 </p>
                 <span className="text-xs text-orange-800 font-semibold flex items-center justify-between pt-1.5 border-t border-orange-200/60">
@@ -1676,7 +1676,7 @@ export default function DashboardPage() {
                   invoices: leakage.reprinted?.invoices || [],
                   color: "#6366F1"
                 })}
-                className="p-3 rounded-xl border border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100/60 hover:border-indigo-400 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
+                className="p-2.5 rounded-lg border border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100/60 hover:border-indigo-400 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
               >
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-xs font-bold text-indigo-800 uppercase tracking-wider">Re-printed</span>
@@ -1684,7 +1684,7 @@ export default function DashboardPage() {
                     {leakage.reprinted?.totalPrints || leakage.reprinted?.count || 0} Prints
                   </Badge>
                 </div>
-                <p className="text-base font-black text-indigo-700 font-mono my-0.5">
+                <p className="text-sm font-black text-indigo-700 font-mono my-0.5">
                   {leakage.reprinted?.count || 0} Invoices
                 </p>
                 <span className="text-xs text-indigo-800 font-semibold flex items-center justify-between pt-1.5 border-t border-indigo-200/60">
@@ -1701,7 +1701,7 @@ export default function DashboardPage() {
                   invoices: leakage.waivedOff?.invoices || [],
                   color: "#10B981"
                 })}
-                className="p-3 rounded-xl border border-emerald-200 bg-emerald-50/50 hover:bg-emerald-100/60 hover:border-emerald-400 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
+                className="p-2.5 rounded-lg border border-emerald-200 bg-emerald-50/50 hover:bg-emerald-100/60 hover:border-emerald-400 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
               >
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Waived Off</span>
@@ -1709,7 +1709,7 @@ export default function DashboardPage() {
                     {leakage.waivedOff?.count || 0} Entries
                   </Badge>
                 </div>
-                <p className="text-base font-black text-emerald-700 font-mono my-0.5">
+                <p className="text-sm font-black text-emerald-700 font-mono my-0.5">
                   {formatCurrency(leakage.waivedOff?.amount || 0)}
                 </p>
                 <span className="text-xs text-emerald-800 font-semibold flex items-center justify-between pt-1.5 border-t border-emerald-200/60">
@@ -1725,14 +1725,14 @@ export default function DashboardPage() {
           </div>
 
           {/* CARD 2 (RIGHT): ALERT CENTER & QUICK ACTION PASTEL BUTTONS */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col justify-between hover:shadow-md transition-all">
-            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-4 flex flex-col justify-between hover:shadow-md transition-all">
+            <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200/60 flex items-center justify-center text-amber-600">
+                <div className="w-9 h-9 rounded-lg bg-amber-50 border border-amber-200/60 flex items-center justify-center text-amber-600">
                   <Activity className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-slate-900 tracking-tight">
+                  <h3 className="text-sm font-black text-slate-900 tracking-tight">
                     Alert Center & Quick Actions
                   </h3>
                   <p className="text-xs text-slate-500 font-medium">Operational priorities & 1-click counter management</p>
@@ -1824,14 +1824,14 @@ export default function DashboardPage() {
             settles a liability the purchase already expensed — merging either would
             change every figure on this dashboard and understate net profit.
         ═══════════════════════════════════════════════════════════════════════════════ */}
-        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 hover:shadow-md transition-all">
-          <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+        <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-4 hover:shadow-md transition-all">
+          <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-200/60 flex items-center justify-center text-indigo-600">
+              <div className="w-9 h-9 rounded-lg bg-indigo-50 border border-indigo-200/60 flex items-center justify-center text-indigo-600">
                 <Building2 className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-base font-black text-slate-900 tracking-tight">
+                <h3 className="text-sm font-black text-slate-900 tracking-tight">
                   Vendor &amp; Supplier Ledger
                 </h3>
                 <p className="text-xs text-slate-500 font-medium">
@@ -1849,7 +1849,7 @@ export default function DashboardPage() {
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 pt-3.5">
             {/* VENDOR COLLECTIONS — with the mode split the counter actually used */}
-            <div className="p-3.5 rounded-xl border border-emerald-200 bg-emerald-50/50">
+            <div className="p-3 rounded-lg border border-emerald-200 bg-emerald-50/50">
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider">
                   Vendor Collections
@@ -1881,7 +1881,7 @@ export default function DashboardPage() {
             {/* VENDOR DUE */}
             <Link
               href="/vendors/outstanding"
-              className="p-3.5 rounded-xl border border-amber-200 bg-amber-50/50 hover:bg-amber-100/60 hover:border-amber-400 transition-all group flex flex-col justify-between"
+              className="p-3 rounded-lg border border-amber-200 bg-amber-50/50 hover:bg-amber-100/60 hover:border-amber-400 transition-all group flex flex-col justify-between"
             >
               <div>
                 <div className="flex items-center justify-between mb-1">
@@ -1903,7 +1903,7 @@ export default function DashboardPage() {
             </Link>
 
             {/* SUPPLIER PAYOUTS — money out, kept out of the Expense card on purpose */}
-            <div className="p-3.5 rounded-xl border border-sky-200 bg-sky-50/50 flex flex-col justify-between">
+            <div className="p-3 rounded-lg border border-sky-200 bg-sky-50/50 flex flex-col justify-between">
               <div>
                 <span className="text-[11px] font-bold text-sky-800 uppercase tracking-wider">
                   Supplier Payouts
@@ -1931,7 +1931,7 @@ export default function DashboardPage() {
             {/* SUPPLIER OUTSTANDING */}
             <Link
               href="/vendors/outstanding"
-              className="p-3.5 rounded-xl border border-rose-200 bg-rose-50/50 hover:bg-rose-100/60 hover:border-rose-400 transition-all group flex flex-col justify-between"
+              className="p-3 rounded-lg border border-rose-200 bg-rose-50/50 hover:bg-rose-100/60 hover:border-rose-400 transition-all group flex flex-col justify-between"
             >
               <div>
                 <div className="flex items-center justify-between mb-1">
@@ -1964,16 +1964,16 @@ export default function DashboardPage() {
         {/* ═══════════════════════════════════════════════════════════════════════════════
             📊 SECTION 3: KEY BUSINESS METRICS & SHOWROOM OPERATING EXPENSES (2 CARDS)
         ═══════════════════════════════════════════════════════════════════════════════ */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
           {/* CARD 1 (LEFT): 4 BUSINESS HEALTH KPIS */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col justify-between hover:shadow-md transition-all">
-            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-4 flex flex-col justify-between hover:shadow-md transition-all">
+            <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200/60 flex items-center justify-center text-[#3F63AD]">
+                <div className="w-9 h-9 rounded-lg bg-blue-50 border border-blue-200/60 flex items-center justify-center text-[#3F63AD]">
                   <CreditCard className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-slate-900 tracking-tight">Key Business Performance</h3>
+                  <h3 className="text-sm font-black text-slate-900 tracking-tight">Key Business Performance</h3>
                   <p className="text-xs text-slate-500 font-medium">Core showroom revenue, bills count and average ticket size</p>
                 </div>
               </div>
@@ -1984,11 +1984,11 @@ export default function DashboardPage() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3.5 py-3.5">
+            <div className="grid grid-cols-2 gap-3.5 py-3">
               {/* GROSS SALES */}
               <div
                 onClick={() => router.push(`/dashboard/reports?type=all&dateFilter=${widgetFilters.kpi}`)}
-                className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-white hover:border-[#76C043] hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
+                className="p-3 rounded-lg border border-slate-200 bg-slate-50/60 hover:bg-white hover:border-[#76C043] hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Gross Sales</span>
@@ -2006,7 +2006,7 @@ export default function DashboardPage() {
               {/* TOTAL BILLS */}
               <div
                 onClick={() => router.push(`/dashboard/reports?type=orders&dateFilter=${widgetFilters.kpi}`)}
-                className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-white hover:border-blue-500 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
+                className="p-3 rounded-lg border border-slate-200 bg-slate-50/60 hover:bg-white hover:border-blue-500 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Bills</span>
@@ -2024,7 +2024,7 @@ export default function DashboardPage() {
               {/* AOV */}
               <div
                 onClick={() => router.push(`/dashboard/reports?type=aov&dateFilter=${widgetFilters.kpi}`)}
-                className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-white hover:border-indigo-500 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
+                className="p-3 rounded-lg border border-slate-200 bg-slate-50/60 hover:bg-white hover:border-indigo-500 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Avg Order Value (AOV)</span>
@@ -2042,7 +2042,7 @@ export default function DashboardPage() {
               {/* TOTAL STOCKS */}
               <div
                 onClick={() => { setStockGroupFilter("all"); setStockCategoryFilter("all"); setOpenStockModal(true); }}
-                className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-white hover:border-[#3F63AD] hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
+                className="p-3 rounded-lg border border-slate-200 bg-slate-50/60 hover:bg-white hover:border-[#3F63AD] hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Stocks</span>
@@ -2065,7 +2065,7 @@ export default function DashboardPage() {
           </div>
 
           {/* CARD 2 (RIGHT): SHOWROOM OPERATING EXPENSES & CASH WITHDRAWAL (COMPACT & BALANCED) */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col justify-between hover:shadow-md transition-all">
+          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-4 flex flex-col justify-between hover:shadow-md transition-all">
             {/* 1. HEADER */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
@@ -2073,7 +2073,7 @@ export default function DashboardPage() {
                   <Receipt className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                  <h3 className="text-sm font-black text-slate-900 tracking-tight flex items-center gap-2">
                     Expense & Cash Withdrawal
                     <span 
                       onClick={() => { setExpenseModalModeFilter("all"); setActiveModal("expenses"); }}
@@ -2366,16 +2366,16 @@ export default function DashboardPage() {
         {/* ═══════════════════════════════════════════════════════════════════════════════
             🏷️ SECTION 4: CATEGORY STOCK & SALES STAFF LEADERBOARD (2 CARDS)
         ═══════════════════════════════════════════════════════════════════════════════ */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
           {/* CARD 1 (LEFT): CATEGORY STOCK & WARRANTY OVERVIEW */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col justify-between hover:shadow-md transition-all">
-            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-4 flex flex-col justify-between hover:shadow-md transition-all">
+            <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-purple-50 border border-purple-200/60 flex items-center justify-center text-purple-600">
+                <div className="w-9 h-9 rounded-lg bg-purple-50 border border-purple-200/60 flex items-center justify-center text-purple-600">
                   <Package className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-slate-900 tracking-tight">
+                  <h3 className="text-sm font-black text-slate-900 tracking-tight">
                     Category Stock & Warranty
                   </h3>
                   <p className="text-xs text-slate-500 font-medium">
@@ -2395,11 +2395,11 @@ export default function DashboardPage() {
               </Button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 py-3.5">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 py-3">
               {/* ELECTRONICS STOCK — umbrella group (fridge, cooler, AC, TV, appliances…) */}
               <div
                 onClick={() => { setStockGroupFilter("electronics"); setStockCategoryFilter("all"); setOpenStockModal(true); }}
-                className="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200 hover:border-blue-500 hover:bg-white hover:shadow-sm transition-all cursor-pointer flex flex-col justify-start"
+                className="bg-slate-50/70 p-3 rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-white hover:shadow-sm transition-all cursor-pointer flex flex-col justify-start"
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-slate-600 uppercase flex items-center gap-1.5">
@@ -2426,7 +2426,7 @@ export default function DashboardPage() {
               {/* MOBILE STOCK */}
               <div
                 onClick={() => { setStockGroupFilter("mobile"); setStockCategoryFilter("all"); setOpenStockModal(true); }}
-                className="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200 hover:border-purple-500 hover:bg-white hover:shadow-sm transition-all cursor-pointer flex flex-col justify-start"
+                className="bg-slate-50/70 p-3 rounded-lg border border-slate-200 hover:border-purple-500 hover:bg-white hover:shadow-sm transition-all cursor-pointer flex flex-col justify-start"
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-slate-600 uppercase flex items-center gap-1.5">
@@ -2453,7 +2453,7 @@ export default function DashboardPage() {
               {/* WARRANTY SALES */}
               <div
                 onClick={() => router.push("/sales/invoices")}
-                className="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200 hover:border-emerald-500 hover:bg-white hover:shadow-sm transition-all cursor-pointer flex flex-col justify-start"
+                className="bg-slate-50/70 p-3 rounded-lg border border-slate-200 hover:border-emerald-500 hover:bg-white hover:shadow-sm transition-all cursor-pointer flex flex-col justify-start"
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-slate-600 uppercase flex items-center gap-1.5">
@@ -2561,14 +2561,14 @@ export default function DashboardPage() {
           </div>
 
           {/* CARD 2 (RIGHT): SALES EXECUTIVE LEADERBOARD */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col justify-between hover:shadow-md transition-all">
-            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-4 flex flex-col justify-between hover:shadow-md transition-all">
+            <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-200/60 flex items-center justify-center text-indigo-600">
+                <div className="w-9 h-9 rounded-lg bg-indigo-50 border border-indigo-200/60 flex items-center justify-center text-indigo-600">
                   <Users className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-slate-900 tracking-tight">
+                  <h3 className="text-sm font-black text-slate-900 tracking-tight">
                     Sales Staff Leaderboard
                   </h3>
                   <p className="text-xs text-slate-500 font-medium">Top executive performance by billed sales revenue</p>
@@ -2584,7 +2584,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 py-3.5">
+            <div className="grid grid-cols-2 gap-3 py-3">
               {staffPerformance.length === 0 ? (
                 <div className="col-span-2 py-8 text-center text-slate-400 text-xs font-medium">
                   No staff sales recorded for this period
@@ -2596,7 +2596,7 @@ export default function DashboardPage() {
                   const totalRecd = Number(staff.totalCollected ?? staff.collection) || 0;
 
                   return (
-                    <div key={staff.staffName || idx} className="p-3 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-white hover:border-[#3F63AD] transition-all flex flex-col justify-between">
+                    <div key={staff.staffName || idx} className="p-2.5 rounded-lg border border-slate-200 bg-slate-50/60 hover:bg-white hover:border-[#3F63AD] transition-all flex flex-col justify-between">
                       <div className="flex items-center justify-between mb-1.5">
                         <div className="flex items-center gap-2">
                           <span className={cn(
@@ -2611,7 +2611,7 @@ export default function DashboardPage() {
                           {totalBills} Bills
                         </Badge>
                       </div>
-                      <p className="text-base font-black text-[#3F63AD] font-mono my-0.5">
+                      <p className="text-sm font-black text-[#3F63AD] font-mono my-0.5">
                         {formatCurrency(totalAmt)}
                       </p>
                       <span className="text-xs font-bold text-emerald-700 font-mono pt-1.5 border-t border-slate-200/60 block">
@@ -2916,16 +2916,16 @@ export default function DashboardPage() {
         {/* ═══════════════════════════════════════════════════════════════════════════════
             📋 SECTION 5: DETAILED PAYMENT LOG & RECENT INVOICES LEDGER (2 CARDS)
         ═══════════════════════════════════════════════════════════════════════════════ */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
           {/* CARD 1 (LEFT): DETAILED PAYMENT LOG */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col justify-between hover:shadow-md transition-all">
-            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-4 flex flex-col justify-between hover:shadow-md transition-all">
+            <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200/60 flex items-center justify-center text-emerald-700">
+                <div className="w-9 h-9 rounded-lg bg-emerald-50 border border-emerald-200/60 flex items-center justify-center text-emerald-700">
                   <Receipt className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-slate-900 tracking-tight">Detailed Payment Log</h3>
+                  <h3 className="text-sm font-black text-slate-900 tracking-tight">Detailed Payment Log</h3>
                   <p className="text-xs text-slate-500 font-medium">Real-time live stream of all received transactions</p>
                 </div>
               </div>
@@ -3034,14 +3034,14 @@ export default function DashboardPage() {
           </div>
 
           {/* CARD 2 (RIGHT): TODAY'S SALES REPORT / RECENT INVOICES */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col justify-between hover:shadow-md transition-all">
-            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-4 flex flex-col justify-between hover:shadow-md transition-all">
+            <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200/60 flex items-center justify-center text-[#3F63AD]">
+                <div className="w-9 h-9 rounded-lg bg-blue-50 border border-blue-200/60 flex items-center justify-center text-[#3F63AD]">
                   <FileText className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-slate-900 tracking-tight">Recent Invoices & Bills</h3>
+                  <h3 className="text-sm font-black text-slate-900 tracking-tight">Recent Invoices & Bills</h3>
                   <p className="text-xs text-slate-500 font-medium">1-click official GST tax invoice print and status overview</p>
                 </div>
               </div>
@@ -3117,17 +3117,17 @@ export default function DashboardPage() {
         {/* ═══════════════════════════════════════════════════════════════════════════════
             🎯 SECTION 6: ADMIN & STAFF TASK DELEGATION + LEAD PIPELINE & CONVERSION FUNNEL (2 CARDS)
         ═══════════════════════════════════════════════════════════════════════════════ */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
           {/* CARD 1 (LEFT): ADMIN & STAFF TASK DELEGATION */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col justify-between hover:shadow-md transition-all">
+          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-4 flex flex-col justify-between hover:shadow-md transition-all">
             <div>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3.5 border-b border-slate-100 gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2.5 border-b border-slate-100 gap-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-purple-50 border border-purple-200/60 flex items-center justify-center text-purple-700">
+                  <div className="w-9 h-9 rounded-lg bg-purple-50 border border-purple-200/60 flex items-center justify-center text-purple-700">
                     <CheckSquare className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                    <h3 className="text-sm font-black text-slate-900 tracking-tight flex items-center gap-2">
                       Task Delegation & Operations
                       <Badge className="bg-purple-50 text-purple-800 border-purple-200 text-xs font-bold px-2 py-0.5">
                         {tasks.filter(t => t.status !== "Completed").length} Active
@@ -3291,15 +3291,15 @@ export default function DashboardPage() {
           </div>
 
           {/* CARD 2 (RIGHT): LEAD PIPELINE & CONVERSION FUNNEL */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col justify-between hover:shadow-md transition-all">
+          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-4 flex flex-col justify-between hover:shadow-md transition-all">
             <div>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3.5 border-b border-slate-100 gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2.5 border-b border-slate-100 gap-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200/60 flex items-center justify-center text-amber-700">
+                  <div className="w-9 h-9 rounded-lg bg-amber-50 border border-amber-200/60 flex items-center justify-center text-amber-700">
                     <Target className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                    <h3 className="text-sm font-black text-slate-900 tracking-tight flex items-center gap-2">
                       Lead Pipeline & Conversion
                       <Badge className="bg-emerald-50 text-emerald-800 border-emerald-200 text-xs font-bold px-2 py-0.5">
                         {leads.filter(l => l.status === "Converted").length} Converted
@@ -3332,22 +3332,22 @@ export default function DashboardPage() {
                   <div className="grid grid-cols-4 gap-2 my-2.5">
                     <div className="bg-blue-50/60 border border-blue-100 rounded-xl p-2 text-center">
                       <p className="text-[10px] font-bold text-blue-700 uppercase">Total Leads</p>
-                      <p className="text-sm sm:text-base font-black text-slate-900 font-mono">{totalLeads}</p>
+                      <p className="text-sm sm:text-sm font-black text-slate-900 font-mono">{totalLeads}</p>
                       <p className="text-[9px] text-slate-500 font-medium">{indianNumberFormat(pipelineVal)}</p>
                     </div>
                     <div className="bg-amber-50/60 border border-amber-100 rounded-xl p-2 text-center">
                       <p className="text-[10px] font-bold text-amber-700 uppercase">Follow-ups</p>
-                      <p className="text-sm sm:text-base font-black text-amber-800 font-mono">{followups}</p>
+                      <p className="text-sm sm:text-sm font-black text-amber-800 font-mono">{followups}</p>
                       <p className="text-[9px] text-amber-600 font-semibold">Active Action</p>
                     </div>
                     <div className="bg-emerald-50/60 border border-emerald-100 rounded-xl p-2 text-center">
                       <p className="text-[10px] font-bold text-emerald-700 uppercase">Converted</p>
-                      <p className="text-sm sm:text-base font-black text-emerald-800 font-mono">{converted}</p>
+                      <p className="text-sm sm:text-sm font-black text-emerald-800 font-mono">{converted}</p>
                       <p className="text-[9px] text-emerald-600 font-semibold">Won & Billed</p>
                     </div>
                     <div className="bg-purple-50/60 border border-purple-100 rounded-xl p-2 text-center">
                       <p className="text-[10px] font-bold text-purple-700 uppercase">Conv. Rate</p>
-                      <p className="text-sm sm:text-base font-black text-purple-900 font-mono">{convRate}%</p>
+                      <p className="text-sm sm:text-sm font-black text-purple-900 font-mono">{convRate}%</p>
                       <p className="text-[9px] text-purple-600 font-semibold">Funnel Win</p>
                     </div>
                   </div>
@@ -3522,7 +3522,7 @@ export default function DashboardPage() {
             <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 border-b border-slate-100 pb-4">
               {/* TITLE BLOCK */}
               <div className="flex items-start gap-3 min-w-0">
-                <div className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600 flex-shrink-0">
+                <div className="w-9 h-9 rounded-lg bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600 flex-shrink-0">
                   <Clock className="w-5 h-5" />
                 </div>
                 <div className="min-w-0">
@@ -3800,7 +3800,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Table */}
-          <div className="p-6 bg-slate-50 max-h-[60vh] overflow-y-auto space-y-4">
+          <div className="p-5 bg-slate-50 max-h-[60vh] overflow-y-auto space-y-4">
             {(!leakageModal?.invoices || leakageModal.invoices.length === 0) ? (
               <div className="py-12 text-center text-slate-400 text-xs font-medium bg-white rounded-xl border border-slate-200">
                 <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2 opacity-80" />
@@ -3901,7 +3901,7 @@ export default function DashboardPage() {
             )}
           </div>
 
-          <div className="bg-white px-6 py-3.5 border-t border-slate-200 flex items-center justify-between">
+          <div className="bg-white px-5 py-3 border-t border-slate-200 flex items-center justify-between">
             <span className="text-xs text-slate-500 font-medium">
               Audit log secured by Value Plus ERP protocol
             </span>
@@ -3967,7 +3967,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="p-6 bg-slate-50 max-h-[60vh] overflow-y-auto space-y-4">
+          <div className="p-5 bg-slate-50 max-h-[60vh] overflow-y-auto space-y-4">
             {/* SEARCH & MODE FILTER BAR */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
               <div className="relative flex-1">
@@ -4171,7 +4171,7 @@ export default function DashboardPage() {
             )}
           </div>
 
-          <div className="bg-white px-6 py-3.5 border-t border-slate-200 flex items-center justify-between">
+          <div className="bg-white px-5 py-3 border-t border-slate-200 flex items-center justify-between">
             <span className="text-xs text-slate-500 font-medium">
               Total Filtered: {formatCurrency(getFilteredTransactions().reduce((s: number, t: any) => s + (t.amount || t.total || 0), 0))}
             </span>
@@ -4551,7 +4551,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Body */}
-          <div className="p-6 bg-slate-50 max-h-[60vh] overflow-y-auto space-y-4">
+          <div className="p-5 bg-slate-50 max-h-[60vh] overflow-y-auto space-y-4">
             {/* Search Filter */}
             <div className="flex items-center justify-between gap-3">
               <div className="relative flex-1">
@@ -4653,7 +4653,7 @@ export default function DashboardPage() {
                       <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
                         <div>
                           <span className="text-[10px] text-slate-400 font-semibold uppercase">Stock Valuation</span>
-                          <p className="text-base font-black text-slate-900">
+                          <p className="text-sm font-black text-slate-900">
                             {formatCurrency(cat.value)}
                           </p>
                         </div>
@@ -4819,7 +4819,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Footer */}
-          <div className="bg-white px-6 py-3.5 border-t border-slate-200 flex items-center justify-between">
+          <div className="bg-white px-5 py-3 border-t border-slate-200 flex items-center justify-between">
             <span className="text-xs text-slate-500">
               Gorakhpur Store Physical Inventory Directory
             </span>
@@ -4851,7 +4851,7 @@ export default function DashboardPage() {
                 <CheckSquare className="w-5 h-5 text-purple-300" />
               </div>
               <div>
-                <h3 className="text-base font-black tracking-tight">Assign Task / Self-Goal</h3>
+                <h3 className="text-sm font-black tracking-tight">Assign Task / Self-Goal</h3>
                 <p className="text-xs text-slate-300">Delegate tasks to showroom staff or assign self-admin task</p>
               </div>
             </div>
@@ -4956,7 +4956,7 @@ export default function DashboardPage() {
                 <Target className="w-5 h-5 text-emerald-300" />
               </div>
               <div>
-                <h3 className="text-base font-black tracking-tight">Register New Lead / Enquiry</h3>
+                <h3 className="text-sm font-black tracking-tight">Register New Lead / Enquiry</h3>
                 <p className="text-xs text-slate-200">Capture walk-in customer enquiry & schedule follow-up</p>
               </div>
             </div>
@@ -5093,7 +5093,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <form onSubmit={handleConfirmClearDue} className="p-6 bg-slate-50 space-y-4">
+          <form onSubmit={handleConfirmClearDue} className="p-5 bg-slate-50 space-y-4">
             <div className="p-3.5 bg-rose-50/80 rounded-xl border border-rose-200 flex items-center justify-between">
               <div>
                 <p className="text-xs font-semibold text-rose-900">Outstanding Due Balance</p>

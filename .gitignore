@@ -40,3 +40,4 @@ next-env.d.ts
 # Isolated output for verification builds (see distDir in next.config.mjs)
 .next-verify/
 .next-isolated/
+.next-smoke/
