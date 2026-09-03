@@ -17,11 +17,14 @@ import { INDIA_STATES, INDIA_STATES_AND_DISTRICTS, normalizeStateName, normalize
 
 import { useSession } from "next-auth/react";
 import Link from "next/link";
+import { PartyLedgerPanel } from "@/components/PartyLedgerPanel";
+import { usePermissions } from "@/components/shared/role-guard";
 
 const CUSTOMER_GROUPS = ["Retail","Wholesale","Distributor","Corporate","VIP"];
 
 export default function CustomersPage() {
   const queryClient = useQueryClient();
+  const { can } = usePermissions();
   const { data: session } = useSession();
   const userRole = ((session?.user as any)?.role || "admin").toLowerCase();
   const isSuperAdminOrAdmin = userRole === "admin" || userRole === "superadmin" || userRole === "manager";
@@ -49,6 +52,25 @@ export default function CustomersPage() {
   });
   const PER_PAGE = 10;
 
+  // Same reasoning as the supplier list: derive the balance rather than trust the
+  // stored field, so this column agrees with the ledger drawer beside it.
+  const { data: ledgerSummary } = useQuery({
+    queryKey: ["customer-ledger-all"],
+    queryFn: async () => {
+      const res = await fetch("/api/vendors/ledger?party=customer");
+      const json = await res.json();
+      return json.success ? json.data : null;
+    },
+  });
+
+  const balanceById = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const p of ledgerSummary?.parties || []) {
+      map.set(String(p._id), p.summary?.closingBalance ?? 0);
+    }
+    return map;
+  }, [ledgerSummary]);
+
   const { data: customers = [], isLoading: loading } = useQuery({
     queryKey: ["customers"],
     queryFn: async () => {
@@ -56,24 +78,6 @@ export default function CustomersPage() {
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
       return json.data;
-    }
-  });
-
-  const { data: invoices = [] } = useQuery({
-    queryKey: ["invoices"],
-    queryFn: async () => {
-      const res = await fetch("/api/invoices");
-      const json = await res.json();
-      return json.success ? json.data : [];
-    }
-  });
-
-  const { data: payments = [] } = useQuery({
-    queryKey: ["payments"],
-    queryFn: async () => {
-      const res = await fetch("/api/payments");
-      const json = await res.json();
-      return json.success ? json.data : [];
     }
   });
 
@@ -225,7 +229,7 @@ export default function CustomersPage() {
         </div>
       )}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[{ label:"Total Customers", value:customers.length }, { label:"Active", value:customers.filter(c=>c.status==="active").length }, { label:"Total Outstanding", value:formatCurrency(customers.reduce((a,c)=>a+(c.outstandingBalance || 0),0)) }, { label:"New This Month", value:customers.length }].map(s => (
+        {[{ label:"Total Customers", value:customers.length }, { label:"Active", value:customers.filter(c=>c.status==="active").length }, { label:"Total Outstanding", value:formatCurrency(ledgerSummary?.totals?.outstanding || 0) }, { label:"New This Month", value:customers.length }].map(s => (
           <div key={s.label} className="metric-card"><p className="text-2xl font-bold">{s.value}</p><p className="text-xs text-muted-foreground mt-1">{s.label}</p></div>
         ))}
       </div>
@@ -270,13 +274,24 @@ export default function CustomersPage() {
                   <td className="px-4 py-3 text-muted-foreground">{c.billingAddress?.city || "N/A"}, {c.billingAddress?.state || "N/A"}</td>
                   <td className="px-4 py-3 font-mono text-xs text-slate-700">{c.gstNumber || "URP"}</td>
                   <td className="px-4 py-3"><Badge variant="outline">{c.customerGroup || "Retail"}</Badge></td>
-                  <td className="px-4 py-3 font-semibold text-amber-600">{formatCurrency(c.outstandingBalance || 0)}</td>
+                  <td className="px-4 py-3 font-semibold tabular-nums">
+                    {(() => {
+                      const pending = balanceById.get(String(c._id)) ?? 0;
+                      return (
+                        <span className={pending > 0 ? "text-amber-600" : pending < 0 ? "text-emerald-600" : "text-slate-400"}>
+                          {formatCurrency(pending)}
+                        </span>
+                      );
+                    })()}
+                  </td>
                   <td className="px-4 py-3"><Badge variant={c.status === "active" ? "success" : "secondary"}>{c.status}</Badge></td>
                   <td className="px-4 py-3 text-center">
                     <div className="flex items-center justify-end gap-2">
-                      <Button variant="outline" size="sm" className="h-8 gap-1.5 text-blue-600 hover:text-blue-700 bg-blue-50/50 border-blue-200" onClick={() => handleViewLedger(c)}>
-                        <FileText className="w-3.5 h-3.5" /> Ledger
-                      </Button>
+                      {can("ledger.customer.view") && (
+                        <Button variant="outline" size="sm" className="h-8 gap-1.5 text-blue-600 hover:text-blue-700 bg-blue-50/50 border-blue-200" onClick={() => handleViewLedger(c)}>
+                          <FileText className="w-3.5 h-3.5" /> Ledger
+                        </Button>
+                      )}
                       <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50" onClick={() => handleEdit(c)}>
                         <Edit className="w-4 h-4" />
                       </Button>
@@ -458,103 +473,13 @@ export default function CustomersPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Same shared ledger panel the vendor and supplier screens use, so every
+          party's balance and ageing is computed the one way. */}
       <Dialog open={isLedgerOpen} onOpenChange={setIsLedgerOpen}>
-        <DialogContent className="max-w-4xl p-0 overflow-hidden rounded-2xl border-none shadow-2xl">
-          {selectedCustomerForLedger && (() => {
-            const cust = selectedCustomerForLedger;
-            const custInvoices = invoices.filter((i: any) => i.customer === cust.name || i.customerId === cust._id || i.customerName === cust.name);
-            const custPayments = payments.filter((p: any) => p.partyId === cust._id || p.partyId === cust.code);
-            
-            const totalBilled = custInvoices.reduce((a: any, i: any) => a + (i.type === "credit-note" ? -(i.total || i.totalAmount || 0) : (i.total || i.totalAmount || 0)), 0);
-            const totalPaid = custPayments.reduce((a: any, p: any) => a + (p.type === "paid" ? -p.amount : p.amount), 0);
-            const balance = totalBilled - totalPaid;
-
-            // Combine and sort by date descending
-            const transactions = [
-              ...custInvoices.map((i: any) => ({ ...i, txType: "invoice", txDate: new Date(i.date) })),
-              ...custPayments.map((p: any) => ({ ...p, txType: "payment", txDate: new Date(p.date) }))
-            ].sort((a, b) => b.txDate.getTime() - a.txDate.getTime());
-
-            return (
-              <>
-                <div className="bg-slate-900 text-white p-6">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center">
-                      <FileText className="w-6 h-6 text-[#76C043]" />
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-bold tracking-tight">{cust.name} - Ledger</h3>
-                      <p className="text-xs text-slate-300 mt-0.5">{cust.code} | {cust.phone}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-6 bg-slate-50">
-                  <div className="grid grid-cols-3 gap-4 mb-6">
-                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase">Total Billed</p>
-                      <p className="text-xl font-bold mt-1 text-slate-800">{formatCurrency(totalBilled)}</p>
-                    </div>
-                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase">Total Paid</p>
-                      <p className="text-xl font-bold mt-1 text-emerald-600">{formatCurrency(totalPaid)}</p>
-                    </div>
-                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase">Current Pending</p>
-                      <p className="text-xl font-bold mt-1 text-amber-600">{formatCurrency(balance)}</p>
-                    </div>
-                  </div>
-
-                  <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                    <div className="overflow-y-auto max-h-[400px]">
-                      <table className="w-full text-sm">
-                        <thead className="bg-slate-50 border-b sticky top-0 z-10">
-                          <tr>
-                            <th className="px-4 py-3 text-left font-semibold text-muted-foreground uppercase text-xs">Date</th>
-                            <th className="px-4 py-3 text-left font-semibold text-muted-foreground uppercase text-xs">Transaction</th>
-                            <th className="px-4 py-3 text-right font-semibold text-muted-foreground uppercase text-xs">Debit (Billed)</th>
-                            <th className="px-4 py-3 text-right font-semibold text-muted-foreground uppercase text-xs">Credit (Paid)</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y">
-                          {transactions.length === 0 ? (
-                            <tr><td colSpan={4} className="py-8 text-center text-muted-foreground">No transactions found</td></tr>
-                          ) : transactions.map((tx, idx) => (
-                            <tr key={idx} className="hover:bg-slate-50/50">
-                              <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">{new Date(tx.txDate).toLocaleDateString('en-GB')}</td>
-                              <td className="px-4 py-3">
-                                {tx.txType === "invoice" ? (
-                                  <div>
-                                    <p className="font-semibold text-slate-800">Invoice #{tx.invoiceNumber || tx.id}</p>
-                                    <p className="text-xs text-muted-foreground">Sales Bill</p>
-                                  </div>
-                                ) : (
-                                  <div>
-                                    <p className="font-semibold text-emerald-700">Payment Received</p>
-                                    <p className="text-xs text-muted-foreground">via {tx.paymentMode} ({tx.referenceNo || "No Ref"})</p>
-                                  </div>
-                                )}
-                              </td>
-                              <td className="px-4 py-3 text-right font-medium">
-                              {tx.txType === "invoice" ? (tx.type === "credit-note" ? <span className="text-red-600">-{formatCurrency(tx.total || tx.totalAmount)}</span> : formatCurrency(tx.total || tx.totalAmount)) : "-"}
-                            </td>
-                            <td className="px-4 py-3 text-right font-medium">
-                              {tx.txType === "payment" ? (
-                                <span className={tx.type === "paid" ? "text-red-600" : "text-emerald-600"}>
-                                  {tx.type === "paid" ? `-${formatCurrency(tx.amount)}` : formatCurrency(tx.amount)}
-                                </span>
-                              ) : "-"}
-                            </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              </>
-            );
-          })()}
+        <DialogContent className="max-w-5xl p-0 overflow-hidden rounded-2xl border-none shadow-2xl">
+          {selectedCustomerForLedger && (
+            <PartyLedgerPanel party="customer" partyId={selectedCustomerForLedger._id} />
+          )}
         </DialogContent>
       </Dialog>
     </PageShell>

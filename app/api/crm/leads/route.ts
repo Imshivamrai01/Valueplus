@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import Lead from "@/models/Lead";
+import { notifyWhatsApp } from "@/lib/whatsapp/notify";
+import { getActor } from "@/lib/requirePermission";
 
 export async function GET(req: Request) {
   try {
@@ -47,6 +49,14 @@ export async function POST(req: Request) {
     }
     
     const lead = await Lead.create(body);
+
+    const actor = await getActor();
+    await notifyWhatsApp({
+      event: "lead.created",
+      entity: lead.toObject(),
+      actor: actor?.name || body.assignedStaff || "Sales Team",
+    });
+
     return NextResponse.json({ success: true, data: lead });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 400 });
@@ -73,11 +83,25 @@ export async function PUT(req: Request) {
       };
     }
     
+    // The old status has to be read before the update, or the "changed from"
+    // half of the message would just repeat the new value.
+    const before: any = await Lead.findOne(identifier).lean();
+
     const updated = await Lead.findOneAndUpdate(identifier, updateObj, { new: true });
     if (!updated) {
       return NextResponse.json({ success: false, error: "Lead not found" }, { status: 404 });
     }
-    
+
+    if (updates.status && before?.status && updates.status !== before.status) {
+      const actor = await getActor();
+      await notifyWhatsApp({
+        event: "lead.status",
+        entity: updated.toObject(),
+        previousStatus: before.status,
+        actor: actor?.name || updates.assignedStaff || "Staff",
+      });
+    }
+
     return NextResponse.json({ success: true, data: updated });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

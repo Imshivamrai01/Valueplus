@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   TrendingUp, TrendingDown, DollarSign, ShoppingCart, Package,
   Users, AlertTriangle, ArrowRight, Eye, MoreHorizontal,
@@ -994,11 +995,23 @@ export default function DashboardPage() {
 
   const leakage = data?.leakage || {
     cancelled: { count: 0, amount: 0, invoices: [] },
+    deleted: { count: 0, amount: 0, invoices: [] },
     modified: { count: 0, amount: 0, invoices: [] },
     shifted: { count: 0, amount: 0, invoices: [] },
     billsModified: { count: 0, amount: 0, invoices: [] },
     reprinted: { count: 0, totalPrints: 0, amount: 0, invoices: [] },
     waivedOff: { count: 0, amount: 0, invoices: [] },
+  };
+
+  // Cancelled and deleted bills carry a reason and an authoriser. The other
+  // leakage buckets are derived signals (a discount, a reprint) with nobody to
+  // attribute them to, so those two columns would be blank for every row.
+  const showsAudit = leakageModal?.type === "cancelled" || leakageModal?.type === "deleted";
+
+  const vendorSupplier = data?.vendorSupplier || {
+    vendorCollections: { total: 0, count: 0, byMode: {}, recent: [] },
+    vendorDue: { total: 0, count: 0, overdue: 0, parties: [] },
+    supplierOutstanding: { total: 0, count: 0, overdue: 0, parties: [] },
   };
 
   const transactions = data?.transactions || { cash: [], upi: [], online: [], card: [], finance: [], due: [] };
@@ -1554,7 +1567,32 @@ export default function DashboardPage() {
                 </span>
               </div>
 
-              {/* 2. MODIFIED */}
+              {/* 2. DELETED — read from the archive, since the invoice itself is gone */}
+              <div
+                onClick={() => setLeakageModal({
+                  type: "deleted",
+                  title: "Deleted Bills",
+                  description: "Invoices and estimates removed from the system. The full record is archived with the reason and who authorised it.",
+                  invoices: leakage.deleted?.invoices || [],
+                  color: "#B91C1C"
+                })}
+                className="p-3 rounded-xl border border-red-300 bg-red-100/40 hover:bg-red-100 hover:border-red-500 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-bold text-red-900 uppercase tracking-wider">Deleted</span>
+                  <Badge className="bg-red-300 text-red-950 text-[10px] font-black px-1.5 py-0.5 border-none">
+                    {leakage.deleted?.count || 0} Docs
+                  </Badge>
+                </div>
+                <p className="text-base font-black text-red-700 font-mono my-0.5">
+                  {formatCurrency(leakage.deleted?.amount || 0)}
+                </p>
+                <span className="text-xs text-red-800 font-semibold flex items-center justify-between pt-1.5 border-t border-red-300/60">
+                  <span>Bills &amp; estimates</span> <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                </span>
+              </div>
+
+              {/* 3. MODIFIED */}
               <div
                 onClick={() => setLeakageModal({
                   type: "modified",
@@ -1775,6 +1813,151 @@ export default function DashboardPage() {
               </div>
             </div>
           </div>
+        </div>
+
+
+        {/* ═══════════════════════════════════════════════════════════════════════════════
+            🤝 SECTION 2B: VENDOR & SUPPLIER LEDGER SUMMARY
+
+            Deliberately its own row rather than folded into the revenue and expense
+            cards above. Vendor money in is not a counter sale, and a supplier payout
+            settles a liability the purchase already expensed — merging either would
+            change every figure on this dashboard and understate net profit.
+        ═══════════════════════════════════════════════════════════════════════════════ */}
+        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 hover:shadow-md transition-all">
+          <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-200/60 flex items-center justify-center text-indigo-600">
+                <Building2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-900 tracking-tight">
+                  Vendor &amp; Supplier Ledger
+                </h3>
+                <p className="text-xs text-slate-500 font-medium">
+                  Money in from vendors and money out to suppliers, tracked apart from counter sales
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/vendors/ledger"
+              className="text-xs font-bold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 h-8 px-3 rounded-md inline-flex items-center"
+            >
+              Open Ledgers →
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 pt-3.5">
+            {/* VENDOR COLLECTIONS — with the mode split the counter actually used */}
+            <div className="p-3.5 rounded-xl border border-emerald-200 bg-emerald-50/50">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider">
+                  Vendor Collections
+                </span>
+                <Badge className="bg-emerald-200 text-emerald-900 text-[10px] font-black px-1.5 py-0.5 border-none">
+                  {vendorSupplier.vendorCollections.count}
+                </Badge>
+              </div>
+              <p className="text-lg font-black text-emerald-700 font-mono">
+                {formatCurrency(vendorSupplier.vendorCollections.total)}
+              </p>
+              <div className="mt-2 pt-2 border-t border-emerald-200/60 grid grid-cols-2 gap-x-2 gap-y-0.5">
+                {[
+                  ["Cash", vendorSupplier.vendorCollections.byMode?.cash],
+                  ["UPI", vendorSupplier.vendorCollections.byMode?.upi],
+                  ["NEFT/IMPS", vendorSupplier.vendorCollections.byMode?.online],
+                  ["Card", vendorSupplier.vendorCollections.byMode?.card],
+                ].map(([label, value]: any) => (
+                  <div key={label} className="flex items-center justify-between text-[10px]">
+                    <span className="text-emerald-700 font-semibold">{label}</span>
+                    <span className="font-mono font-bold text-emerald-900">
+                      {formatCurrency(Number(value) || 0)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* VENDOR DUE */}
+            <Link
+              href="/vendors/outstanding"
+              className="p-3.5 rounded-xl border border-amber-200 bg-amber-50/50 hover:bg-amber-100/60 hover:border-amber-400 transition-all group flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wider">
+                    Vendor Due
+                  </span>
+                  <Badge className="bg-amber-200 text-amber-900 text-[10px] font-black px-1.5 py-0.5 border-none">
+                    {vendorSupplier.vendorDue.count} Parties
+                  </Badge>
+                </div>
+                <p className="text-lg font-black text-amber-700 font-mono">
+                  {formatCurrency(vendorSupplier.vendorDue.total)}
+                </p>
+              </div>
+              <span className="text-[11px] text-amber-800 font-semibold flex items-center justify-between pt-2 mt-2 border-t border-amber-200/60">
+                <span>Overdue {formatCurrency(vendorSupplier.vendorDue.overdue)}</span>
+                <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+              </span>
+            </Link>
+
+            {/* SUPPLIER PAYOUTS — money out, kept out of the Expense card on purpose */}
+            <div className="p-3.5 rounded-xl border border-sky-200 bg-sky-50/50 flex flex-col justify-between">
+              <div>
+                <span className="text-[11px] font-bold text-sky-800 uppercase tracking-wider">
+                  Supplier Payouts
+                </span>
+                <p className="text-lg font-black text-sky-700 font-mono mt-1">
+                  {formatCurrency(metrics.supplierPayouts || 0)}
+                </p>
+              </div>
+              <div className="pt-2 mt-2 border-t border-sky-200/60 space-y-0.5">
+                <div className="flex items-center justify-between text-[10px]">
+                  <span className="text-sky-700 font-semibold">Operating expense</span>
+                  <span className="font-mono font-bold text-sky-900">
+                    {formatCurrency(metrics.totalExpenses || 0)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-[10px]">
+                  <span className="text-sky-800 font-bold">Total money out</span>
+                  <span className="font-mono font-black text-sky-950">
+                    {formatCurrency((metrics.totalExpenses || 0) + (metrics.supplierPayouts || 0))}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* SUPPLIER OUTSTANDING */}
+            <Link
+              href="/vendors/outstanding"
+              className="p-3.5 rounded-xl border border-rose-200 bg-rose-50/50 hover:bg-rose-100/60 hover:border-rose-400 transition-all group flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] font-bold text-rose-800 uppercase tracking-wider">
+                    We Still Owe
+                  </span>
+                  <Badge className="bg-rose-200 text-rose-900 text-[10px] font-black px-1.5 py-0.5 border-none">
+                    {vendorSupplier.supplierOutstanding.count} Suppliers
+                  </Badge>
+                </div>
+                <p className="text-lg font-black text-rose-700 font-mono">
+                  {formatCurrency(vendorSupplier.supplierOutstanding.total)}
+                </p>
+              </div>
+              <span className="text-[11px] text-rose-800 font-semibold flex items-center justify-between pt-2 mt-2 border-t border-rose-200/60">
+                <span>Supplier payables</span>
+                <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+              </span>
+            </Link>
+          </div>
+
+          <p className="text-[10px] text-slate-400 pt-3 mt-1 border-t border-slate-100 leading-relaxed">
+            These figures are reported separately and are not included in Total Revenue, Total
+            Expenses or Net Profit above: a supplier payout settles a bill the purchase already
+            expensed, and vendor collections are not counter sales.
+          </p>
         </div>
 
 
@@ -3633,6 +3816,8 @@ export default function DashboardPage() {
                       <th className="p-3">Date / Time</th>
                       <th className="p-3">Payment Mode</th>
                       <th className="p-3 text-right">Amount</th>
+                      {showsAudit && <th className="p-3">Reason</th>}
+                      {showsAudit && <th className="p-3">Authorised By</th>}
                       <th className="p-3 text-center">Status</th>
                       <th className="p-3 text-center">Action</th>
                     </tr>
@@ -3642,6 +3827,11 @@ export default function DashboardPage() {
                       <tr key={inv._id || inv.invoiceNumber || idx} className="hover:bg-slate-50/80 transition-colors">
                         <td className="p-3 font-mono font-bold text-slate-900">
                           {inv.invoiceNumber || inv.id}
+                          {inv.docType && inv.docType !== "Invoice" && (
+                            <p className="text-[9px] font-sans font-bold uppercase tracking-wider text-slate-400">
+                              {inv.docType}
+                            </p>
+                          )}
                         </td>
                         <td className="p-3 text-slate-700">{inv.customerName || inv.customer || "Walk-in Guest"}</td>
                         <td className="p-3 text-slate-500 text-[11px]">{inv.date || "Today"}</td>
@@ -3653,18 +3843,55 @@ export default function DashboardPage() {
                         <td className="p-3 text-right font-mono font-black text-slate-900">
                           {formatCurrency(inv.total || inv.amount || 0)}
                         </td>
+                        {showsAudit && (
+                          <td className="p-3 text-slate-700 max-w-[220px]">
+                            {inv.auditReason ? (
+                              <span className="text-[11px] leading-snug">{inv.auditReason}</span>
+                            ) : (
+                              <span className="text-slate-300">—</span>
+                            )}
+                          </td>
+                        )}
+                        {showsAudit && (
+                          <td className="p-3 text-[11px]">
+                            {inv.auditBy ? (
+                              <>
+                                <p className="font-semibold text-slate-800">{inv.auditBy}</p>
+                                {inv.auditAt && (
+                                  <p className="text-slate-400">
+                                    {new Date(inv.auditAt).toLocaleString("en-GB", {
+                                      day: "2-digit", month: "short", year: "numeric",
+                                      hour: "2-digit", minute: "2-digit",
+                                    })}
+                                  </p>
+                                )}
+                                {inv.usedLegacyPin && (
+                                  <p className="text-amber-600 font-semibold">shared PIN</p>
+                                )}
+                              </>
+                            ) : (
+                              <span className="text-slate-300">—</span>
+                            )}
+                          </td>
+                        )}
                         <td className="p-3 text-center">
                           <StatusBadge status={inv.status || "sent"} />
                         </td>
                         <td className="p-3 text-center">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handlePrintTrigger(inv)}
-                            className="h-7 px-2 text-[10px] font-bold text-[#3F63AD] border-[#3F63AD]/30 hover:bg-blue-50"
-                          >
-                            <Printer className="w-3 h-3 mr-1" /> View Bill
-                          </Button>
+                          {inv.isDeleted ? (
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                              Archived
+                            </span>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handlePrintTrigger(inv)}
+                              className="h-7 px-2 text-[10px] font-bold text-[#3F63AD] border-[#3F63AD]/30 hover:bg-blue-50"
+                            >
+                              <Printer className="w-3 h-3 mr-1" /> View Bill
+                            </Button>
+                          )}
                         </td>
                       </tr>
                     ))}

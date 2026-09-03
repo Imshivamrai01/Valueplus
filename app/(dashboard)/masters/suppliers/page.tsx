@@ -14,9 +14,12 @@ import { TableShimmer, MetricCardsShimmer } from "@/components/shared/shimmer-sk
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils";
 import { INDIA_STATES, INDIA_STATES_AND_DISTRICTS, normalizeStateName, normalizeCityName } from "@/lib/data/locations";
+import { PartyLedgerPanel } from "@/components/PartyLedgerPanel";
+import { usePermissions } from "@/components/shared/role-guard";
 
 export default function SuppliersPage() {
   const queryClient = useQueryClient();
+  const { can } = usePermissions();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -38,6 +41,30 @@ export default function SuppliersPage() {
   });
   const PER_PAGE = 10;
 
+  // Balances come from the ledger endpoint, which derives them from purchase
+  // bills and payments. The stored `outstandingBalance` field is only written on
+  // some paths, so it showed a figure for one supplier and zero for every other
+  // one that had real purchases against it.
+  const { data: ledgerSummary } = useQuery({
+    queryKey: ["supplier-ledger-all"],
+    queryFn: async () => {
+      const res = await fetch("/api/vendors/ledger?party=supplier");
+      const json = await res.json();
+      return json.success ? json.data : null;
+    },
+  });
+
+  const balanceById = useMemo(() => {
+    const map = new Map<string, { pending: number; overdue: number }>();
+    for (const p of ledgerSummary?.parties || []) {
+      map.set(String(p._id), {
+        pending: p.summary?.closingBalance ?? 0,
+        overdue: p.summary?.overdueAmount ?? 0,
+      });
+    }
+    return map;
+  }, [ledgerSummary]);
+
   const { data: suppliers = [], isLoading: loading } = useQuery({
     queryKey: ["suppliers"],
     queryFn: async () => {
@@ -45,24 +72,6 @@ export default function SuppliersPage() {
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
       return json.data;
-    }
-  });
-
-  const { data: purchaseEntries = [] } = useQuery({
-    queryKey: ["purchase-entries"],
-    queryFn: async () => {
-      const res = await fetch("/api/purchase-entries");
-      const json = await res.json();
-      return json.success ? json.data : [];
-    }
-  });
-
-  const { data: payments = [] } = useQuery({
-    queryKey: ["payments"],
-    queryFn: async () => {
-      const res = await fetch("/api/payments");
-      const json = await res.json();
-      return json.success ? json.data : [];
     }
   });
 
@@ -206,7 +215,7 @@ export default function SuppliersPage() {
     <PageShell title="Suppliers" subtitle={`${suppliers.length} suppliers in network`} breadcrumbs={[{ label: "Masters" }, { label: "Suppliers" }]}
       actions={<Button size="sm" onClick={handleAddNew}><Plus className="w-4 h-4 mr-1.5" /> Add Supplier</Button>}>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[{label:"Total Suppliers",value:suppliers.length},{label:"Active",value:suppliers.filter(s=>s.status==="active").length},{label:"Total Payables",value:formatCurrency(suppliers.reduce((a,s)=>a+(s.outstandingBalance || 0),0))},{label:"Overdue Bills",value:4}].map(s=>(
+        {[{label:"Total Suppliers",value:suppliers.length},{label:"Active",value:suppliers.filter((s:any)=>s.status==="active").length},{label:"Total Payables",value:formatCurrency(ledgerSummary?.totals?.outstanding || 0)},{label:"Overdue",value:formatCurrency(ledgerSummary?.totals?.overdue || 0)}].map(s=>(
           <div key={s.label} className="metric-card"><p className="text-2xl font-bold">{s.value}</p><p className="text-xs text-muted-foreground mt-1">{s.label}</p></div>
         ))}
       </div>
@@ -240,13 +249,32 @@ export default function SuppliersPage() {
                   <td className="px-4 py-3"><p className="font-medium text-foreground">{s.phone}</p><p className="text-xs text-muted-foreground">{s.email}</p></td>
                   <td className="px-4 py-3 text-muted-foreground">{s.address?.city}, {s.address?.state}</td>
                   <td className="px-4 py-3 font-mono text-xs text-slate-700">{s.gstNumber}</td>
-                  <td className="px-4 py-3 font-semibold text-red-600">{formatCurrency(s.outstandingBalance || 0)}</td>
+                  <td className="px-4 py-3 font-semibold tabular-nums">
+                    {(() => {
+                      const bal = balanceById.get(String(s._id));
+                      const pending = bal?.pending ?? 0;
+                      return (
+                        <>
+                          <span className={pending > 0 ? "text-red-600" : pending < 0 ? "text-emerald-600" : "text-slate-400"}>
+                            {formatCurrency(pending)}
+                          </span>
+                          {(bal?.overdue ?? 0) > 0 && (
+                            <p className="text-[10px] font-medium text-red-400">
+                              overdue {formatCurrency(bal!.overdue)}
+                            </p>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </td>
                   <td className="px-4 py-3"><Badge variant={s.status==="active"?"success":"secondary"}>{s.status}</Badge></td>
                   <td className="px-4 py-3 text-center">
                     <div className="flex items-center justify-end gap-2">
-                      <Button variant="outline" size="sm" className="h-8 gap-1.5 text-blue-600 hover:text-blue-700 bg-blue-50/50 border-blue-200" onClick={() => handleViewLedger(s)}>
-                        <FileText className="w-3.5 h-3.5" /> Ledger
-                      </Button>
+                      {can("ledger.supplier.view") && (
+                        <Button variant="outline" size="sm" className="h-8 gap-1.5 text-blue-600 hover:text-blue-700 bg-blue-50/50 border-blue-200" onClick={() => handleViewLedger(s)}>
+                          <FileText className="w-3.5 h-3.5" /> Ledger
+                        </Button>
+                      )}
                       <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50" onClick={() => handleEdit(s)}>
                         <Edit className="w-4 h-4" />
                       </Button>
@@ -418,99 +446,14 @@ export default function SuppliersPage() {
         </DialogContent>
       </Dialog>
 
+      {/* The ledger body is the shared PartyLedgerPanel, so a supplier's balance,
+          ageing and payment history here match the Vendors & Ledger section
+          exactly. The button and the page around it are unchanged. */}
       <Dialog open={isLedgerOpen} onOpenChange={setIsLedgerOpen}>
-        <DialogContent className="max-w-4xl p-0 overflow-hidden rounded-2xl border-none shadow-2xl">
-          {selectedSupplierForLedger && (() => {
-            const supp = selectedSupplierForLedger;
-            const suppBills = purchaseEntries.filter((b: any) => b.supplier === supp.name || b.supplierId === supp._id);
-            const suppPayments = payments.filter((p: any) => p.partyId === supp._id || p.partyId === supp.code);
-            
-            const totalBilled = suppBills.reduce((a: any, b: any) => a + (b.totalAmount || b.total || 0), 0);
-            const totalPaid = suppPayments.reduce((a: any, p: any) => a + p.amount, 0);
-            const balance = totalBilled - totalPaid;
-
-            // Combine and sort by date descending
-            const transactions = [
-              ...suppBills.map((b: any) => ({ ...b, txType: "bill", txDate: new Date(b.date) })),
-              ...suppPayments.map((p: any) => ({ ...p, txType: "payment", txDate: new Date(p.date) }))
-            ].sort((a, b) => b.txDate.getTime() - a.txDate.getTime());
-
-            return (
-              <>
-                <div className="bg-slate-900 text-white p-6">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center">
-                      <FileText className="w-6 h-6 text-[#76C043]" />
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-bold tracking-tight">{supp.name} - Supplier Ledger</h3>
-                      <p className="text-xs text-slate-300 mt-0.5">{supp.code} | {supp.phone}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-6 bg-slate-50">
-                  <div className="grid grid-cols-3 gap-4 mb-6">
-                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase">Total Payables</p>
-                      <p className="text-xl font-bold mt-1 text-slate-800">{formatCurrency(totalBilled)}</p>
-                    </div>
-                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase">Total Paid</p>
-                      <p className="text-xl font-bold mt-1 text-emerald-600">{formatCurrency(totalPaid)}</p>
-                    </div>
-                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase">Current Pending</p>
-                      <p className="text-xl font-bold mt-1 text-red-600">{formatCurrency(balance)}</p>
-                    </div>
-                  </div>
-
-                  <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                    <div className="overflow-y-auto max-h-[400px]">
-                      <table className="w-full text-sm">
-                        <thead className="bg-slate-50 border-b sticky top-0 z-10">
-                          <tr>
-                            <th className="px-4 py-3 text-left font-semibold text-muted-foreground uppercase text-xs">Date</th>
-                            <th className="px-4 py-3 text-left font-semibold text-muted-foreground uppercase text-xs">Transaction</th>
-                            <th className="px-4 py-3 text-right font-semibold text-muted-foreground uppercase text-xs">Credit (Billed)</th>
-                            <th className="px-4 py-3 text-right font-semibold text-muted-foreground uppercase text-xs">Debit (Paid)</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y">
-                          {transactions.length === 0 ? (
-                            <tr><td colSpan={4} className="py-8 text-center text-muted-foreground">No transactions found</td></tr>
-                          ) : transactions.map((tx, idx) => (
-                            <tr key={idx} className="hover:bg-slate-50/50">
-                              <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">{new Date(tx.txDate).toLocaleDateString('en-GB')}</td>
-                              <td className="px-4 py-3">
-                                {tx.txType === "bill" ? (
-                                  <div>
-                                    <p className="font-semibold text-slate-800">Purchase Bill #{tx.billNo || tx.billNumber || tx.id}</p>
-                                    <p className="text-xs text-muted-foreground">Purchase Entry</p>
-                                  </div>
-                                ) : (
-                                  <div>
-                                    <p className="font-semibold text-emerald-700">Payment Issued</p>
-                                    <p className="text-xs text-muted-foreground">via {tx.paymentMode} ({tx.referenceNo || "No Ref"})</p>
-                                  </div>
-                                )}
-                              </td>
-                              <td className="px-4 py-3 text-right font-medium">
-                                {tx.txType === "bill" ? <span className="text-slate-800">{formatCurrency(tx.total || tx.totalAmount || 0)}</span> : "-"}
-                              </td>
-                              <td className="px-4 py-3 text-right font-medium">
-                                {tx.txType === "payment" ? <span className="text-emerald-600">{formatCurrency(tx.amount || 0)}</span> : "-"}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              </>
-            );
-          })()}
+        <DialogContent className="max-w-5xl p-0 overflow-hidden rounded-2xl border-none shadow-2xl">
+          {selectedSupplierForLedger && (
+            <PartyLedgerPanel party="supplier" partyId={selectedSupplierForLedger._id} />
+          )}
         </DialogContent>
       </Dialog>
     </PageShell>

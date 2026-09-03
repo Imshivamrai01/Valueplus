@@ -5,7 +5,69 @@ import Invoice from "@/models/Invoice";
 import Customer from "@/models/Customer";
 import Item from "@/models/Item";
 import Estimate from "@/models/Estimate";
+import DeletedInvoice from "@/models/DeletedInvoice";
+import AuditLog from "@/models/AuditLog";
 import { derivePaymentModeLabel, isCollectedMode } from "@/lib/payment-modes";
+import { getActor } from "@/lib/requirePermission";
+import { requirePinAndPermission } from "@/lib/securityPin";
+import { Permission } from "@/lib/permissions";
+
+/**
+ * Shared gate for the two destructive invoice actions.
+ *
+ * Both need three things before anything is touched: a signed-in user, a role
+ * that is allowed the action, and a correct supervisor PIN. Previously the PIN
+ * was checked in the browser against the literal string "1234" and this API
+ * accepted the request whether or not one was sent, so the check stopped nobody.
+ */
+async function authoriseDestructiveAction(
+  req: Request,
+  permission: Permission,
+  pin: string,
+  reason: string
+) {
+  const actor = await getActor();
+  if (!actor) {
+    return {
+      ok: false as const,
+      response: NextResponse.json(
+        { success: false, error: "You must be signed in to do this." },
+        { status: 401 }
+      ),
+    };
+  }
+
+  const trimmedReason = String(reason || "").trim();
+  if (trimmedReason.length < 3) {
+    return {
+      ok: false as const,
+      response: NextResponse.json(
+        { success: false, error: "A reason is required and must say what happened." },
+        { status: 400 }
+      ),
+    };
+  }
+
+  const check = await requirePinAndPermission(actor, permission, pin);
+  if (!check.ok) {
+    return {
+      ok: false as const,
+      response: NextResponse.json(
+        { success: false, error: check.error, pinFailed: true },
+        { status: 403 }
+      ),
+    };
+  }
+
+  return {
+    ok: true as const,
+    actor,
+    reason: trimmedReason,
+    usedLegacyPin: Boolean(check.usedLegacyPin),
+    ip: req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "",
+    userAgent: req.headers.get("user-agent") || "",
+  };
+}
 
 export async function GET(req: Request) {
   try {
@@ -626,6 +688,21 @@ export async function PUT(req: Request) {
 
     // Special handler for clearing Due / Settlement from Dashboard
     if (body.action === "clear-due" || body.dueClearedMode) {
+      // A credit note is money owed BACK to the customer, so it has no due to
+      // collect. Running this flow on one recorded the refund as an inbound
+      // receipt, which let the same amount reduce the customer's balance twice —
+      // once as the credit note itself and once as the "receipt".
+      if (existingInvoice.type === "credit-note") {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "A credit note cannot be cleared as a due — it is money owed back to the customer. Record a refund payment against it instead.",
+          },
+          { status: 400 }
+        );
+      }
+
       const clearedAmount = existingInvoice.balanceAmount > 0 ? existingInvoice.balanceAmount : (body.clearedAmount || existingInvoice.total);
       
       existingInvoice.paidAmount = existingInvoice.total;
@@ -671,9 +748,14 @@ export async function PUT(req: Request) {
 
     // Soft-cancel: unlike DELETE, the invoice record survives (for audit / leakage tracking)
     if (body.action === "cancel") {
-      if (!body.reason || !body.reason.trim()) {
-        return NextResponse.json({ success: false, error: "A cancellation reason is required" }, { status: 400 });
-      }
+      const gate = await authoriseDestructiveAction(
+        req,
+        "invoice.cancel",
+        body.pin,
+        body.reason
+      );
+      if (!gate.ok) return gate.response;
+
       if (existingInvoice.status === "cancelled") {
         return NextResponse.json({ success: false, error: "Invoice is already cancelled" }, { status: 400 });
       }
@@ -698,12 +780,43 @@ export async function PUT(req: Request) {
 
       existingInvoice.status = "cancelled";
       existingInvoice.cancelledAt = new Date().toISOString();
-      existingInvoice.cancelledBy = body.cancelledBy || "Admin";
-      existingInvoice.cancelReason = body.reason.trim();
+      existingInvoice.cancelledBy = gate.actor.name;
+      existingInvoice.cancelReason = gate.reason;
       existingInvoice.lastModifiedReason = "cancel";
 
       const saved = await existingInvoice.save();
-      return NextResponse.json({ success: true, message: "Invoice cancelled successfully", data: saved });
+
+      // The audit row is best-effort: the cancel itself has already succeeded and
+      // is recorded on the invoice, so a logging failure must not report it as an
+      // error the user would then retry.
+      try {
+        await AuditLog.create({
+          action: "invoice.cancel",
+          entityType: "Invoice",
+          entityRef: existingInvoice.invoiceNumber,
+          entityId: String(existingInvoice._id),
+          partyName: existingInvoice.customerName,
+          amount: Number(existingInvoice.total) || 0,
+          reason: gate.reason,
+          performedBy: gate.actor.name,
+          performedByUserId: gate.actor.id,
+          performedByRole: gate.actor.role,
+          pinVerified: true,
+          usedLegacyPin: gate.usedLegacyPin,
+          ip: gate.ip,
+          userAgent: gate.userAgent,
+          metadata: { paymentMode: existingInvoice.paymentMode, date: existingInvoice.date },
+        });
+      } catch (logErr) {
+        console.warn("Notice: audit log for invoice cancel:", logErr);
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: "Invoice cancelled successfully",
+        usedLegacyPin: gate.usedLegacyPin,
+        data: saved,
+      });
     }
 
     const updatedInvoice = await Invoice.findOneAndUpdate(
@@ -722,18 +835,55 @@ export async function DELETE(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const invoiceNumber = searchParams.get("invoiceNumber");
-    
+
     if (!invoiceNumber) {
       return NextResponse.json({ success: false, error: "Invoice number is required" }, { status: 400 });
     }
 
+    // A DELETE carries no body in some clients, so the PIN and reason may arrive
+    // either way. Both are read before anything is changed.
+    let payload: any = {};
+    try {
+      payload = await req.json();
+    } catch {
+      payload = {};
+    }
+    const pin = payload.pin ?? searchParams.get("pin") ?? "";
+    const reason = payload.reason ?? searchParams.get("reason") ?? "";
+
+    const gate = await authoriseDestructiveAction(req, "invoice.delete", pin, reason);
+    if (!gate.ok) return gate.response;
+
     await connectToDatabase();
-    
+
     const invoice = await Invoice.findOne({ invoiceNumber });
     if (!invoice) {
       return NextResponse.json({ success: false, error: "Invoice not found" }, { status: 404 });
     }
 
+    const snapshot = invoice.toObject();
+
+    // Archive BEFORE unwinding anything: if the archive write fails there is still
+    // an invoice to look at, whereas a half-reversed bill with no record would be
+    // unrecoverable.
+    await DeletedInvoice.create({
+      ...snapshot,
+      _id: undefined,
+      invoiceNumber: invoice.invoiceNumber,
+      docType: invoice.type === "proforma" ? "Proforma" : invoice.type === "credit-note" ? "Credit Note" : invoice.type === "sales-order" ? "Sales Order" : "Invoice",
+      customerName: invoice.customerName,
+      total: Number(invoice.total) || 0,
+      deletedAt: new Date(),
+      deletedBy: gate.actor.name,
+      deletedByRole: gate.actor.role,
+      deletedByUserId: gate.actor.id,
+      deleteReason: gate.reason,
+      pinVerified: true,
+      usedLegacyPin: gate.usedLegacyPin,
+      snapshot,
+    });
+
+    // Reversal logic below is unchanged from before this route required a PIN.
     if (invoice.balanceAmount > 0) {
       await Customer.findByIdAndUpdate(invoice.customerId, {
         $inc: { outstandingBalance: invoice.type === "credit-note" ? invoice.balanceAmount : -invoice.balanceAmount }
@@ -754,7 +904,33 @@ export async function DELETE(req: Request) {
 
     await Invoice.findOneAndDelete({ invoiceNumber });
 
-    return NextResponse.json({ success: true, message: "Invoice deleted successfully" });
+    try {
+      await AuditLog.create({
+        action: "invoice.delete",
+        entityType: "Invoice",
+        entityRef: invoice.invoiceNumber,
+        entityId: String(invoice._id),
+        partyName: invoice.customerName,
+        amount: Number(invoice.total) || 0,
+        reason: gate.reason,
+        performedBy: gate.actor.name,
+        performedByUserId: gate.actor.id,
+        performedByRole: gate.actor.role,
+        pinVerified: true,
+        usedLegacyPin: gate.usedLegacyPin,
+        ip: gate.ip,
+        userAgent: gate.userAgent,
+        metadata: { paymentMode: invoice.paymentMode, date: invoice.date, type: invoice.type },
+      });
+    } catch (logErr) {
+      console.warn("Notice: audit log for invoice delete:", logErr);
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "Invoice deleted and archived to the audit trail",
+      usedLegacyPin: gate.usedLegacyPin,
+    });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

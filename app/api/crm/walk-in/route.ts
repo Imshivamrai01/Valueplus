@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import WalkInQuery from "@/models/WalkInQuery";
 import Lead from "@/models/Lead";
+import { notifyWhatsApp } from "@/lib/whatsapp/notify";
+import { getActor } from "@/lib/requirePermission";
 
 export async function GET(req: Request) {
   try {
@@ -69,6 +71,13 @@ export async function POST(req: Request) {
       console.error("Error auto-creating Lead from WalkIn:", leadErr);
     }
 
+    const actor = await getActor();
+    await notifyWhatsApp({
+      event: "walkin.created",
+      entity: query.toObject(),
+      actor: actor?.name || body.staff || "Sales Counter",
+    });
+
     return NextResponse.json({ success: true, data: query });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 400 });
@@ -118,9 +127,23 @@ export async function PUT(req: Request) {
         ],
       });
       
+      const previousStatus = walkIn.status;
       walkIn.status = "Converted to Lead";
       walkIn.leadId = leadId;
       await walkIn.save();
+
+      const convertActor = await getActor();
+      await notifyWhatsApp({
+        event: "walkin.status",
+        entity: walkIn.toObject(),
+        previousStatus,
+        actor: convertActor?.name || walkIn.staff || "Sales Counter",
+      });
+      await notifyWhatsApp({
+        event: "lead.created",
+        entity: newLead.toObject(),
+        actor: convertActor?.name || walkIn.staff || "Sales Counter",
+      });
       
       return NextResponse.json({
         success: true,
@@ -129,7 +152,19 @@ export async function PUT(req: Request) {
       });
     }
     
+    const before: any = await WalkInQuery.findById(id).lean();
     const updated = await WalkInQuery.findByIdAndUpdate(id, updates, { new: true });
+
+    if (updated && updates.status && before?.status && updates.status !== before.status) {
+      const actor = await getActor();
+      await notifyWhatsApp({
+        event: "walkin.status",
+        entity: updated.toObject(),
+        previousStatus: before.status,
+        actor: actor?.name || "Staff",
+      });
+    }
+
     return NextResponse.json({ success: true, data: updated });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

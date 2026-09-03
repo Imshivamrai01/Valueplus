@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import CustomerComplaint from "@/models/CustomerComplaint";
+import { notifyWhatsApp } from "@/lib/whatsapp/notify";
+import { getActor } from "@/lib/requirePermission";
 
 export async function GET(req: Request) {
   try {
@@ -73,6 +75,16 @@ export async function POST(req: Request) {
     };
 
     const complaint = await CustomerComplaint.create(payload);
+
+    // Notifications are raised after the save and never block it — notifyWhatsApp
+    // swallows its own failures, so a WhatsApp problem cannot lose a complaint.
+    const actor = await getActor();
+    await notifyWhatsApp({
+      event: "complaint.created",
+      entity: complaint.toObject(),
+      actor: actor?.name || body.raisedBy || "Counter Staff",
+    });
+
     return NextResponse.json({ success: true, data: complaint });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 400 });
@@ -97,6 +109,10 @@ export async function PUT(req: Request) {
       }
     }
 
+    // Read the old status first, so a status-change message can say what it
+    // changed FROM. Reading it after the update would always show the new value.
+    const before: any = await CustomerComplaint.findById(targetId).lean();
+
     const updatedComplaint = await CustomerComplaint.findByIdAndUpdate(
       targetId,
       { $set: updates },
@@ -105,6 +121,19 @@ export async function PUT(req: Request) {
 
     if (!updatedComplaint) {
       return NextResponse.json({ success: false, error: "Complaint not found" }, { status: 404 });
+    }
+
+    const statusChanged =
+      updates.status && before?.status && updates.status !== before.status;
+
+    if (statusChanged) {
+      const actor = await getActor();
+      await notifyWhatsApp({
+        event: "complaint.status",
+        entity: updatedComplaint,
+        previousStatus: before.status,
+        actor: actor?.name || updates.resolvedBy || "Staff",
+      });
     }
 
     return NextResponse.json({ success: true, data: updatedComplaint });

@@ -40,6 +40,7 @@ export const config = {
     "/purchase/:path*",
     "/inventory/:path*",
     "/masters/:path*",
+    "/vendors/:path*",
     "/finance/:path*",
     "/staff/:path*",
     "/marketing/:path*",

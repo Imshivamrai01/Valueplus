@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import Estimate from "@/models/Estimate";
 import Lead from "@/models/Lead";
+import DeletedInvoice from "@/models/DeletedInvoice";
+import AuditLog from "@/models/AuditLog";
+import { getActor } from "@/lib/requirePermission";
+import { requirePinAndPermission } from "@/lib/securityPin";
 
 export async function GET(req: Request) {
   try {
@@ -105,15 +109,105 @@ export async function DELETE(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const estimateNumber = searchParams.get("estimateNumber");
-    
+
     if (!estimateNumber) {
       return NextResponse.json({ success: false, error: "Estimate number is required" }, { status: 400 });
     }
 
+    // An estimate is a quotation rather than a bill, but deleting one still makes
+    // a document the customer may have been shown disappear without trace. It goes
+    // through the same PIN, reason and archive as an invoice so the void audit
+    // covers every sales document, not just the ones that were billed.
+    let payload: any = {};
+    try {
+      payload = await req.json();
+    } catch {
+      payload = {};
+    }
+    const pin = payload.pin ?? searchParams.get("pin") ?? "";
+    const reason = String(payload.reason ?? searchParams.get("reason") ?? "").trim();
+
+    const actor = await getActor();
+    if (!actor) {
+      return NextResponse.json(
+        { success: false, error: "You must be signed in to do this." },
+        { status: 401 }
+      );
+    }
+    if (reason.length < 3) {
+      return NextResponse.json(
+        { success: false, error: "A reason is required and must say what happened." },
+        { status: 400 }
+      );
+    }
+
+    const check = await requirePinAndPermission(actor, "invoice.delete", pin);
+    if (!check.ok) {
+      return NextResponse.json(
+        { success: false, error: check.error, pinFailed: true },
+        { status: 403 }
+      );
+    }
+
     await connectToDatabase();
+
+    const estimate = await Estimate.findOne({ estimateNumber });
+    if (!estimate) {
+      return NextResponse.json({ success: false, error: "Estimate not found" }, { status: 404 });
+    }
+
+    const snapshot = estimate.toObject();
+
+    // Archived before the delete, so a failure here leaves the estimate intact
+    // rather than removing it with no record.
+    await DeletedInvoice.create({
+      ...snapshot,
+      _id: undefined,
+      // Stored under the invoice-number field so the audit screens can list every
+      // deleted document together; `docType` says which kind it was.
+      invoiceNumber: estimate.estimateNumber,
+      docType: "Estimate",
+      customerName: estimate.customerName,
+      total: Number(estimate.total) || 0,
+      deletedAt: new Date(),
+      deletedBy: actor.name,
+      deletedByRole: actor.role,
+      deletedByUserId: actor.id,
+      deleteReason: reason,
+      pinVerified: true,
+      usedLegacyPin: Boolean(check.usedLegacyPin),
+      snapshot,
+    });
+
     await Estimate.findOneAndDelete({ estimateNumber });
 
-    return NextResponse.json({ success: true, message: "Estimate deleted successfully" });
+    try {
+      await AuditLog.create({
+        action: "estimate.delete",
+        entityType: "Estimate",
+        entityRef: estimate.estimateNumber,
+        entityId: String(estimate._id),
+        partyName: estimate.customerName,
+        amount: Number(estimate.total) || 0,
+        reason,
+        performedBy: actor.name,
+        performedByUserId: actor.id,
+        performedByRole: actor.role,
+        pinVerified: true,
+        usedLegacyPin: Boolean(check.usedLegacyPin),
+        ip: req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "",
+        userAgent: req.headers.get("user-agent") || "",
+        metadata: { status: estimate.status, date: (estimate as any).date },
+      });
+    } catch (logErr) {
+      console.warn("Notice: audit log for estimate delete:", logErr);
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "Estimate deleted and archived to the audit trail",
+      usedLegacyPin: Boolean(check.usedLegacyPin),
+    });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

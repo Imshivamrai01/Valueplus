@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import Invoice from "@/models/Invoice";
 import Estimate from "@/models/Estimate";
+import DeletedInvoice from "@/models/DeletedInvoice";
 
 /**
  * Allocates the next document number from what is actually stored.
@@ -57,9 +58,18 @@ export async function GET(req: Request) {
       ];
     } else {
       // Scan every invoice, not just the visible list — a hidden sales-order or a
-      // credit note still occupies its number.
-      const all = await Invoice.find({}, { invoiceNumber: 1 }).lean();
-      existing = all.map((i: any) => i.invoiceNumber || "");
+      // credit note still occupies its number. Deleted invoices count too: their
+      // number was already issued and printed, and a GST audit that finds the same
+      // number on two different bills is a far worse problem than a gap in the
+      // sequence.
+      const [all, deleted] = await Promise.all([
+        Invoice.find({}, { invoiceNumber: 1 }).lean(),
+        DeletedInvoice.find({}, { invoiceNumber: 1 }).lean(),
+      ]);
+      existing = [
+        ...all.map((i: any) => i.invoiceNumber || ""),
+        ...deleted.map((i: any) => i.invoiceNumber || ""),
+      ];
     }
 
     const next = highestSuffix(existing, cfg.prefix) + 1;

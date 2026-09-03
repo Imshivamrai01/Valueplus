@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Plus, Search, FileText, Send, CheckCircle, Clock, Trash2, AlertTriangle, Eye, User, CalendarDays, WalletCards, Printer, MessageCircle } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
+import { AuthorizePinDialog, PinAuthResult } from "@/components/AuthorizePinDialog";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -102,22 +103,37 @@ export default function EstimatesPage() {
     }
   });
 
+  // The server's verdict on the PIN, shown inside the authorisation dialog.
+  const [authError, setAuthError] = useState<string | null>(null);
+
   const deleteEstimateMutation = useMutation({
-    mutationFn: async (estimateNumber: string) => {
-      const res = await fetch(`/api/estimates?estimateNumber=${encodeURIComponent(estimateNumber)}`, { method: "DELETE" });
+    mutationFn: async ({ estimateNumber, pin, reason }: { estimateNumber: string; pin: string; reason: string }) => {
+      const res = await fetch(`/api/estimates?estimateNumber=${encodeURIComponent(estimateNumber)}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin, reason }),
+      });
       const json = await res.json();
       if (!json.success) throw new Error(json.error || "Failed to delete estimate");
       return json;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["estimates"] });
-      toast.success("Estimate deleted successfully");
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      toast.success("Estimate deleted and archived to the audit trail");
       setEstimateToDelete(null);
+      setAuthError(null);
     },
     onError: (error: any) => {
-      toast.error(error.message || "An error occurred while deleting");
+      setAuthError(error.message || "An error occurred while deleting");
     }
   });
+
+  const handleConfirmDeleteEstimate = ({ pin, reason }: PinAuthResult) => {
+    if (!estimateToDelete) return;
+    setAuthError(null);
+    deleteEstimateMutation.mutate({ estimateNumber: estimateToDelete, pin, reason });
+  };
 
   const handleSave = async () => {
     if (!formData.customerName || !formData.totalAmount) {
@@ -397,33 +413,23 @@ export default function EstimatesPage() {
         </Dialog>
       )}
 
-      {/* DELETE CONFIRMATION MODAL */}
-      <Dialog open={!!estimateToDelete} onOpenChange={(open) => !open && setEstimateToDelete(null)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-red-600 flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5" />
-              Confirm Deletion
-            </DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete estimate <span className="font-bold">{estimateToDelete}</span>? 
-              This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="mt-4">
-            <Button variant="outline" onClick={() => setEstimateToDelete(null)} disabled={deleteEstimateMutation.isPending}>
-              Cancel
-            </Button>
-            <Button 
-              variant="destructive" 
-              onClick={() => estimateToDelete && deleteEstimateMutation.mutate(estimateToDelete)}
-              disabled={deleteEstimateMutation.isPending}
-            >
-              {deleteEstimateMutation.isPending ? "Deleting..." : "Delete Estimate"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Deleting an estimate goes through the same PIN + reason as an invoice, so
+          it shows up in the dashboard's Payment Leakage audit too. */}
+      <AuthorizePinDialog
+        open={!!estimateToDelete}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEstimateToDelete(null);
+            setAuthError(null);
+          }
+        }}
+        onConfirm={handleConfirmDeleteEstimate}
+        title={`Delete Estimate ${estimateToDelete || ""}`}
+        description="The estimate is removed from the list, but a full copy is archived so the admin can still see what was deleted, by whom and why."
+        confirmLabel="Delete Estimate"
+        isPending={deleteEstimateMutation.isPending}
+        errorMessage={authError}
+      />
 
       {/* FULL ESTIMATE PREVIEW MODAL */}
       <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>

@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { InvoiceCreationModal } from "@/components/InvoiceCreationModal";
 import { toast } from "sonner";
+import { AuthorizePinDialog, PinAuthResult } from "@/components/AuthorizePinDialog";
 import { PageShell } from "@/components/shared/page-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -78,9 +79,9 @@ function SalesInvoicesContent() {
   const [activeSuggestRow, setActiveSuggestRow] = useState<number | null>(null);
   const [invoiceToDelete, setInvoiceToDelete] = useState<string | null>(null);
   const [invoiceToCancel, setInvoiceToCancel] = useState<string | null>(null);
-  const [cancelPin, setCancelPin] = useState("");
-  const [cancelPinError, setCancelPinError] = useState(false);
-  const [cancelReasonText, setCancelReasonText] = useState("");
+  // The PIN and reason now live inside AuthorizePinDialog; this only holds the
+  // server's verdict (wrong PIN, locked out, role not allowed) so it can be shown.
+  const [authError, setAuthError] = useState<string | null>(null);
 
   const { data: session } = useSession();
   const userRole = ((session?.user as any)?.role || "admin").toLowerCase();
@@ -196,28 +197,34 @@ function SalesInvoicesContent() {
   const loading = loadingInvoices;
 
   const deleteInvoiceMutation = useMutation({
-    mutationFn: async (invoiceNumber: string) => {
-      const res = await fetch(`/api/invoices?invoiceNumber=${encodeURIComponent(invoiceNumber)}`, { method: "DELETE" });
+    mutationFn: async ({ invoiceNumber, pin, reason }: { invoiceNumber: string; pin: string; reason: string }) => {
+      const res = await fetch(`/api/invoices?invoiceNumber=${encodeURIComponent(invoiceNumber)}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin, reason }),
+      });
       const json = await res.json();
       if (!json.success) throw new Error(json.error || "Failed to delete invoice");
       return json;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
-      toast.success("Invoice deleted successfully");
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      toast.success("Invoice deleted and archived to the audit trail");
       setInvoiceToDelete(null);
+      setAuthError(null);
     },
     onError: (error: any) => {
-      toast.error(error.message || "An error occurred while deleting");
+      setAuthError(error.message || "An error occurred while deleting");
     }
   });
 
   const cancelInvoiceMutation = useMutation({
-    mutationFn: async ({ invoiceNumber, reason }: { invoiceNumber: string; reason: string }) => {
+    mutationFn: async ({ invoiceNumber, reason, pin }: { invoiceNumber: string; reason: string; pin: string }) => {
       const res = await fetch("/api/invoices", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ invoiceNumber, action: "cancel", reason, cancelledBy: currentUserName }),
+        body: JSON.stringify({ invoiceNumber, action: "cancel", reason, pin }),
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error || "Failed to cancel invoice");
@@ -228,29 +235,25 @@ function SalesInvoicesContent() {
       queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
       toast.success("Invoice cancelled successfully");
       setInvoiceToCancel(null);
-      setCancelPin("");
-      setCancelPinError(false);
-      setCancelReasonText("");
+      setAuthError(null);
     },
     onError: (error: any) => {
-      toast.error(error.message || "An error occurred while cancelling");
+      setAuthError(error.message || "An error occurred while cancelling");
     }
   });
 
-  const handleConfirmCancel = () => {
-    const ADMIN_PIN = "1234";
-    if (cancelPin.trim() !== ADMIN_PIN) {
-      setCancelPinError(true);
-      toast.error("Invalid Admin PIN! Supervisor authorization required to cancel a bill.");
-      return;
-    }
-    if (!cancelReasonText.trim()) {
-      toast.error("Please enter a reason for cancelling this invoice.");
-      return;
-    }
-    if (invoiceToCancel) {
-      cancelInvoiceMutation.mutate({ invoiceNumber: invoiceToCancel, reason: cancelReasonText.trim() });
-    }
+  // The PIN is no longer compared in the browser — it goes to the API, which
+  // checks it against the user's own hashed PIN and refuses without it.
+  const handleConfirmCancel = ({ pin, reason }: PinAuthResult) => {
+    if (!invoiceToCancel) return;
+    setAuthError(null);
+    cancelInvoiceMutation.mutate({ invoiceNumber: invoiceToCancel, reason, pin });
+  };
+
+  const handleConfirmDelete = ({ pin, reason }: PinAuthResult) => {
+    if (!invoiceToDelete) return;
+    setAuthError(null);
+    deleteInvoiceMutation.mutate({ invoiceNumber: invoiceToDelete, pin, reason });
   };
 
   return (
@@ -628,106 +631,40 @@ function SalesInvoicesContent() {
         </DialogContent>
       </Dialog>
 
-      {/* DELETE CONFIRMATION MODAL */}
-      <Dialog open={!!invoiceToDelete} onOpenChange={(open) => !open && setInvoiceToDelete(null)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-red-600 flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5" />
-              Confirm Deletion
-            </DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete invoice <span className="font-bold">{invoiceToDelete}</span>? 
-              This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="mt-4">
-            <Button variant="outline" onClick={() => setInvoiceToDelete(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                if (invoiceToDelete) {
-                  deleteInvoiceMutation.mutate(invoiceToDelete)
-                }
-              }}
-            >
-              Delete Invoice
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Delete and Cancel both go through the one authorisation dialog: a PIN the
+          server verifies, and a reason the audit trail keeps. */}
+      <AuthorizePinDialog
+        open={!!invoiceToDelete}
+        onOpenChange={(open) => {
+          if (!open) {
+            setInvoiceToDelete(null);
+            setAuthError(null);
+          }
+        }}
+        onConfirm={handleConfirmDelete}
+        title={`Delete Invoice ${invoiceToDelete || ""}`}
+        description="The bill is removed from the live list, but a full copy is archived so the admin can still see what was deleted, by whom and why."
+        confirmLabel="Delete Invoice"
+        isPending={deleteInvoiceMutation.isPending}
+        errorMessage={authError}
+      />
 
-      {/* CANCEL INVOICE MODAL (PIN + Reason, feeds Payment Leakage audit) */}
-      <Dialog
+      <AuthorizePinDialog
         open={!!invoiceToCancel}
         onOpenChange={(open) => {
           if (!open) {
             setInvoiceToCancel(null);
-            setCancelPin("");
-            setCancelPinError(false);
-            setCancelReasonText("");
+            setAuthError(null);
           }
         }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-amber-700 flex items-center gap-2">
-              <Ban className="w-5 h-5" />
-              Cancel Invoice {invoiceToCancel}
-            </DialogTitle>
-            <DialogDescription>
-              This voids the bill (reverses stock &amp; customer balance) but keeps it on record for audit —
-              unlike Delete, it will show up in the Payment Leakage &amp; Void Audit tracker. Supervisor PIN and a reason are required.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-3 py-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-slate-800">Admin 4-Digit Security PIN *</Label>
-              <Input
-                type="password"
-                maxLength={4}
-                autoFocus
-                placeholder="••••"
-                value={cancelPin}
-                onChange={(e) => { setCancelPin(e.target.value); setCancelPinError(false); }}
-                className={cn(
-                  "text-center text-xl tracking-[0.4em] font-mono h-11 font-black border-2",
-                  cancelPinError ? "border-red-500 bg-red-50" : "border-amber-400 bg-slate-50"
-                )}
-              />
-              {cancelPinError && (
-                <p className="text-xs text-red-600 font-semibold">Incorrect PIN! Supervisor authorization failed.</p>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-slate-800">Reason for Cancellation *</Label>
-              <Textarea
-                placeholder="e.g. Customer changed mind, duplicate bill, wrong items billed..."
-                value={cancelReasonText}
-                onChange={(e) => setCancelReasonText(e.target.value)}
-                className="text-sm"
-                rows={3}
-              />
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setInvoiceToCancel(null)}>
-              Back
-            </Button>
-            <Button
-              onClick={handleConfirmCancel}
-              disabled={cancelInvoiceMutation.isPending}
-              className="bg-amber-600 hover:bg-amber-700 text-white font-bold"
-            >
-              {cancelInvoiceMutation.isPending ? "Cancelling..." : "Confirm Cancellation"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        onConfirm={handleConfirmCancel}
+        title={`Cancel Invoice ${invoiceToCancel || ""}`}
+        description="Voids the bill and reverses stock and the customer balance. The invoice stays on record and appears in the Payment Leakage audit."
+        confirmLabel="Confirm Cancellation"
+        destructive={false}
+        isPending={cancelInvoiceMutation.isPending}
+        errorMessage={authError}
+      />
 
       {/* CUSTOMER LEDGER MODAL */}
       <Dialog open={isCustomerLedgerOpen} onOpenChange={setIsCustomerLedgerOpen}>

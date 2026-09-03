@@ -829,14 +829,274 @@ export async function GET(request: Request) {
     const waivedCount = waivedInvoices.length;
     const waivedAmount = waivedInvoices.reduce((sum: number, inv: any) => sum + Math.abs(Number(inv.roundOff) || 0) + (Number(inv.discount) || 0), 0);
 
+    // ─── DELETED BILLS ──────────────────────────────────────────────────────
+    // A deleted invoice is gone from the `invoices` collection, so it cannot come
+    // out of `filteredInvoices` like every other bucket above. It is read from the
+    // archive the delete route writes, matched on WHEN it was deleted rather than
+    // the invoice's own date — an old bill deleted today is today's incident.
+    let deletedBucket = { count: 0, amount: 0, invoices: [] as any[] };
+    try {
+      const DeletedInvoice = (await import("@/models/DeletedInvoice")).default;
+      const deletedRows = await DeletedInvoice.find({
+        deletedAt: { $gte: rangeStart, $lte: rangeEnd },
+      })
+        .sort({ deletedAt: -1 })
+        .lean();
+
+      deletedBucket = {
+        count: deletedRows.length,
+        amount: deletedRows.reduce((sum: number, r: any) => sum + (Number(r.total) || 0), 0),
+        // Shaped like an invoice so the leakage modal can render it unchanged.
+        invoices: deletedRows.slice(0, 10).map((r: any) => ({
+          _id: String(r._id),
+          invoiceNumber: r.invoiceNumber,
+          // Invoices, proformas, credit notes and estimates all archive here, so
+          // the row has to say which kind of document was removed.
+          docType: r.docType || "Invoice",
+          customerName: r.customerName,
+          total: Number(r.total) || 0,
+          date: r.snapshot?.date || "",
+          paymentMode: r.snapshot?.paymentMode || "",
+          status: "deleted",
+          isDeleted: true,
+          auditReason: r.deleteReason,
+          auditBy: r.deletedBy,
+          auditByRole: r.deletedByRole,
+          auditAt: r.deletedAt,
+          usedLegacyPin: r.usedLegacyPin,
+        })),
+      };
+    } catch (delErr) {
+      // The archive is new; an environment without the collection still renders
+      // every other bucket rather than failing the whole dashboard.
+      console.warn("Notice: deleted-invoice leakage bucket:", delErr);
+    }
+
     const leakage = {
-      cancelled: { count: cancelledCount, amount: cancelledAmount, invoices: cancelledInvoices.slice(0, 10) },
+      cancelled: {
+        count: cancelledCount,
+        amount: cancelledAmount,
+        // These three are already stored on a cancelled invoice but were never
+        // sent to the client, so the audit modal had nothing to show.
+        invoices: cancelledInvoices.slice(0, 10).map((inv: any) => ({
+          ...inv,
+          auditReason: inv.cancelReason || "",
+          auditBy: inv.cancelledBy || "",
+          auditAt: inv.cancelledAt || "",
+        })),
+      },
+      deleted: deletedBucket,
       modified: { count: modifiedCount, amount: modifiedAmount, invoices: modifiedInvoices.slice(0, 10) },
       shifted: { count: shiftedCount, amount: shiftedAmount, invoices: shiftedInvoices.slice(0, 10) },
       billsModified: { count: billsModifiedCount, amount: billsModifiedAmount, invoices: billsModifiedInvoices.slice(0, 10) },
       reprinted: { count: reprintedCount, totalPrints: totalReprintTimes, amount: reprintedAmount, invoices: reprintedInvoices.slice(0, 10) },
       waivedOff: { count: waivedCount, amount: waivedAmount, invoices: waivedInvoices.slice(0, 10) },
     };
+
+    // ─── VENDOR & SUPPLIER LEDGER SUMMARY ───────────────────────────────────
+    // Reported as its own block, never folded into totalRevenue / totalExpenses:
+    //  · vendor money in is not a counter sale, and adding it would move every
+    //    revenue figure on this dashboard;
+    //  · a supplier payout settles a liability the purchase already expensed, so
+    //    counting it again would understate netProfit.
+    // The mode split reuses classifyPaymentMode, so NEFT / IMPS / RTGS land in
+    // "online" exactly as they do for sales.
+    let vendorSupplier = {
+      vendorCollections: { total: 0, count: 0, byMode: {} as Record<string, number>, recent: [] as any[] },
+      vendorDue: { total: 0, count: 0, overdue: 0, parties: [] as any[] },
+      supplierOutstanding: { total: 0, count: 0, overdue: 0, parties: [] as any[] },
+    };
+    try {
+      const Vendor = (await import("@/models/Vendor")).default;
+      const VendorBill = (await import("@/models/VendorBill")).default;
+      const VendorPayment = (await import("@/models/VendorPayment")).default;
+      const { buildLedger } = await import("@/lib/ledger");
+
+      const [vendors, vendorBills, vendorPayments] = await Promise.all([
+        Vendor.find({}).lean(),
+        VendorBill.find({}).lean(),
+        VendorPayment.find({}).lean(),
+      ]);
+
+      // Collections are matched to the active range by their own payment date.
+      const paymentsInWindow = (vendorPayments as any[]).filter((p) => {
+        const d = new Date(`${p.date}T12:00:00`);
+        return !isNaN(d.getTime()) && d >= rangeStart && d <= rangeEnd;
+      });
+
+      const byMode: Record<string, number> = { cash: 0, upi: 0, online: 0, card: 0 };
+      let collected = 0;
+      for (const p of paymentsInWindow) {
+        const amount = (p.type === "paid" ? -1 : 1) * (Number(p.amount) || 0);
+        collected += amount;
+        const bucket = classifyPaymentMode(p.mode);
+        byMode[bucket] = (byMode[bucket] || 0) + amount;
+      }
+
+      // Balances are as-of-now across all time — a due does not belong to a date
+      // range the way a collection does.
+      const vendorRows: any[] = [];
+      for (const v of vendors as any[]) {
+        const vid = String(v._id);
+        const entries = [
+          ...(vendorBills as any[])
+            .filter((b) => String(b.vendorId) === vid && b.status !== "cancelled")
+            .map((b) => ({
+              kind: "bill" as const,
+              date: b.date,
+              ref: b.billNo,
+              label: b.billNo,
+              amount: Number(b.total) || 0,
+              dueDate: b.dueDate,
+            })),
+          ...(vendorPayments as any[])
+            .filter((p) => String(p.vendorId) === vid)
+            .map((p) => ({
+              kind: "payment" as const,
+              date: p.date,
+              ref: p.paymentId,
+              label: p.mode,
+              amount: Number(p.amount) || 0,
+              mode: p.mode,
+              reverse: p.type === "paid",
+            })),
+        ];
+
+        const { summary } = buildLedger(entries, {
+          side: "receivable",
+          openingBalance: Number(v.openingBalance) || 0,
+          openingDate: v.openingBalanceDate || "",
+        });
+
+        if (summary.closingBalance > 0 || summary.billCount > 0) {
+          vendorRows.push({
+            _id: vid,
+            name: v.name,
+            code: v.code,
+            phone: v.phone,
+            pending: summary.closingBalance,
+            overdue: summary.overdueAmount,
+            lastPaymentDate: summary.lastPaymentDate,
+            lastPaymentAmount: summary.lastPaymentAmount,
+          });
+        }
+      }
+
+      const owing = vendorRows.filter((r) => r.pending > 0);
+
+      // Supplier balances are derived from purchase bills and payments, NOT from
+      // the stored `outstandingBalance` field. That field is only updated on some
+      // paths — recording a supplier payment never touches it — so trusting it
+      // here would print a different number from the one the ledger screens show
+      // for the same supplier.
+      const PurchaseEntry = (await import("@/models/PurchaseEntry")).default;
+      const [purchaseBills, supplierPaymentRows] = await Promise.all([
+        PurchaseEntry.find({}).lean(),
+        PaymentTransaction.find({ partyType: "Supplier" }).lean(),
+      ]);
+
+      const supplierRows = (allSuppliers as any[])
+        .map((s: any) => {
+          const sid = String(s._id);
+          const name = String(s.name || "").trim();
+          const nameMatch = name
+            ? new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i")
+            : null;
+
+          const theirPayments = (supplierPaymentRows as any[]).filter((p) => {
+            const pid = String(p.partyId || "");
+            return pid === sid || (s.code && pid === String(s.code));
+          });
+          const referencedBills = new Set(
+            theirPayments.map((p: any) => p.referenceId).filter(Boolean)
+          );
+
+          const theirBills = (purchaseBills as any[]).filter((b) => {
+            if (b.supplierId && String(b.supplierId) === sid) return true;
+            return nameMatch ? nameMatch.test(String(b.supplierName || "").trim()) : false;
+          });
+
+          const entries = [
+            ...theirBills.map((b) => ({
+              kind: "bill" as const,
+              date: b.billDate || b.date,
+              ref: b.billNo,
+              label: b.billNo,
+              amount: Number(b.total) || 0,
+              dueDate: b.dueDate,
+              reverse: b.type === "debit-note",
+            })),
+            // Same rule as the ledger endpoint: money the purchase form recorded on
+            // the bill itself counts as paid, unless a transaction already covers
+            // that bill. Otherwise a fully-settled cash purchase reads as unpaid.
+            ...theirBills
+              .filter(
+                (b) =>
+                  (Number(b.paid) || 0) > 0 &&
+                  b.type !== "debit-note" &&
+                  !referencedBills.has(b.billNo)
+              )
+              .map((b) => ({
+                kind: "payment" as const,
+                date: b.billDate || b.date,
+                ref: `${b.billNo}-PAID`,
+                label: "Paid at purchase entry",
+                amount: Number(b.paid) || 0,
+                mode: b.paymentMode || "Cash",
+              })),
+            ...theirPayments.map((p) => ({
+              kind: "payment" as const,
+              date: p.date,
+              ref: p.transactionId,
+              label: p.paymentMode,
+              amount: Number(p.amount) || 0,
+              mode: p.paymentMode,
+              reverse: p.type === "received",
+            })),
+          ];
+
+          const { summary } = buildLedger(entries, { side: "payable" });
+
+          return {
+            _id: sid,
+            name: s.name,
+            code: s.code,
+            phone: s.phone,
+            pending: summary.closingBalance,
+            overdue: summary.overdueAmount,
+            lastPaymentDate: summary.lastPaymentDate,
+          };
+        })
+        // Only genuine payables. A supplier sitting in credit (a debit note worth
+        // more than the bills against it) is not money we owe, so it is left out
+        // rather than netted off — which is why this card can read slightly higher
+        // than the net figure on the ledger screen.
+        .filter((s) => s.pending > 0)
+        .sort((a, b) => b.pending - a.pending);
+
+      vendorSupplier = {
+        vendorCollections: {
+          total: collected,
+          count: paymentsInWindow.length,
+          byMode,
+          recent: paymentsInWindow.slice(0, 15),
+        },
+        vendorDue: {
+          total: owing.reduce((sum, r) => sum + r.pending, 0),
+          count: owing.length,
+          overdue: owing.reduce((sum, r) => sum + r.overdue, 0),
+          parties: owing.sort((a, b) => b.pending - a.pending).slice(0, 10),
+        },
+        supplierOutstanding: {
+          total: supplierRows.reduce((sum, s) => sum + s.pending, 0),
+          count: supplierRows.length,
+          overdue: supplierRows.reduce((sum, s) => sum + s.overdue, 0),
+          parties: supplierRows.slice(0, 10),
+        },
+      };
+    } catch (vsErr) {
+      console.warn("Notice: vendor/supplier dashboard block:", vsErr);
+    }
 
     return NextResponse.json({
       success: true,
@@ -902,6 +1162,8 @@ export async function GET(request: Request) {
         all: filteredExpenses,
       },
       leakage,
+      // New block. Every metric above keeps the value it had before this existed.
+      vendorSupplier,
       dailyRevenue,
       topCustomers,
       topProducts,

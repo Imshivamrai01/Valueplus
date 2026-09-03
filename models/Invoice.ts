@@ -81,6 +81,12 @@ export interface IInvoice extends Document {
   sgst: number;
   igst: number;
   totalGST: number;
+  // These four are on the schema below but were never declared here, so every
+  // route that reads an invoice's money fields did so untyped.
+  roundOff: number;
+  total: number;
+  paidAmount: number;
+  balanceAmount: number;
   extendedWarrantyTotal?: number;
   paymentMode: "Cash" | "UPI" | "Online" | "Card" | "Credit Card" | "Debit Card" | "Finance" | "Due / Credit" | "Multiple";
   /**

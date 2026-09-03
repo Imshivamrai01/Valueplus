@@ -32,6 +32,8 @@ import {
   BadgePercent,
   Clock,
   Landmark,
+  BookOpen,
+  Lock,
   Calendar,
   ShieldCheck,
   Building2,
@@ -100,6 +102,19 @@ export const NAV_GROUPS: NavGroup[] = [
       { title: "Warehouses & Godowns", href: "/masters/warehouses", icon: Warehouse, roles: ["admin", "manager"] },
       { title: "Customers", href: "/masters/customers", icon: Users, roles: ["admin", "salesman", "cashier", "accounts", "manager"] },
       { title: "Suppliers", href: "/masters/suppliers", icon: Truck, roles: ["admin", "accounts", "supplier", "manager"] },
+    ],
+  },
+  {
+    // Vendors are trade parties who buy from us on account. They keep their own
+    // section rather than sitting under Masters because the ledger, payments and
+    // ageing screens are the point of the module, not the party list.
+    title: "Vendors & Ledger",
+    roles: ["admin", "accounts", "manager"],
+    items: [
+      { title: "Vendor Master", href: "/vendors", icon: Building2, roles: ["admin", "accounts", "manager"] },
+      { title: "All Ledgers", href: "/vendors/ledger", icon: BookOpen, roles: ["admin", "accounts", "manager"] },
+      { title: "Vendor Payments", href: "/vendors/payments", icon: CreditCard, roles: ["admin", "accounts", "manager"] },
+      { title: "Outstanding & Ageing", href: "/vendors/outstanding", icon: Clock, roles: ["admin", "accounts", "manager"] },
     ],
   },
   {
@@ -173,6 +188,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { title: "Store Activity Approvals", href: "/admin/approvals", icon: ShieldCheck, roles: ["admin"] },
       { title: "Users & Staff KYC Master", href: "/settings/users", icon: Users, roles: ["admin", "hr"] },
       { title: "Company Profile", href: "/settings/profile", icon: Building2, roles: ["admin", "manager"] },
+      { title: "Role Permissions", href: "/settings/roles", icon: ShieldCheck, roles: ["admin"] },
+      { title: "Security PIN", href: "/settings/security-pin", icon: Lock, roles: ["admin", "manager", "accounts", "cashier"] },
       { title: "Bank Accounts Master", href: "/banking/accounts", icon: Landmark, roles: ["admin", "accounts", "manager"] },
       { title: "System Settings", href: "/settings", icon: Settings, roles: ["admin"] },
     ],

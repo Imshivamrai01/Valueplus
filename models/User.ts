@@ -30,6 +30,18 @@ export interface IUser extends Document {
   assignedWarehouseName?: string;
   assignedBrand?: string;
   assignedBrands?: string[];
+  /**
+   * Bcrypt hash of the 4-digit PIN that authorises a cancel or delete.
+   *
+   * Optional on purpose: a user who has never set one falls back to the legacy
+   * shared PIN, so nobody is locked out the day this ships. `select: false`
+   * keeps the hash out of every ordinary user query, including the staff
+   * directory screens that dump the whole document to the client.
+   */
+  securityPin?: string;
+  pinUpdatedAt?: Date;
+  pinFailCount?: number;
+  pinLockedUntil?: Date;
   status: "active" | "inactive";
 }
 
@@ -77,6 +89,10 @@ const UserSchema = new Schema<IUser>(
     assignedWarehouseName: { type: String, default: "" },
     assignedBrand: { type: String, default: "" },
     assignedBrands: [{ type: String }],
+    securityPin: { type: String, select: false },
+    pinUpdatedAt: { type: Date },
+    pinFailCount: { type: Number, default: 0, select: false },
+    pinLockedUntil: { type: Date, select: false },
     status: { type: String, enum: ["active", "inactive"], default: "active" },
   },
   { timestamps: true, collection: "users" }
