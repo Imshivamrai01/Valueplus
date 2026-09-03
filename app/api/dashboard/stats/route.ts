@@ -7,7 +7,7 @@ import Supplier from "@/models/Supplier";
 import Expense from "@/models/Expense";
 import PaymentTransaction from "@/models/PaymentTransaction";
 import FinanceTransaction from "@/models/FinanceTransaction";
-import { resolveInvoicePayments } from "@/lib/payment-modes";
+import { resolveInvoicePayments, classifyPaymentMode } from "@/lib/payment-modes";
 
 export async function GET(request: Request) {
   try {
@@ -149,6 +149,24 @@ export async function GET(request: Request) {
       .filter(isGenuineDueReceipt)
       .reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
     const duesCollectedCount = paymentsInRange.filter(isGenuineDueReceipt).length;
+
+    // ─── KHATA (DUE) COLLECTIONS ────────────────────────────────────────────
+    // Only receipts raised by the "Clear Due" flow, which tags them TXN-DUE-*.
+    // `duesCollected` above counts every customer receipt including the payment
+    // taken at billing time, so it cannot answer "how much khata came in today".
+    const dueClearanceReceipts = paymentsInRange.filter(
+      (p: any) => p.type === "received" && String(p.transactionId || "").startsWith("TXN-DUE-")
+    );
+    const dueClearedRevenue = dueClearanceReceipts.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+    const dueClearedCount = dueClearanceReceipts.length;
+    // Which mode the khata was settled in — the same money is already inside that
+    // mode's bucket, so this is reported for visibility only and must never be
+    // added to the totals again.
+    const dueClearedByMode: Record<string, number> = {};
+    for (const p of dueClearanceReceipts) {
+      const bucket = classifyPaymentMode(p.paymentMode);
+      dueClearedByMode[bucket] = (dueClearedByMode[bucket] || 0) + (Number(p.amount) || 0);
+    }
     const supplierPayouts = paymentsInRange
       .filter((p: any) => p.type === "paid" && p.partyType === "Supplier")
       .reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
@@ -163,6 +181,15 @@ export async function GET(request: Request) {
     let warrantyCount = 0;
     let dueRevenue = 0;
     let dueCount = 0;
+    // Khata-only figures. `dueRevenue` above sums the balance of EVERY unpaid
+    // invoice, so a financed sale's un-disbursed loan lands in it as well — the
+    // same rupees the Finance bucket already holds, which is why the distribution
+    // card showed one amount under both "Finance" and "Due / Credit Bill".
+    // These two count customer credit only; finance receivables stay in Finance.
+    let dueSalesRevenue = 0;   // credit extended on bills raised in this period
+    let dueSalesCount = 0;
+    let duePendingRevenue = 0; // of that credit, how much is still outstanding
+    let duePendingCount = 0;
 
     const cashTxns: any[] = [];
     const upiTxns: any[] = [];
@@ -313,6 +340,26 @@ export async function GET(request: Request) {
         else if (row.bucket === "upi") { upiRevenue += row.amount; upiTxns.push(txn); }
         else if (row.bucket === "card") { cardRevenue += row.amount; cardTxns.push(txn); }
         else if (row.bucket === "online") { onlineRevenue += row.amount; onlineTxns.push(txn); }
+      }
+
+      // Credit actually extended on this bill. `resolveInvoicePayments` returns a
+      // "due" row only for genuine customer credit — a financed sale resolves to a
+      // down payment plus a finance row and never produces one — so this cleanly
+      // separates khata from finance.
+      const invDueCredit = splitRows
+        .filter((r) => r.bucket === "due")
+        .reduce((sum, r) => sum + r.amount, 0);
+
+      if (invDueCredit > 0) {
+        dueSalesRevenue += invDueCredit;
+        dueSalesCount += 1;
+        // Still outstanding today. Capped at the credit extended so a finance
+        // balance on the same bill can never leak into the khata figure.
+        const stillOwed = Math.min(invDueCredit, Math.max(0, due));
+        if (stillOwed > 0) {
+          duePendingRevenue += stillOwed;
+          duePendingCount += 1;
+        }
       }
 
       let bucketKey = "";
@@ -803,8 +850,20 @@ export async function GET(request: Request) {
         financeRevenue,
         warrantyRevenue,
         warrantyCount,
+        // Unchanged: total unpaid balance across every invoice (finance included).
+        // Kept as-is because other screens already read it.
         dueRevenue,
         dueCount,
+        // Khata-only breakdown used by the payment distribution card.
+        dueSalesRevenue,
+        dueSalesCount,
+        duePendingRevenue,
+        duePendingCount,
+        // Khata settled in this period. Already inside the cash/UPI/card/online
+        // buckets — reported for visibility, never added to the totals again.
+        dueClearedRevenue,
+        dueClearedCount,
+        dueClearedByMode,
         duesCollected,
         duesCollectedCount,
         supplierPayouts,

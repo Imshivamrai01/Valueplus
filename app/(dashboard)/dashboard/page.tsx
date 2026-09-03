@@ -1008,7 +1008,11 @@ export default function DashboardPage() {
   const currentPieMetrics = currentPieData?.metrics || metrics;
   const currentPieTxns = currentPieData?.transactions || transactions;
 
-  const totalCollectedAmount = (currentPieMetrics.cashRevenue || 0) + (currentPieMetrics.upiRevenue || 0) + (currentPieMetrics.onlineRevenue || 0) + (currentPieMetrics.cardRevenue || 0) + (currentPieMetrics.financeRevenue || 0) + (currentPieMetrics.dueRevenue || 0);
+  // Total Sales = every mode the bill was settled or booked under. Credit sales
+  // count (the sale happened when billed), but only once — via `dueSalesRevenue`.
+  // Using `dueRevenue` here double-counted finance balances, which sit in
+  // financeRevenue already.
+  const totalCollectedAmount = (currentPieMetrics.cashRevenue || 0) + (currentPieMetrics.upiRevenue || 0) + (currentPieMetrics.onlineRevenue || 0) + (currentPieMetrics.cardRevenue || 0) + (currentPieMetrics.financeRevenue || 0) + (currentPieMetrics.dueSalesRevenue || 0);
   const totalBilledCount = (currentPieTxns.cash?.length || 0) + (currentPieTxns.upi?.length || 0) + (currentPieTxns.online?.length || 0) + (currentPieTxns.card?.length || 0) + (currentPieTxns.finance?.length || 0) + (currentPieTxns.due?.length || 0) || currentPieMetrics.totalOrders || 0;
 
   const PAYMENT_MODES = [
@@ -1017,8 +1021,38 @@ export default function DashboardPage() {
     { name: "NEFT / IMPS", value: currentPieMetrics.onlineRevenue || 0, count: currentPieTxns.online?.length || 0, color: "#3F63AD", key: "online", icon: Activity },
     { name: "Card (POS)", value: currentPieMetrics.cardRevenue || 0, count: currentPieTxns.card?.length || 0, color: "#06B6D4", key: "card", icon: CreditCard },
     { name: "Finance (Bajaj/HDB)", value: currentPieMetrics.financeRevenue || 0, count: currentPieTxns.finance?.length || 0, color: "#F59E0B", key: "finance", icon: Building2 },
-    { name: "Due / Credit Bill", value: currentPieMetrics.dueRevenue || 0, count: currentPieTxns.due?.length || currentPieMetrics.dueCount || 0, color: "#EF4444", key: "due", icon: Clock },
+    // Credit extended on bills raised in this period — customer khata only.
+    // This used to read `dueRevenue`, which is the unpaid balance of EVERY invoice,
+    // so a financed sale's loan portion appeared here as well as under Finance, and
+    // the identical number was then printed again by the "Pending Due" row below.
+    { name: "Due / Credit Bill", value: currentPieMetrics.dueSalesRevenue || 0, count: currentPieMetrics.dueSalesCount || 0, color: "#EF4444", key: "due", icon: Clock },
   ];
+
+  // ─── KHATA (DUE) STATUS ───────────────────────────────────────────────────
+  // Shown under the distribution bar, never inside it: a settled due is already
+  // counted in the mode it was collected through.
+  const dueClearedRevenue = currentPieMetrics.dueClearedRevenue || 0;
+  // Running khata book across every period, taken from the full invoice list the
+  // Due Collections widget already loads. Finance sales are excluded — the money
+  // is owed by the financier, not the customer, and it sits under Finance.
+  const allTimeDueCredit = dueInvoices.filter((inv: any) => {
+    const bal = Number(inv.balanceAmount) || 0;
+    if (bal <= 0) return false;
+    const mode = String(inv.paymentMode || "").toLowerCase();
+    const isFinance = Boolean(inv.financeProvider) || /finance|bajaj|hdb|emi|loan/.test(mode);
+    return !isFinance;
+  });
+  const allTimeDueOutstanding = allTimeDueCredit.reduce((s: number, inv: any) => s + (Number(inv.balanceAmount) || 0), 0);
+  const allTimeDueCount = allTimeDueCredit.length;
+  // "Cash ₹5,000 · UPI ₹2,000" — which modes today's khata came in through.
+  const dueClearedModeSummary = Object.entries(currentPieMetrics.dueClearedByMode || {})
+    .filter(([, amt]) => (Number(amt) || 0) > 0)
+    .sort((a, b) => (Number(b[1]) || 0) - (Number(a[1]) || 0))
+    .map(([bucket, amt]) => {
+      const label = bucket === "cash" ? "Cash" : bucket === "upi" ? "UPI" : bucket === "card" ? "Card" : bucket === "online" ? "NEFT/IMPS" : bucket;
+      return `${label} ₹${formatNumber(Math.round(Number(amt) || 0))}`;
+    })
+    .join(" · ");
 
   // Highest contributing channel for the selected period (footnote in the distribution card)
   const topPaymentMode = PAYMENT_MODES.reduce(
@@ -1295,35 +1329,75 @@ export default function DashboardPage() {
                     );
                   })}
 
-                  {/* PENDING DUE ROW */}
-                  {(metrics.dueRevenue > 0 || metrics.dueCount > 0) && (
-                    <div
-                      onClick={() => {
-                        const activeDate = dateFilter || "Today";
-                        let url = `/reports/sales-out?dueOnly=true&dateFilter=${encodeURIComponent(activeDate)}`;
-                        if (startDate && endDate) url += `&startDate=${startDate}&endDate=${endDate}`;
-                        router.push(url);
-                      }}
-                      className="flex items-center justify-between gap-3 py-2.5 cursor-pointer group"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <span className="w-2.5 h-2.5 rounded-full bg-rose-500 flex-shrink-0 animate-pulse" />
-                        <span className="text-sm font-semibold text-rose-700 truncate">Not paid (Pending Due)</span>
-                      </div>
-                      <div className="flex items-center gap-3 flex-shrink-0">
-                        <span className="text-[10px] font-mono font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded px-1.5 py-0.5">
-                          {metrics.dueCount || 0}
-                        </span>
-                        <span className="text-sm font-bold text-rose-700 font-mono tabular-nums">
-                          ₹ {formatNumber(Math.round(metrics.dueRevenue || 0))}
-                        </span>
-                        <span className="text-xs font-medium text-slate-400 font-mono tabular-nums w-11 text-right">
-                          {(totalCollectedAmount > 0 ? ((metrics.dueRevenue || 0) / totalCollectedAmount) * 100 : 0).toFixed(1)}%
-                        </span>
-                      </div>
-                    </div>
-                  )}
                 </div>
+
+                {/* ─── KHATA STATUS LINES ─────────────────────────────────────
+                    These sit BELOW the bar, not inside it. Money collected against
+                    a due is already counted in the Cash/UPI/Card/Online row it came
+                    through, so showing it as its own segment would count the same
+                    rupees twice — which is exactly what the old duplicated
+                    "Pending Due" row did. */}
+                {(dueClearedRevenue > 0 || allTimeDueOutstanding > 0) && (
+                  <div className="mt-3 pt-3 border-t border-slate-200/90 space-y-2">
+                    {dueClearedRevenue > 0 && (
+                      <div
+                        onClick={() => setActiveModal("due")}
+                        className="flex items-center justify-between gap-3 cursor-pointer group"
+                        title="Khata payments received in this period — already included in the payment mode above"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                          <span className="text-xs font-semibold text-emerald-800 group-hover:underline">
+                            Dues Collected
+                          </span>
+                          {dueClearedModeSummary && (
+                            <span className="text-[11px] text-slate-400 truncate">via {dueClearedModeSummary}</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2.5 flex-shrink-0">
+                          <span className="text-[10px] font-mono font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
+                            {metrics.dueClearedCount || 0}
+                          </span>
+                          <span className="text-sm font-bold text-emerald-700 font-mono tabular-nums">
+                            + ₹ {formatNumber(Math.round(dueClearedRevenue))}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* All-time khata outstanding. The "Due / Credit Bill" bar segment
+                        above already shows what is unpaid IN THIS PERIOD, so repeating
+                        that here is what produced the two identical rows. This instead
+                        reports the running khata book across every period. */}
+                    {allTimeDueOutstanding > 0 && (
+                      <div
+                        onClick={() => {
+                          const activeDate = dateFilter || "Today";
+                          let url = `/reports/sales-out?dueOnly=true&dateFilter=${encodeURIComponent(activeDate)}`;
+                          if (startDate && endDate) url += `&startDate=${startDate}&endDate=${endDate}`;
+                          router.push(url);
+                        }}
+                        className="flex items-center justify-between gap-3 cursor-pointer group"
+                        title="Total khata still owed across all periods — falls as customers settle"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="w-2.5 h-2.5 rounded-full bg-rose-500 flex-shrink-0 animate-pulse" />
+                          <span className="text-xs font-semibold text-rose-700 group-hover:underline">
+                            Khata book — total still owed
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2.5 flex-shrink-0">
+                          <span className="text-[10px] font-mono font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded px-1.5 py-0.5">
+                            {allTimeDueCount}
+                          </span>
+                          <span className="text-sm font-bold text-rose-700 font-mono tabular-nums">
+                            ₹ {formatNumber(Math.round(allTimeDueOutstanding))}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* TOP CHANNEL FOOTNOTE */}
                 <p className="text-xs text-slate-400 font-medium mt-3">
