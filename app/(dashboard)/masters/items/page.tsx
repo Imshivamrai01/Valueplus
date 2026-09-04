@@ -7,7 +7,7 @@ import {
   Plus, Search, Filter, Download, Upload, Printer, MoreHorizontal, 
   Edit, Trash2, Eye, Package, TrendingUp, AlertTriangle, CheckCircle, 
   X, Sparkles, ShoppingBag, Store, Warehouse, Building2, Layers, RefreshCw,
-  Barcode, Hash, PlusCircle, Check, Trash
+  Barcode, Hash, PlusCircle, Check, Trash, Gift, ChevronDown, ChevronUp
 } from "lucide-react";
 import { toast } from "sonner";
 import { PageShell } from "@/components/shared/page-shell";
@@ -34,6 +34,8 @@ import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 import { formatCurrency, downloadCSV, formatDate, cn } from "@/lib/utils";
 import { BrandLogo } from "@/components/shared/brand-logo";
 import { useBranch } from "@/context/BranchContext";
+import { Switch } from "@/components/ui/switch";
+import { BulkIncentiveModal } from "@/components/items/BulkIncentiveModal";
 import { useSession } from "next-auth/react";
 
 interface ItemFormData {
@@ -77,7 +79,7 @@ const EMPTY_FORM: ItemFormData = {
   maxDiscountAmount: "",
   incentiveTargetAmount: "",
   incentiveAmount: "0",
-  incentiveType: "fixed",
+  incentiveType: "none",
   incentiveValue: "0",
   mrp: "",
   currentStock: "0",
@@ -129,6 +131,10 @@ function ItemsPageContent() {
   const [ledgerTab, setLedgerTab] = useState<string>("all");
   const [deletingCode, setDeletingCode] = useState<string | null>(null);
   const [formData, setFormData] = useState<ItemFormData>(EMPTY_FORM);
+  // Collapsed by default so a product with no incentive scheme keeps the form
+  // short; opened automatically when editing an item that already has one.
+  const [incentiveOpen, setIncentiveOpen] = useState(false);
+  const [bulkIncentiveOpen, setBulkIncentiveOpen] = useState(false);
   const [formSerials, setFormSerials] = useState<FormSerialItem[]>([]);
   const [newSerialInput, setNewSerialInput] = useState("");
   const [batchNoInput, setBatchNoInput] = useState("");
@@ -299,6 +305,7 @@ function ItemsPageContent() {
     setFormSerials([]);
     setNewSerialInput("");
     setBatchNoInput("");
+    setIncentiveOpen(false);
     setIsFormOpen(true);
   };
 
@@ -329,9 +336,9 @@ function ItemsPageContent() {
       minSellingPrice: String(item.minSellingPrice || item.purchasePrice || ""),
       maxDiscountPercent: String(item.maxDiscountPercent || ""),
       maxDiscountAmount: String(item.maxDiscountAmount || ""),
-      incentiveTargetAmount: String(item.incentiveTargetAmount || item.sellingPrice || ""),
+      incentiveTargetAmount: String(item.incentiveTargetAmount || ""),
       incentiveAmount: String(item.incentiveAmount || item.incentiveValue || 0),
-      incentiveType: item.incentiveType || "fixed",
+      incentiveType: item.incentiveType && item.incentiveType !== "none" ? item.incentiveType : "none",
       incentiveValue: String(item.incentiveValue || item.incentiveAmount || 0),
       mrp: String(item.mrp || ""), 
       currentStock: String(sStock),
@@ -341,8 +348,9 @@ function ItemsPageContent() {
       warehouse: item.warehouse || activeLocation?.name || "Ashoka Enterprises (Kunraghat Showroom)", 
       status: item.status || "active",
     });
+    setIncentiveOpen(Boolean(Number(item.incentiveValue) || Number(item.incentiveAmount)));
 
-    const matching = (allDbSerials || []).filter((s: any) => 
+    const matching = (allDbSerials || []).filter((s: any) =>
       (s.vpCode && (s.vpCode === item.vpCode || s.vpCode === item.code)) ||
       (s.itemId && (s.itemId === item._id || s.itemId === item.id)) ||
       (s.itemName && s.itemName.toLowerCase().trim() === item.name.toLowerCase().trim())
@@ -467,7 +475,11 @@ function ItemsPageContent() {
       toast.error("Please fill all required fields");
       return;
     }
-    
+    if (incentiveOpen && !(Number(formData.incentiveValue) > 0)) {
+      toast.error("Incentive is switched on — enter a reward value, or switch it off.");
+      return;
+    }
+
     const sStock = Number(formData.showroomStock || formData.currentStock || 0);
     const gStock = Number(formData.godownStock || formData.currentStock || 0);
 
@@ -480,10 +492,13 @@ function ItemsPageContent() {
       minSellingPrice: Number(formData.minSellingPrice) || Number(formData.purchasePrice) || 0,
       maxDiscountPercent: Number(formData.maxDiscountPercent) || 0,
       maxDiscountAmount: Number(formData.maxDiscountAmount) || 0,
-      incentiveTargetAmount: Number(formData.incentiveTargetAmount) || Number(formData.sellingPrice) || 0,
-      incentiveAmount: Number(formData.incentiveAmount) || Number(formData.incentiveValue) || 0,
-      incentiveType: formData.incentiveType || "fixed",
-      incentiveValue: Number(formData.incentiveValue) || Number(formData.incentiveAmount) || 0,
+      // A collapsed section means "no incentive on this product" even if a value
+      // was typed in before the admin closed it, so the rule is force-cleared
+      // rather than trusting whatever formData still holds.
+      incentiveTargetAmount: incentiveOpen ? (Number(formData.incentiveTargetAmount) || 0) : 0,
+      incentiveAmount: incentiveOpen ? (Number(formData.incentiveAmount) || Number(formData.incentiveValue) || 0) : 0,
+      incentiveType: incentiveOpen ? (formData.incentiveType === "percentage" ? "percentage" : "fixed") : "none",
+      incentiveValue: incentiveOpen ? (Number(formData.incentiveValue) || Number(formData.incentiveAmount) || 0) : 0,
       mrp: Number(formData.mrp),
       showroomStock: sStock,
       godownStock: gStock,
@@ -590,9 +605,17 @@ function ItemsPageContent() {
             >
               <Download className="w-3.5 h-3.5 mr-1.5" /> Export CSV
             </Button>
-            <Button 
-              size="sm" 
-              onClick={() => router.push("/purchase/entries?action=create")} 
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBulkIncentiveOpen(true)}
+              className="text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+            >
+              <Gift className="w-3.5 h-3.5 mr-1.5" /> Bulk Apply Incentive
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => router.push("/purchase/entries?action=create")}
               className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white text-xs font-bold shadow-sm"
             >
               <Plus className="w-3.5 h-3.5 mr-1.5" /> + Inward Stock / Purchase Entry
@@ -964,8 +987,23 @@ function ItemsPageContent() {
                       <td className="px-4 py-3 text-right">
                         <p className="font-semibold text-foreground">{formatCurrency(item.sellingPrice)}</p>
                         <p className="text-xs text-muted-foreground">MRP {formatCurrency(item.mrp)}</p>
+                        {item.incentiveType && item.incentiveType !== "none" && Number(item.incentiveValue || item.incentiveAmount) > 0 && (
+                          <span
+                            className="inline-flex items-center gap-1 mt-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5"
+                            title={
+                              Number(item.incentiveTargetAmount) > 0
+                                ? `Incentive applies at ₹${item.incentiveTargetAmount}+`
+                                : "Incentive applies on every sale"
+                            }
+                          >
+                            <Gift className="w-2.5 h-2.5" />
+                            {item.incentiveType === "percentage"
+                              ? `${item.incentiveValue}%`
+                              : formatCurrency(item.incentiveValue || item.incentiveAmount)}
+                          </span>
+                        )}
                       </td>
-                      
+
                       {/* Clickable Live Stock Cell: Opens Showroom & Godown Stock Breakdown Popover */}
                       <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                         <Popover>
@@ -1342,10 +1380,133 @@ function ItemsPageContent() {
               </div>
             </div>
 
-            {/* Section 3: Showroom & Godown Stock Allocation */}
+            {/* Section 3: Salesperson Incentive — collapsed by default; most
+                products have no incentive scheme, so the form stays short
+                unless the admin explicitly opens this. */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+              {/*
+                A plain <button> wrapping the Switch put a <button role="switch">
+                inside another <button> — invalid HTML that React flags as a
+                hydration error. This is a <div> that behaves like a toggle
+                (role="button", keyboard-operable) instead, with the Switch as an
+                ordinary child rather than a nested interactive control.
+              */}
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => setIncentiveOpen((o) => !o)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setIncentiveOpen((o) => !o);
+                  }
+                }}
+                className="w-full flex items-center justify-between p-5 text-left cursor-pointer select-none"
+              >
+                <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#3F63AD] flex items-center gap-2">
+                  <Gift className="w-4 h-4 text-[#3F63AD]" /> 3. Salesperson Incentive
+                  {incentiveOpen && Number(formData.incentiveValue) > 0 && (
+                    <span className="normal-case font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5 text-[10px] tracking-normal">
+                      {formData.incentiveType === "percentage"
+                        ? `${formData.incentiveValue}% set`
+                        : `₹${formData.incentiveValue} set`}
+                    </span>
+                  )}
+                </h4>
+                <div className="flex items-center gap-3">
+                  <Switch
+                    checked={incentiveOpen}
+                    onCheckedChange={(v: boolean) => {
+                      setIncentiveOpen(v);
+                      // Turning it on for the first time needs a starting type;
+                      // turning it off is handled at save time regardless of
+                      // whatever is left in the fields.
+                      if (v && formData.incentiveType === "none") {
+                        setFormData((f) => ({ ...f, incentiveType: "fixed" }));
+                      }
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  {incentiveOpen ? (
+                    <ChevronUp className="w-4 h-4 text-slate-400" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-slate-400" />
+                  )}
+                </div>
+              </div>
+
+              {incentiveOpen && (
+                <div className="px-5 pb-5 space-y-4 border-t border-slate-100 pt-4">
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFormData((f) => ({ ...f, incentiveType: "fixed" }))}
+                      className={cn(
+                        "flex-1 py-2 rounded-lg text-xs font-bold border transition-colors",
+                        formData.incentiveType === "fixed"
+                          ? "bg-[#3F63AD] text-white border-[#3F63AD]"
+                          : "bg-slate-50 text-slate-600 border-slate-300"
+                      )}
+                    >
+                      Fixed ₹ per unit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData((f) => ({ ...f, incentiveType: "percentage" }))}
+                      className={cn(
+                        "flex-1 py-2 rounded-lg text-xs font-bold border transition-colors",
+                        formData.incentiveType === "percentage"
+                          ? "bg-[#3F63AD] text-white border-[#3F63AD]"
+                          : "bg-slate-50 text-slate-600 border-slate-300"
+                      )}
+                    >
+                      Percentage %
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold text-slate-700">
+                        Reward Value {formData.incentiveType === "percentage" ? "(%)" : "(₹)"} *
+                      </Label>
+                      <Input
+                        type="number"
+                        placeholder={formData.incentiveType === "percentage" ? "e.g. 1.5" : "e.g. 500"}
+                        value={formData.incentiveValue}
+                        onChange={(e) => setFormData((f) => ({ ...f, incentiveValue: e.target.value }))}
+                        className="bg-slate-50 border-slate-300 font-semibold"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold text-slate-700">
+                        Target Selling Price (₹)
+                      </Label>
+                      <Input
+                        type="number"
+                        placeholder={`Optional · this item's price is ₹${formData.sellingPrice || 0}`}
+                        value={formData.incentiveTargetAmount}
+                        onChange={(e) => setFormData((f) => ({ ...f, incentiveTargetAmount: e.target.value }))}
+                        className="bg-slate-50 border-slate-300"
+                      />
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-slate-500 leading-relaxed bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                    {formData.incentiveType === "percentage"
+                      ? `The salesperson earns ${formData.incentiveValue || 0}% of the taxable amount`
+                      : `The salesperson earns ₹${formData.incentiveValue || 0} per unit`}
+                    {Number(formData.incentiveTargetAmount) > 0
+                      ? ` when this product is billed at ₹${formData.incentiveTargetAmount} or above.`
+                      : " on every sale of this product, at any rate."}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Section 4: Showroom & Godown Stock Allocation */}
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
               <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#3F63AD] flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-[#3F63AD]" /> 3. Showroom & Godown Stock Allocation
+                <AlertTriangle className="w-4 h-4 text-[#3F63AD]" /> 4. Showroom & Godown Stock Allocation
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1.5">
@@ -1392,12 +1553,12 @@ function ItemsPageContent() {
               </div>
             </div>
 
-            {/* Section 4: Serial Numbers & IMEI Units Management */}
+            {/* Section 5: Serial Numbers & IMEI Units Management */}
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-3">
                 <div>
                   <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#3F63AD] flex items-center gap-2">
-                    <Barcode className="w-4 h-4 text-[#3F63AD]" /> 4. Serial Numbers & IMEI Inventory Tracking
+                    <Barcode className="w-4 h-4 text-[#3F63AD]" /> 5. Serial Numbers & IMEI Inventory Tracking
                   </h4>
                   <p className="text-[11px] text-slate-500 mt-0.5">
                     Manage unique device serial/IMEI barcodes for this product. Serial numbers will be selectable during Invoicing & POS billing.
@@ -1885,6 +2046,13 @@ function ItemsPageContent() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <BulkIncentiveModal
+        open={bulkIncentiveOpen}
+        onOpenChange={setBulkIncentiveOpen}
+        categories={categories}
+        brands={brands}
+      />
     </PageShell>
   );
 }

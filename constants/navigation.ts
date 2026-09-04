@@ -156,7 +156,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { title: "My Profile & KYC", href: "/staff/profile", icon: ShieldCheck, roles: ["admin", "hr", "salesman", "cashier", "warehouse", "accounts", "manager"] },
       { title: "Daily Attendance & Shifts", href: "/staff/attendance", icon: UserCheck, roles: ["admin", "hr", "salesman", "cashier", "warehouse", "accounts", "manager"] },
       { title: "Staff Tasks Delegation", href: "/staff/tasks", icon: CheckSquare, roles: ["admin", "hr", "salesman", "manager"] },
-      { title: "Sales Incentives", href: "/staff/incentives", icon: Award, roles: ["admin", "hr", "salesman", "manager"] },
+      { title: "Sales Incentives", href: "/staff/incentives", icon: Award, roles: ["admin", "hr", "salesman", "manager", "cashier", "sales"] },
       { title: "Salary & Payroll", href: "/staff/salary", icon: DollarSign, roles: ["admin", "hr", "accounts", "manager"] },
     ],
   },

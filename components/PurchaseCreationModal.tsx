@@ -937,7 +937,13 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
                   const allSerialsDone = enteredSerialsCount === item.quantity && item.quantity > 0;
 
                   return (
-                    <div key={item.id} className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm transition-all hover:border-slate-300">
+                    // overflow-hidden here used to clip the product-search dropdown itself:
+                    // the dropdown is absolutely positioned inside this card, and a card with
+                    // overflow-hidden cuts off anything that pops out past its own bottom edge
+                    // — which is exactly what the screenshot showed, a row sliced in half.
+                    // Nothing else in this card needs the corner clipping (the header background
+                    // is a low-opacity flat fill, not a hard-edged graphic), so it is safe to drop.
+                    <div key={item.id} className="border border-slate-200 rounded-xl overflow-visible bg-white shadow-sm transition-all hover:border-slate-300">
                       {/* Item Header Row */}
                       <div className="p-4 bg-slate-50/70 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
                         <div className="flex items-center gap-3 flex-1 min-w-[280px]">
@@ -966,16 +972,23 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
                                   className="h-9 text-xs bg-white border-slate-300"
                                 />
                                 {activeSearchRowId === item.id && item.name.trim().length > 0 && !item.itemId && (
-                                  <div className="absolute z-50 left-0 top-10 w-full bg-white border-2 border-[#3F63AD] shadow-2xl rounded-lg max-h-56 overflow-y-auto">
+                                  <div className="absolute z-50 left-0 top-10 w-full bg-white border-2 border-[#3F63AD] shadow-2xl rounded-lg max-h-56 overflow-y-auto overflow-x-hidden">
                                     {getCandidatesForQuery(item.name).length > 0 ? (
                                       getCandidatesForQuery(item.name).map((c: any) => (
                                         <div
                                           key={c._id}
                                           onMouseDown={() => handleItemSelect(item.id, c._id)}
-                                          className="px-3 py-2 text-xs hover:bg-blue-50 cursor-pointer border-b border-slate-100 flex justify-between"
+                                          className="px-3 py-2 text-xs hover:bg-blue-50 cursor-pointer border-b border-slate-100 flex items-center justify-between gap-2"
                                         >
-                                          <span className="font-semibold text-slate-800">{c.name}</span>
-                                          <span className="text-slate-500 font-mono">{formatCurrency(c.purchasePrice || 0)}</span>
+                                          {/* min-w-0 lets a long name truncate with an ellipsis instead of
+                                              overflowing the row — a flex child's default min-width is its
+                                              content size, so without this a long product name pushed the
+                                              row wider than the dropdown and got clipped by the dialog's own
+                                              overflow-hidden, which is what silently cut names off. */}
+                                          <span className="font-semibold text-slate-800 truncate min-w-0" title={c.name}>
+                                            {c.name}
+                                          </span>
+                                          <span className="text-slate-500 font-mono shrink-0">{formatCurrency(c.purchasePrice || 0)}</span>
                                         </div>
                                       ))
                                     ) : (
