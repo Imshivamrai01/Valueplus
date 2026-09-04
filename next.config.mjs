@@ -12,6 +12,11 @@ const nextConfig = {
   images: {
     remotePatterns: [],
   },
+  // pdf-parse's CJS/ESM interop breaks when webpack bundles it into a server
+  // route (`Object.defineProperty called on non-object` at import time) —
+  // this tells Next to `require()` it directly at runtime instead of bundling
+  // it, which is the documented fix for packages that don't survive bundling.
+  serverExternalPackages: ["pdf-parse"],
   eslint: {
     ignoreDuringBuilds: true,
   },

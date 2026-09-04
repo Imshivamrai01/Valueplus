@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 export default function VariantsPage() {
   const [variants, setVariants] = useState<any[]>([]);
@@ -81,7 +82,21 @@ export default function VariantsPage() {
 
   return (
     <PageShell title="Variants" subtitle="Manage electronics product attributes & variants" breadcrumbs={[{ label: "Masters" }, { label: "Variants" }]}
-      actions={<Button size="sm" onClick={() => setIsFormOpen(true)}><Plus className="w-4 h-4 mr-1.5" /> Add Variant</Button>}>
+      actions={
+        <div className="flex items-center gap-2">
+          <ExportMenu
+            title="Variants"
+            subtitle={`${variants.length} variant attributes`}
+            data={variants.map((v: any) => ({
+              "Variant Name": v.name,
+              Values: (v.values || []).join(", "),
+              Status: v.status,
+            }))}
+            filename="variants"
+          />
+          <Button size="sm" onClick={() => setIsFormOpen(true)}><Plus className="w-4 h-4 mr-1.5" /> Add Variant</Button>
+        </div>
+      }>
       <div className="data-table-container divide-y">
         {loading ? (
           <TableShimmer rows={6} cols={3} />

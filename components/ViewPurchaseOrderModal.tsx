@@ -1,9 +1,11 @@
-import React from "react";
+import React, { useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { ShoppingBag, X } from "lucide-react";
+import { ShoppingBag, X, Printer, MessageSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { printElement } from "@/lib/printUtility";
 
 interface ViewPurchaseOrderModalProps {
   isOpen: boolean;
@@ -11,8 +13,48 @@ interface ViewPurchaseOrderModalProps {
   purchaseOrder: any;
 }
 
+/**
+ * Existing view-only content is unchanged below — Print/Download and Share on
+ * WhatsApp are new buttons in the footer only. `printRef` wraps just the body
+ * (header info, items, totals), so the print output is the PO document itself,
+ * not this dialog's own chrome.
+ */
 export function ViewPurchaseOrderModal({ isOpen, onClose, purchaseOrder }: ViewPurchaseOrderModalProps) {
+  const printRef = useRef<HTMLDivElement>(null);
+
+  // The PO itself only stores the supplier's name, not a phone number — this
+  // looks it up from the Supplier master the same way other purchase screens
+  // already resolve a supplier's contact details by name.
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ["suppliers"],
+    queryFn: async () => {
+      const res = await fetch("/api/suppliers");
+      const json = await res.json();
+      return json.success ? json.data : [];
+    },
+    enabled: isOpen,
+  });
+
   if (!purchaseOrder) return null;
+
+  const matchedSupplier = suppliers.find(
+    (s: any) => s.name?.toLowerCase().trim() === purchaseOrder.supplierName?.toLowerCase().trim()
+  );
+
+  const handlePrint = () => {
+    if (printRef.current) {
+      printElement(printRef.current, `PurchaseOrder_${purchaseOrder.poNo || "ValuePlus"}`);
+    } else {
+      window.print();
+    }
+  };
+
+  const handleWhatsAppShare = () => {
+    const text = `*PURCHASE ORDER - VALUE PLUS*\nPO No: ${purchaseOrder.poNo}\nSupplier: ${purchaseOrder.supplierName}\nOrder Date: ${formatDate(purchaseOrder.date)}\nExpected: ${formatDate(purchaseOrder.expectedDate)}\nTotal Amount: ${formatCurrency(purchaseOrder.totalAmount || 0)}\nStatus: ${purchaseOrder.status}\n\nPlease confirm and process this order. Thank you!`;
+    const phone = (matchedSupplier?.phone || "").replace(/\D/g, "");
+    const target = phone.length === 10 ? `91${phone}` : phone;
+    window.open(`https://wa.me/${target}?text=${encodeURIComponent(text)}`, "_blank");
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -38,7 +80,15 @@ export function ViewPurchaseOrderModal({ isOpen, onClose, purchaseOrder }: ViewP
           </Button>
         </div>
 
-        <div className="p-6 space-y-6 flex-1 overflow-y-auto min-h-0">
+        <div ref={printRef} className="p-6 space-y-6 flex-1 overflow-y-auto min-h-0">
+          {/* Print-only heading — the dialog's own gradient header above is skipped
+              by printElement (it clones only this ref), so the printed page needs
+              its own plain title instead of appearing headerless. */}
+          <div className="hidden print:block mb-2">
+            <h1 className="text-xl font-bold text-slate-900">Purchase Order — {purchaseOrder.poNo}</h1>
+            <p className="text-xs text-slate-500">Value Plus / Ashoka Enterprises, Gorakhpur</p>
+          </div>
+
           {/* Header Info */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
             <div>
@@ -119,7 +169,20 @@ export function ViewPurchaseOrderModal({ isOpen, onClose, purchaseOrder }: ViewP
           </div>
         </div>
 
-        <DialogFooter className="bg-slate-50 p-4 border-t shrink-0">
+        <DialogFooter className="bg-slate-50 p-4 border-t shrink-0 flex items-center justify-between sm:justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handlePrint}>
+              <Printer className="w-3.5 h-3.5 mr-1.5" /> Print / Download
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleWhatsAppShare}
+              className="text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+            >
+              <MessageSquare className="w-3.5 h-3.5 mr-1.5" /> Share on WhatsApp
+            </Button>
+          </div>
           <Button variant="outline" onClick={onClose}>Close</Button>
         </DialogFooter>
       </DialogContent>

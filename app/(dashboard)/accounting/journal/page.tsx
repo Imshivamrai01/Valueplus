@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/shared/date-range-filter";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 export default function JournalPage() {
   const queryClient = useQueryClient();
@@ -128,6 +129,18 @@ export default function JournalPage() {
           />
         </div>
         
+        <div className="flex items-center gap-2">
+          <ExportMenu
+            title="Journal Entries"
+            subtitle={`${filteredEntries.length} entries`}
+            data={filteredEntries.map((row: any) => ({
+              Date: format(new Date(row.date), "dd MMM, yyyy"),
+              "Entry No.": row.entryNumber,
+              Description: row.description,
+              "Amount (₹)": row.totalDebit,
+            }))}
+            filename="journal-entries"
+          />
         <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
           <DialogTrigger asChild>
             <Button className="bg-[#3F63AD] hover:bg-[#3F63AD]/90">
@@ -216,6 +229,7 @@ export default function JournalPage() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <Card className="overflow-hidden border border-slate-200">

@@ -3,9 +3,9 @@
 import { useState, useMemo, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { 
-  Plus, Search, Filter, Download, Upload, Printer, MoreHorizontal, 
-  Edit, Trash2, Eye, Package, TrendingUp, AlertTriangle, CheckCircle, 
+import {
+  Plus, Search, Filter, Upload, Printer, MoreHorizontal,
+  Edit, Trash2, Eye, Package, TrendingUp, AlertTriangle, CheckCircle,
   X, Sparkles, ShoppingBag, Store, Warehouse, Building2, Layers, RefreshCw,
   Barcode, Hash, PlusCircle, Check, Trash, Gift, ChevronDown, ChevronUp
 } from "lucide-react";
@@ -31,11 +31,13 @@ import {
 } from "@/components/ui/popover";
 import { AutocompleteSearch } from "@/components/shared/autocomplete-search";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
-import { formatCurrency, downloadCSV, formatDate, cn } from "@/lib/utils";
+import { formatCurrency, formatDate, cn } from "@/lib/utils";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 import { BrandLogo } from "@/components/shared/brand-logo";
 import { useBranch } from "@/context/BranchContext";
 import { Switch } from "@/components/ui/switch";
 import { BulkIncentiveModal } from "@/components/items/BulkIncentiveModal";
+import { BrandSelect } from "@/components/shared/brand-select";
 import { useSession } from "next-auth/react";
 
 interface ItemFormData {
@@ -584,10 +586,11 @@ function ItemsPageContent() {
       actions={
         isSuperAdminOrAdmin ? (
           <div className="flex flex-wrap items-center gap-2">
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => downloadCSV(items.map(i => ({
+            <ExportMenu
+              className="text-xs"
+              title="Master Stock Report"
+              subtitle={`${items.length} products`}
+              data={items.map((i: any) => ({
                 name: i.name,
                 code: i.code,
                 vpCode: i.vpCode,
@@ -600,11 +603,9 @@ function ItemsPageContent() {
                 mrp: i.mrp,
                 purchasePrice: i.purchasePrice,
                 unit: i.unit,
-              })), "master_stock_report.csv")} 
-              className="text-xs"
-            >
-              <Download className="w-3.5 h-3.5 mr-1.5" /> Export CSV
-            </Button>
+              }))}
+              filename="master_stock_report"
+            />
             <Button
               variant="outline"
               size="sm"
@@ -626,25 +627,24 @@ function ItemsPageContent() {
             <Badge className="bg-blue-50 text-[#30539C] border border-blue-200 text-xs font-bold px-3 py-1.5">
               👁️ Product Catalog & Stock View
             </Badge>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => downloadCSV(items.map(i => ({ 
-                name: i.name, 
-                code: i.code, 
-                vpCode: i.vpCode, 
-                category: i.category, 
-                brand: i.brand, 
+            <ExportMenu
+              className="text-xs"
+              title="Product Catalog & Price List"
+              subtitle={`${items.length} products`}
+              data={items.map((i: any) => ({
+                name: i.name,
+                code: i.code,
+                vpCode: i.vpCode,
+                category: i.category,
+                brand: i.brand,
                 showroomStock: i.showroomStock ?? i.currentStock ?? 0,
                 godownStock: i.godownStock ?? i.currentStock ?? 0,
-                sellingPrice: i.sellingPrice, 
-                mrp: i.mrp, 
-                unit: i.unit 
-              })), "product_catalog_prices.csv")}
-              className="text-xs"
-            >
-              <Download className="w-3.5 h-3.5 mr-1.5" /> Export Price List
-            </Button>
+                sellingPrice: i.sellingPrice,
+                mrp: i.mrp,
+                unit: i.unit
+              }))}
+              filename="product_catalog_prices"
+            />
           </div>
         )
       }
@@ -1270,19 +1270,11 @@ function ItemsPageContent() {
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold text-slate-700">Brand *</Label>
-                  <Select value={formData.brand} onValueChange={(v) => setFormData((f) => ({ ...f, brand: v }))}>
-                    <SelectTrigger className="bg-slate-50 border-slate-300 font-semibold text-slate-800">
-                      <SelectValue placeholder="Select brand">
-                        {formData.brand || "Select brand"}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {formData.brand && !brands.some((b: any) => b.name?.toLowerCase().trim() === formData.brand.toLowerCase().trim()) && (
-                        <SelectItem value={formData.brand}>{formData.brand}</SelectItem>
-                      )}
-                      {brands.map((b: any) => <SelectItem key={b._id || b.id || b.name} value={b.name}>{b.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <BrandSelect
+                    value={formData.brand}
+                    onValueChange={(v) => setFormData((f) => ({ ...f, brand: v }))}
+                    className="bg-slate-50 border-slate-300 font-semibold text-slate-800"
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold text-slate-700">HSN Code</Label>
@@ -1850,29 +1842,24 @@ function ItemsPageContent() {
                 <h4 className="text-sm font-bold text-slate-700 flex items-center gap-2">
                   <TrendingUp className="w-4 h-4 text-[#3F63AD]" /> Purchase & Sales Ledger
                 </h4>
-                <Button
-                  size="sm"
-                  variant="outline"
+                <ExportMenu
                   className="h-7 text-xs gap-1"
-                  disabled={ledgerTransactions.length === 0}
-                  onClick={() => downloadCSV(
-                    ledgerTransactions.map((t: any) => ({
-                      Date: t.date,
-                      Type: t.type,
-                      "Ref #": t.refNo,
-                      Party: t.party,
-                      "Qty In": t.qtyIn,
-                      "Qty Out": t.qtyOut,
-                      Balance: t.balance,
-                      Rate: t.rate,
-                      Amount: t.amount,
-                      Profit: t.profit,
-                    })),
-                    `${viewingItem?.code || "item"}-ledger.csv`
-                  )}
-                >
-                  <Download className="w-3.5 h-3.5" /> Export
-                </Button>
+                  title={`${viewingItem?.name || viewingItem?.code || "Item"} — Purchase & Sales Ledger`}
+                  subtitle={`${ledgerTransactions.length} transactions`}
+                  data={ledgerTransactions.map((t: any) => ({
+                    Date: t.date,
+                    Type: t.type,
+                    "Ref #": t.refNo,
+                    Party: t.party,
+                    "Qty In": t.qtyIn,
+                    "Qty Out": t.qtyOut,
+                    Balance: t.balance,
+                    Rate: t.rate,
+                    Amount: t.amount,
+                    Profit: t.profit,
+                  }))}
+                  filename={`${viewingItem?.code || "item"}-ledger`}
+                />
               </div>
 
               {/* Stock reconciliation: opening + in − out must equal on-hand stock.

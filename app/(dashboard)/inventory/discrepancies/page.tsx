@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { AlertTriangle, Plus, Search, CheckCircle2, XCircle, ShieldAlert, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useBranch } from "@/context/BranchContext";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 export default function StockDiscrepanciesPage() {
   const queryClient = useQueryClient();
@@ -126,12 +127,31 @@ export default function StockDiscrepanciesPage() {
             />
           </div>
 
-          <Button
-            onClick={() => setIsLogModalOpen(true)}
-            className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-sm"
-          >
-            <AlertTriangle className="w-3.5 h-3.5 mr-1.5" /> Log Stock Discrepancy
-          </Button>
+          <div className="flex items-center gap-2">
+            <ExportMenu
+              title="Stock Discrepancy & Leakage Audit Trail"
+              subtitle={`${filtered.length} discrepancy records`}
+              data={filtered.map((d: any) => ({
+                "Discrepancy #": d.discrepancyNumber,
+                "Product Name": d.productName,
+                "VP Code": d.vpCode || "",
+                "System Stock": d.systemStock,
+                "Physical Count": d.physicalStock,
+                Variance: d.difference,
+                Reason: d.reason,
+                "Reported By": d.reportedBy,
+                Status: d.status,
+                "Approved By": d.approvedBy || "",
+              }))}
+              filename="stock-discrepancies"
+            />
+            <Button
+              onClick={() => setIsLogModalOpen(true)}
+              className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-sm"
+            >
+              <AlertTriangle className="w-3.5 h-3.5 mr-1.5" /> Log Stock Discrepancy
+            </Button>
+          </div>
         </div>
 
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">

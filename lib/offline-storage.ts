@@ -65,12 +65,25 @@ export function cacheDashboardStats(key: string, data: any): void {
   }
 }
 
+// This cache exists purely to paint the dashboard instantly on load, before the
+// network request finishes — it was never meant to be a source of truth. It had
+// no expiry at all, so a browser could go on showing a number from hours (or
+// days) earlier if a later fetch silently failed, and even on the happy path it
+// visibly flashed a stale figure for a moment on every load. A cancelled or
+// deleted invoice changes what today's numbers should be immediately, so a
+// cache this old is no longer "a little behind" — it's simply wrong.
+const DASHBOARD_STATS_CACHE_TTL_MS = 2 * 60 * 1000;
+
 export function getCachedDashboardStats(key: string): any | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem(`${STORAGE_KEYS.DASHBOARD_STATS_PREFIX}${key}`);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
+    const cachedAt = parsed?.cachedAt ? new Date(parsed.cachedAt).getTime() : 0;
+    if (!cachedAt || Date.now() - cachedAt > DASHBOARD_STATS_CACHE_TTL_MS) {
+      return null;
+    }
     return parsed?.data || null;
   } catch (err) {
     return null;

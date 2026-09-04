@@ -16,6 +16,7 @@ import { InvoiceCreationModal } from "@/components/InvoiceCreationModal";
 import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/shared/date-range-filter";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 import { useSession } from "next-auth/react";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 export default function SalesOrdersPage() {
   const { data: session } = useSession();
@@ -107,6 +108,22 @@ export default function SalesOrdersPage() {
       breadcrumbs={[{ label: "Sales" }, { label: "Sales Orders" }]}
       actions={
         <div className="flex items-center gap-2">
+          <ExportMenu
+            title={isIndividualStaff ? `My Sales Orders (${currentUserName})` : "Sales Orders"}
+            subtitle={`${filtered.length} orders`}
+            data={(filtered as any[]).map((o) => ({
+              "Order #": o.invoiceNumber || o.orderNo,
+              Date: formatDate(o.date),
+              Customer: o.customerName,
+              ...(isIndividualStaff ? {} : { "Sales Exec": o.salesExecutive || o.createdBy || "Admin" }),
+              Items: o.items?.length ?? o.itemsCount ?? 0,
+              "Order Value": formatCurrency(o.total || o.totalAmount),
+              "Adv. Paid": formatCurrency(o.paidAmount || 0),
+              Balance: formatCurrency(o.balanceAmount || o.total || o.totalAmount),
+              Status: o.balanceAmount === 0 ? "Paid" : o.paidAmount > 0 ? "Partial" : "Pending",
+            }))}
+            filename="sales-orders"
+          />
           {isIndividualStaff && (
             <Badge className="bg-blue-50 text-[#30539C] border border-blue-200 text-xs font-bold px-3 py-1">
               👤 {currentUserName} (Sales Executive)

@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/shared/page-shell";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -80,6 +81,21 @@ export default function StaffSalaryPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <ExportMenu
+              title="Staff Salary"
+              subtitle={`${selectedMonth} • ${filtered.length} employees`}
+              data={(filtered as any[]).map((s) => ({
+                "Employee Name": s.employeeName,
+                "Employee ID": s.employeeId,
+                Designation: s.designation,
+                "Base Salary": s.monthlySalary || 0,
+                "Incentives & Commission": (s.incentives || 0) + (s.commission || 0),
+                Deductions: s.deductions || 0,
+                "Net Payable": s.payableAmount || 0,
+                Status: s.paymentStatus,
+              }))}
+              filename="staff-salary"
+            />
             <Select value={selectedMonth} onValueChange={setSelectedMonth}>
               <SelectTrigger className="w-[180px] text-xs bg-slate-50 border-slate-300 font-semibold">
                 <SelectValue />

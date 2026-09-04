@@ -430,7 +430,15 @@ export async function GET(request: Request) {
         if (rawMode.includes("cash")) {
           cashRevenue += amt;
           cashTxns.push({
-            id: p.transactionId || `PAY-${p._id}`,
+            // Prefer the invoice number this receipt is FOR, not the receipt's own
+            // transaction id. Billing a sale can create both the invoice's own
+            // payment record and a separate PaymentTransaction receipt for the
+            // same rupees — without this, the two shared the same money but not
+            // the same `id`, so the frontend's dashboard order-count deduped by
+            // `id` still saw two different ids and double-counted one sale as two.
+            // A receipt with no `referenceId` (e.g. a standalone due clearance
+            // not tied to any one bill) still gets its own id and its own count.
+            id: p.referenceId || p.transactionId || `PAY-${p._id}`,
             customer: p.partyName,
             amount: amt,
             paidAmount: amt,
@@ -444,7 +452,15 @@ export async function GET(request: Request) {
         } else if (rawMode.includes("upi") || rawMode.includes("phonepe") || rawMode.includes("gpay") || rawMode.includes("paytm") || rawMode.includes("qr")) {
           upiRevenue += amt;
           upiTxns.push({
-            id: p.transactionId || `PAY-${p._id}`,
+            // Prefer the invoice number this receipt is FOR, not the receipt's own
+            // transaction id. Billing a sale can create both the invoice's own
+            // payment record and a separate PaymentTransaction receipt for the
+            // same rupees — without this, the two shared the same money but not
+            // the same `id`, so the frontend's dashboard order-count deduped by
+            // `id` still saw two different ids and double-counted one sale as two.
+            // A receipt with no `referenceId` (e.g. a standalone due clearance
+            // not tied to any one bill) still gets its own id and its own count.
+            id: p.referenceId || p.transactionId || `PAY-${p._id}`,
             customer: p.partyName,
             amount: amt,
             paidAmount: amt,
@@ -458,7 +474,15 @@ export async function GET(request: Request) {
         } else if (rawMode.includes("card") || rawMode.includes("pos") || rawMode.includes("debit") || rawMode.includes("credit card") || rawMode.includes("swipe")) {
           cardRevenue += amt;
           cardTxns.push({
-            id: p.transactionId || `PAY-${p._id}`,
+            // Prefer the invoice number this receipt is FOR, not the receipt's own
+            // transaction id. Billing a sale can create both the invoice's own
+            // payment record and a separate PaymentTransaction receipt for the
+            // same rupees — without this, the two shared the same money but not
+            // the same `id`, so the frontend's dashboard order-count deduped by
+            // `id` still saw two different ids and double-counted one sale as two.
+            // A receipt with no `referenceId` (e.g. a standalone due clearance
+            // not tied to any one bill) still gets its own id and its own count.
+            id: p.referenceId || p.transactionId || `PAY-${p._id}`,
             customer: p.partyName,
             amount: amt,
             paidAmount: amt,
@@ -472,7 +496,15 @@ export async function GET(request: Request) {
         } else {
           onlineRevenue += amt;
           onlineTxns.push({
-            id: p.transactionId || `PAY-${p._id}`,
+            // Prefer the invoice number this receipt is FOR, not the receipt's own
+            // transaction id. Billing a sale can create both the invoice's own
+            // payment record and a separate PaymentTransaction receipt for the
+            // same rupees — without this, the two shared the same money but not
+            // the same `id`, so the frontend's dashboard order-count deduped by
+            // `id` still saw two different ids and double-counted one sale as two.
+            // A receipt with no `referenceId` (e.g. a standalone due clearance
+            // not tied to any one bill) still gets its own id and its own count.
+            id: p.referenceId || p.transactionId || `PAY-${p._id}`,
             customer: p.partyName,
             amount: amt,
             paidAmount: amt,

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Search, Calendar, Clock, Printer, Send, IndianRupee, CreditCard, Receipt, Wallet, Package, Download } from "lucide-react";
+import { ArrowLeft, Search, Calendar, Clock, Printer, Send, IndianRupee, CreditCard, Receipt, Wallet, Package } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,9 +13,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { cn, formatCurrency, formatDateShort, downloadCSV } from "@/lib/utils";
+import { cn, formatCurrency, formatDateShort } from "@/lib/utils";
 import { DateRangeFilter, resolveDateRange } from "@/components/shared/date-range-filter";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 function StatusBadge({ status }: { status: string }) {
   if (!status) return <span className="inline-flex items-center px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">Completed</span>;
@@ -142,18 +143,6 @@ function ReportsContent() {
 
   const details = getReportDetails();
   const Icon = details.icon;
-
-  const handleExport = () => {
-    const rows = getFilteredTransactions().map((tx: any) => ({
-      "Invoice/Ref #": tx.id || tx.invoiceNumber || "",
-      "Customer": tx.customer || tx.customerName || "",
-      "Date/Time": tx.time || tx.date || "",
-      "Payment Mode": tx.mode || tx.paymentTerms || tx.paymentMode || "",
-      "Amount": tx.amount || tx.total || 0,
-      "Status": tx.status || "",
-    }));
-    downloadCSV(rows, `${reportType}-transactions-${dateFilter.replace(/\s+/g, "-")}.csv`);
-  };
 
   const chartData = (stats?.dailyRevenue || []).map((day: any) => {
     let value = 0;
@@ -356,9 +345,21 @@ function ReportsContent() {
             <span className="text-slate-500 text-xs font-medium">
               Showing <span className="font-bold text-slate-700">{getFilteredTransactions().length}</span> entries
             </span>
-            <Button size="sm" variant="outline" className="h-8 text-xs font-bold text-slate-700" onClick={handleExport} disabled={getFilteredTransactions().length === 0}>
-              <Download className="w-3.5 h-3.5 mr-2" /> Export to Excel
-            </Button>
+            <ExportMenu
+              size="sm"
+              className="h-8 text-xs font-bold text-slate-700"
+              title={details.title}
+              subtitle={`${getFilteredTransactions().length} entries`}
+              data={getFilteredTransactions().map((tx: any) => ({
+                "Invoice/Ref #": tx.id || tx.invoiceNumber || "",
+                "Customer": tx.customer || tx.customerName || "",
+                "Date/Time": tx.time || tx.date || "",
+                "Payment Mode": tx.mode || tx.paymentTerms || tx.paymentMode || "",
+                "Amount": tx.amount || tx.total || 0,
+                "Status": tx.status || "",
+              }))}
+              filename={`${reportType}-transactions-${dateFilter.replace(/\s+/g, "-")}`}
+            />
           </div>
         </div>
       </div>

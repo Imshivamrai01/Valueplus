@@ -10,12 +10,13 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { 
-  Search, Printer, Download, Landmark, CreditCard, Sparkles, Building2, 
+  Search, Printer, Landmark, CreditCard, Sparkles, Building2,
   ArrowDownLeft, FileText, CheckCircle2, ShieldCheck, Clock, Check, Banknote, X, Plus
 } from "lucide-react";
 import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/shared/date-range-filter";
 import { toast } from "sonner";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 const FINANCE_PROVIDERS = [
   "Bajaj Finance Limited",
@@ -245,43 +246,33 @@ export default function BankDisbursementsStandalonePage() {
     .filter((r: any) => r.approvalStatus !== "Disbursed")
     .reduce((acc: number, r: any) => acc + Number(r.netDisbursement || 0), 0);
 
-  const downloadCSV = () => {
-    if (filtered.length === 0) {
-      toast.error("No records to export.");
-      return;
-    }
-    const headers = [
-      "DO ID", "Finance Bank", "Customer Name", "Product Model",
-      "Gross Loan (₹)", "Dealer Subsidy (₹)", "Net Expected (₹)", "Actual Received (₹)", 
-      "Status", "Bank UTR Ref", "Settlement Date", "Credited Bank A/C"
-    ];
-    const rows = filtered.map((r: any) => [
-      r.doId, `"${r.financeProvider}"`, `"${r.customerName}"`, `"${r.model || 'N/A'}"`,
-      r.grossLoanAmount || r.productPrice || 0, r.dealerInterestSubsidy || 0,
-      r.netDisbursement || 0, r.actualReceivedAmount || (r.approvalStatus === 'Disbursed' ? r.netDisbursement : 0),
-      r.approvalStatus === "Disbursed" ? "Received in Bank" : "Pending Payout",
-      `"${r.transactionRef || 'N/A'}"`, r.paymentReceivedDate || "N/A", `"${r.bankAccountRef || 'N/A'}"`
-    ]);
-
-    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map((e: any) => e.join(","))].join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `ValuePlus_Bank_Payouts_${new Date().toISOString().split("T")[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
   return (
     <PageShell
       title="Bank NACH & Disbursement Payouts"
       description="Track and reconcile finance payouts from Bajaj, HDB, IDFC, TVS and Kotak. Record bank transaction UTR numbers when funds are credited into the store bank account."
       actions={
         <div className="flex items-center gap-2">
-          <Button onClick={downloadCSV} variant="outline" size="sm" className="text-xs font-bold gap-1 shadow-xs">
-            <Download className="w-3.5 h-3.5" /> Export Payout CSV
-          </Button>
+          <ExportMenu
+            size="sm"
+            className="text-xs font-bold gap-1 shadow-xs"
+            title="Bank NACH & Disbursement Payouts"
+            subtitle={`${filtered.length} DOs`}
+            data={filtered.map((r: any) => ({
+              "DO ID": r.doId,
+              "Finance Bank": r.financeProvider,
+              "Customer Name": r.customerName,
+              "Product Model": r.model || "N/A",
+              "Gross Loan (₹)": r.grossLoanAmount || r.productPrice || 0,
+              "Dealer Subsidy (₹)": r.dealerInterestSubsidy || 0,
+              "Net Expected (₹)": r.netDisbursement || 0,
+              "Actual Received (₹)": r.actualReceivedAmount || (r.approvalStatus === 'Disbursed' ? r.netDisbursement : 0),
+              "Status": r.approvalStatus === "Disbursed" ? "Received in Bank" : "Pending Payout",
+              "Bank UTR Ref": r.transactionRef || "N/A",
+              "Settlement Date": r.paymentReceivedDate || "N/A",
+              "Credited Bank A/C": r.bankAccountRef || "N/A",
+            }))}
+            filename={`ValuePlus_Bank_Payouts_${new Date().toISOString().split("T")[0]}`}
+          />
           <Button onClick={() => window.print()} variant="outline" size="sm" className="text-xs font-bold gap-1 shadow-xs">
             <Printer className="w-3.5 h-3.5" /> Print Payout Sheet
           </Button>

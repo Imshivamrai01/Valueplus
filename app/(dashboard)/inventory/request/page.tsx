@@ -11,6 +11,7 @@ import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 export default function StockRequestPage() {
   const queryClient = useQueryClient();
@@ -85,7 +86,19 @@ export default function StockRequestPage() {
           <Input placeholder="Search Requests..." className="pl-9" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
         </div>
         
-        <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+        <div className="flex items-center gap-2">
+          <ExportMenu
+            title="Stock Request"
+            subtitle={`${filtered.length} requests`}
+            data={filtered.map((row: any) => ({
+              "Request No.": row.requestNumber,
+              Date: format(new Date(row.date), "dd MMM, yyyy"),
+              "Items Requested": (row.items || []).map((line: any) => `${line.requestedQty} x ${line.itemName}`).join(", "),
+              Status: row.status,
+            }))}
+            filename="stock-requests"
+          />
+          <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
           <DialogTrigger asChild>
             <Button className="bg-[#3F63AD] hover:bg-[#3F63AD]/90"><Plus className="w-4 h-4 mr-2" /> New Request</Button>
           </DialogTrigger>
@@ -142,6 +155,7 @@ export default function StockRequestPage() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {lowStockItems.length > 0 && (

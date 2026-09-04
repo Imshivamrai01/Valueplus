@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 export default function StockReturnPage() {
   const queryClient = useQueryClient();
@@ -89,7 +90,20 @@ export default function StockReturnPage() {
           <Input placeholder="Search Returns..." className="pl-9" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
         </div>
         
-        <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+        <div className="flex items-center gap-2">
+          <ExportMenu
+            title="Stock Return"
+            subtitle={`${filtered.length} returns`}
+            data={filtered.map((row: any) => ({
+              "Return No.": row.returnNumber,
+              Date: format(new Date(row.date), "dd MMM, yyyy"),
+              Type: row.returnType,
+              "Returned Items": (row.items || []).map((line: any) => `${line.quantity} x ${line.itemName}`).join(", "),
+              Status: row.status,
+            }))}
+            filename="stock-returns"
+          />
+          <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
           <DialogTrigger asChild>
             <Button className="bg-[#3F63AD] hover:bg-[#3F63AD]/90"><Plus className="w-4 h-4 mr-2" /> New Return</Button>
           </DialogTrigger>
@@ -236,6 +250,7 @@ export default function StockReturnPage() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <Card className="overflow-hidden border border-slate-200">

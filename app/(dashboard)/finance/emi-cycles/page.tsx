@@ -19,6 +19,7 @@ import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/s
 import { toast } from "sonner";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { TableShimmer, MetricCardsShimmer } from "@/components/shared/shimmer-skeleton";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 const FINANCE_PROVIDERS = [
   "Bajaj Finance Limited",
@@ -172,6 +173,30 @@ export default function MonthlyEmiCyclesStandalonePage() {
       description="Track customer-wise monthly EMI repayment cycles, due dates, installment progress, and record payments via Store Counter or Bank Auto-Debit."
       actions={
         <div className="flex items-center gap-2">
+          <ExportMenu
+            title="Monthly EMI Cycles & Repayment Schedules"
+            subtitle={`${filtered.length} financed customers • Portfolio: ${formatCurrency(totalLoanVolume)}`}
+            data={filtered.map((rec: any) => {
+              const loanAmt = Number(rec.grossLoanAmount || rec.netLoanAmount || rec.productPrice || 0);
+              const totalPaid = Number(rec.totalPaidEmiAmount || 0);
+              const balanceDue = Number(rec.balanceDueAmount !== undefined ? rec.balanceDueAmount : Math.max(0, loanAmt - totalPaid));
+              const schedule = rec.emiSchedule || [];
+              const paidCount = schedule.filter((i: any) => i.status === "Paid").length;
+              const totalCount = schedule.length || rec.tenureMonths || 8;
+              return {
+                "Customer Name": rec.customerName || "",
+                Mobile: rec.customerMobile || "",
+                "DO ID": rec.doId || "",
+                "Finance Provider": rec.financeProvider || "",
+                Product: rec.model || rec.brand || "",
+                "Financed Loan": loanAmt,
+                "Total Collected": totalPaid,
+                "Balance Due": balanceDue,
+                "Installments Paid": `${paidCount}/${totalCount}`,
+              };
+            })}
+            filename="emi-cycles"
+          />
           <Button onClick={() => window.print()} variant="outline" size="sm" className="text-xs font-bold gap-1 shadow-xs">
             <Printer className="w-3.5 h-3.5" /> Print Schedules
           </Button>

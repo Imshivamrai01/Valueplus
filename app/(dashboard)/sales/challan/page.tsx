@@ -23,6 +23,7 @@ import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/s
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 interface ChallanItem {
   _id?: string;
@@ -480,6 +481,27 @@ export default function DeliveryChallanPage() {
       breadcrumbs={[{ label: "Sales" }, { label: "Delivery Challan" }]}
       actions={
         <div className="flex items-center gap-2">
+          <ExportMenu
+            title="Delivery & Return Challans"
+            subtitle={`${filtered.length} challans`}
+            data={(filtered as any[]).map((c) => ({
+              "Challan No": c.challanNo,
+              Date: formatDate(c.date),
+              Type: c.type,
+              "Source Party": c.sourceParty,
+              "Destination Party": c.destinationParty,
+              Item: c.itemName,
+              "VP Code": c.vpCode || "",
+              "Serial/IMEI": c.serialImei || "",
+              Quantity: c.quantity,
+              Unit: c.unit,
+              "Vehicle No": c.vehicleNo || "",
+              Driver: c.driverName || "",
+              "Flow Mode": c.flowType || "CNR",
+              Approval: c.approvalStatus === "approved" ? "Approved" : "Pending",
+            }))}
+            filename="delivery-challans"
+          />
           <Button size="sm" onClick={() => setIsFormOpen(true)} className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white font-bold shadow-md">
             <Plus className="w-4 h-4 mr-1.5" /> Issue Delivery Challan
           </Button>

@@ -16,11 +16,13 @@ import {
 } from "@/components/ui/dialog";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 import { DateRangeFilter, resolveDateRange } from "@/components/shared/date-range-filter";
-import { Plus, Search, Trash2, Download, WalletCards, ArrowDownLeft, ArrowUpRight } from "lucide-react";
+import { Plus, Search, Trash2, WalletCards, ArrowDownLeft, ArrowUpRight, Printer } from "lucide-react";
 import { toast } from "sonner";
-import { formatCurrency, formatDate, cn, downloadCSV } from "@/lib/utils";
+import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { RoleGuard, usePermissions } from "@/components/shared/role-guard";
 import { VendorPaymentModal } from "@/components/vendor/VendorPaymentModal";
+import { VendorPaymentReceiptModal } from "@/components/vendor/VendorPaymentReceiptModal";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 export default function VendorPaymentsPage() {
   return (
@@ -38,6 +40,7 @@ function VendorPaymentsInner() {
   const [range, setRange] = useState<{ start?: string; end?: string }>({});
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
+  const [paymentToPrint, setPaymentToPrint] = useState<any | null>(null);
 
   const { data: payments = [], isLoading } = useQuery({
     queryKey: ["vendor-payments", range.start, range.end],
@@ -130,28 +133,22 @@ function VendorPaymentsInner() {
             All Time
           </Button>
           {can("ledger.export") && (
-            <Button
-              variant="outline"
-              size="sm"
+            <ExportMenu
               className="h-9"
-              onClick={() =>
-                downloadCSV(
-                  (filtered as any[]).map((p) => ({
-                    Date: p.date,
-                    Vendor: p.vendorName,
-                    Amount: p.amount,
-                    Mode: p.mode,
-                    Direction: p.type,
-                    Ref: p.refNo || "",
-                    "Against Bill": p.againstBillNo || "",
-                    "Recorded By": p.createdBy || "",
-                  })),
-                  "vendor-payments.csv"
-                )
-              }
-            >
-              <Download className="w-3.5 h-3.5 mr-1.5" /> Export
-            </Button>
+              title="Vendor Payments"
+              subtitle={`${stats.count} payment entries`}
+              data={(filtered as any[]).map((p) => ({
+                Date: formatDate(p.date),
+                Vendor: p.vendorName,
+                Amount: p.amount,
+                Mode: p.mode,
+                Direction: p.type,
+                Ref: p.refNo || "",
+                "Against Bill": p.againstBillNo || "",
+                "Recorded By": p.createdBy || "",
+              }))}
+              filename="vendor-payments"
+            />
           )}
           {can("payment.record") && (
             <Button size="sm" onClick={() => setIsFormOpen(true)}>
@@ -255,16 +252,27 @@ function VendorPaymentsInner() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {can("payment.record") && (
+                      <div className="flex items-center justify-end gap-1">
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-red-500 hover:bg-red-50"
-                          onClick={() => setDeleteTarget(p)}
+                          className="h-8 w-8 text-slate-500 hover:text-[#3F63AD] hover:bg-blue-50"
+                          title="Print / Share receipt"
+                          onClick={() => setPaymentToPrint(p)}
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Printer className="w-4 h-4" />
                         </Button>
-                      )}
+                        {can("payment.record") && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-red-500 hover:bg-red-50"
+                            onClick={() => setDeleteTarget(p)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -275,6 +283,13 @@ function VendorPaymentsInner() {
       </div>
 
       <VendorPaymentModal open={isFormOpen} onOpenChange={setIsFormOpen} vendors={vendors} />
+
+      <VendorPaymentReceiptModal
+        isOpen={!!paymentToPrint}
+        onClose={() => setPaymentToPrint(null)}
+        payment={paymentToPrint}
+        vendor={vendors.find((v: any) => v._id === paymentToPrint?.vendorId) || null}
+      />
 
       <Dialog open={Boolean(deleteTarget)} onOpenChange={(o) => !o && setDeleteTarget(null)}>
         <DialogContent className="max-w-md">

@@ -10,6 +10,7 @@ import { ShieldCheck, RotateCcw, Save } from "lucide-react";
 import { toast } from "sonner";
 import { RoleGuard } from "@/components/shared/role-guard";
 import { PERMISSION_LABELS, Permission } from "@/lib/permissions";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 const ROLE_LABELS: Record<string, string> = {
   manager: "Store Manager",
@@ -116,6 +117,19 @@ function RolePermissionsInner() {
       title="Role Permissions"
       subtitle="Who can open which ledger, record payments, and authorise a cancel or delete"
       breadcrumbs={[{ label: "Settings" }, { label: "Role Permissions" }]}
+      actions={
+        <ExportMenu
+          title="Role Permissions"
+          subtitle={`${data?.roles.length || 0} roles`}
+          data={(data?.roles || []).map((row) => ({
+            Role: ROLE_LABELS[row.role] || row.role,
+            Status: row.isCustomised ? "Customised" : "Default",
+            "Permissions Granted": (draft[row.role] || []).length,
+            "Total Permissions": data?.allPermissions.length || 0,
+          }))}
+          filename="role-permissions"
+        />
+      }
     >
       <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-4 flex gap-3">
         <ShieldCheck className="w-5 h-5 text-[#3F63AD] shrink-0 mt-0.5" />

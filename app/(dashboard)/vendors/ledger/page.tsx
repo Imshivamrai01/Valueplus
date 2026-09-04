@@ -13,12 +13,12 @@ import { DateRangeFilter, resolveDateRange } from "@/components/shared/date-rang
 import {
   Search,
   RefreshCw,
-  Download,
   FileText,
   ArrowUpDown,
   AlertTriangle,
 } from "lucide-react";
-import { formatCurrency, formatDate, cn, downloadCSV } from "@/lib/utils";
+import { formatCurrency, formatDate, cn } from "@/lib/utils";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 import { RoleGuard, usePermissions, AccessDenied } from "@/components/shared/role-guard";
 import { PartyLedgerPanel, LedgerParty } from "@/components/PartyLedgerPanel";
 import { VendorPaymentModal } from "@/components/vendor/VendorPaymentModal";
@@ -145,24 +145,6 @@ function AllLedgersInner() {
     }
   };
 
-  const handleExport = () => {
-    downloadCSV(
-      rows.map((p: any) => ({
-        Code: p.code,
-        Name: p.name,
-        Phone: p.phone || "",
-        "Total Billed": p.summary.totalBilled,
-        "Total Paid": p.summary.totalPaid,
-        Pending: p.summary.closingBalance,
-        Overdue: p.summary.overdueAmount,
-        "Last Payment": p.summary.lastPaymentDate || "",
-        "Last Amount": p.summary.lastPaymentAmount || 0,
-        "90+ Days": p.summary.ageing.d90plus,
-      })),
-      `${party}-ledger-summary.csv`
-    );
-  };
-
   return (
     <PageShell
       title="All Ledgers"
@@ -187,9 +169,24 @@ function AllLedgersInner() {
             <RefreshCw className={cn("w-3.5 h-3.5 mr-1.5", isFetching && "animate-spin")} /> Refresh
           </Button>
           {can("ledger.export") && (
-            <Button variant="outline" size="sm" onClick={handleExport} className="h-9">
-              <Download className="w-3.5 h-3.5 mr-1.5" /> Export
-            </Button>
+            <ExportMenu
+              className="h-9"
+              title={isPayable ? "Supplier Ledger Summary" : "Vendor Ledger Summary"}
+              subtitle={`${rows.length} ${party}s`}
+              data={rows.map((p: any) => ({
+                Code: p.code,
+                Name: p.name,
+                Phone: p.phone || "",
+                "Total Billed": p.summary.totalBilled,
+                "Total Paid": p.summary.totalPaid,
+                Pending: p.summary.closingBalance,
+                Overdue: p.summary.overdueAmount,
+                "Last Payment": p.summary.lastPaymentDate || "",
+                "Last Amount": p.summary.lastPaymentAmount || 0,
+                "90+ Days": p.summary.ageing.d90plus,
+              }))}
+              filename={`${party}-ledger-summary`}
+            />
           )}
         </div>
       }

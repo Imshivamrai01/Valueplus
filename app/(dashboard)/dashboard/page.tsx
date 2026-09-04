@@ -51,6 +51,7 @@ import { useBranch } from "@/context/BranchContext";
 import { useSession } from "next-auth/react";
 import { SalesmanDashboardView } from "@/components/dashboard/SalesmanDashboardView";
 import { ProductLedgerModal } from "@/components/ProductLedgerModal";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 
 
@@ -1026,7 +1027,22 @@ export default function DashboardPage() {
   // Using `dueRevenue` here double-counted finance balances, which sit in
   // financeRevenue already.
   const totalCollectedAmount = (currentPieMetrics.cashRevenue || 0) + (currentPieMetrics.upiRevenue || 0) + (currentPieMetrics.onlineRevenue || 0) + (currentPieMetrics.cardRevenue || 0) + (currentPieMetrics.financeRevenue || 0) + (currentPieMetrics.dueSalesRevenue || 0);
-  const totalBilledCount = (currentPieTxns.cash?.length || 0) + (currentPieTxns.upi?.length || 0) + (currentPieTxns.online?.length || 0) + (currentPieTxns.card?.length || 0) + (currentPieTxns.finance?.length || 0) + (currentPieTxns.due?.length || 0) || currentPieMetrics.totalOrders || 0;
+  // "3 orders" for a single financed sale: one invoice legitimately lands in more
+  // than one bucket — the down payment collected at billing in `upi`/`cash`/etc,
+  // the loan balance in `finance`, and (until it's fully paid) the same invoice
+  // again in `due` purely for outstanding-balance tracking. Summing array lengths
+  // counted that one invoice three times. What "orders" actually means is
+  // distinct invoices, so this dedupes by invoice number across every bucket —
+  // `due` included, since a due-only credit sale must still count once.
+  const totalBilledCount = (() => {
+    const ids = new Set<string>();
+    (["cash", "upi", "online", "card", "finance", "due"] as const).forEach((bucket) => {
+      (currentPieTxns[bucket] || []).forEach((t: any) => {
+        if (t?.id) ids.add(String(t.id));
+      });
+    });
+    return ids.size || currentPieMetrics.totalOrders || 0;
+  })();
 
   const PAYMENT_MODES = [
     { name: "Cash Counter", value: currentPieMetrics.cashRevenue || 0, count: currentPieTxns.cash?.length || 0, color: "#76C043", key: "cash", icon: Wallet },
@@ -3905,14 +3921,45 @@ export default function DashboardPage() {
             <span className="text-xs text-slate-500 font-medium">
               Audit log secured by Value Plus ERP protocol
             </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setLeakageModal(null)}
-              className="px-5 font-bold"
-            >
-              Close
-            </Button>
+            <div className="flex items-center gap-2">
+              {leakageModal && leakageModal.invoices && leakageModal.invoices.length > 0 && (
+                <ExportMenu
+                  size="sm"
+                  className="px-4 h-8 text-xs font-bold"
+                  title={leakageModal.title || "Audit Log"}
+                  subtitle={`${leakageModal.invoices.length} incident${leakageModal.invoices.length === 1 ? "" : "s"}`}
+                  data={leakageModal.invoices.map((inv: any) => ({
+                    "Invoice #": inv.invoiceNumber || inv.id || "",
+                    Customer: inv.customerName || inv.customer || "Walk-in Guest",
+                    "Date / Time": inv.date || "",
+                    "Payment Mode": inv.paymentMode || "Cash",
+                    Amount: inv.total || inv.amount || 0,
+                    ...(showsAudit
+                      ? {
+                          Reason: inv.auditReason || "",
+                          "Authorised By": inv.auditBy || "",
+                          "Authorised At": inv.auditAt
+                            ? new Date(inv.auditAt).toLocaleString("en-GB", {
+                                day: "2-digit", month: "short", year: "numeric",
+                                hour: "2-digit", minute: "2-digit",
+                              })
+                            : "",
+                        }
+                      : {}),
+                    Status: inv.status || "sent",
+                  }))}
+                  filename="leakage-audit-log"
+                />
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setLeakageModal(null)}
+                className="px-5 font-bold"
+              >
+                Close
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

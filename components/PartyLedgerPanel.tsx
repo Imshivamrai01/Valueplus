@@ -5,7 +5,6 @@ import { useQuery } from "@tanstack/react-query";
 import {
   FileText,
   Printer,
-  Download,
   RefreshCw,
   TrendingUp,
   TrendingDown,
@@ -15,7 +14,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DateRangeFilter, resolveDateRange } from "@/components/shared/date-range-filter";
-import { formatCurrency, formatDate, cn, downloadCSV } from "@/lib/utils";
+import { formatCurrency, formatDate, cn } from "@/lib/utils";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 import { usePermissions } from "@/components/shared/role-guard";
 
 /**
@@ -133,24 +133,6 @@ export function PartyLedgerPanel({
     setRange({ start: resolved.start, end: resolved.end });
   };
 
-  const handleExport = () => {
-    if (!data) return;
-    downloadCSV(
-      rows.map((r) => ({
-        Date: r.date,
-        Particulars: r.label,
-        Reference: r.ref,
-        Mode: r.mode || "",
-        "Ref No": r.refNo || "",
-        By: r.by || "",
-        Debit: r.debit || "",
-        Credit: r.credit || "",
-        Balance: r.balance,
-      })),
-      `${data.party.code}-ledger.csv`
-    );
-  };
-
   if (error) {
     return (
       <div className="p-8 text-center">
@@ -219,9 +201,23 @@ export function PartyLedgerPanel({
         )}
         {can("ledger.export") && (
           <>
-            <Button variant="outline" size="sm" onClick={handleExport} className="h-8 text-xs">
-              <Download className="w-3.5 h-3.5 mr-1.5" /> CSV
-            </Button>
+            <ExportMenu
+              className="h-8 text-xs"
+              title={`${data?.party.name || "Party"} — Ledger`}
+              subtitle={`${rows.length} entries`}
+              data={rows.map((r) => ({
+                Date: r.date,
+                Particulars: r.label,
+                Reference: r.ref,
+                Mode: r.mode || "",
+                "Ref No": r.refNo || "",
+                By: r.by || "",
+                Debit: r.debit || "",
+                Credit: r.credit || "",
+                Balance: r.balance,
+              }))}
+              filename={`${data?.party.code || "party"}-ledger`}
+            />
             <Button variant="outline" size="sm" onClick={() => window.print()} className="h-8 text-xs">
               <Printer className="w-3.5 h-3.5 mr-1.5" /> Print
             </Button>

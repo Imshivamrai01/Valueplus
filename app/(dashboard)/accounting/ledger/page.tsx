@@ -7,6 +7,7 @@ import { format } from "date-fns";
 import { Card } from "@/components/ui/card";
 import { FileText } from "lucide-react";
 import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/shared/date-range-filter";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 export default function LedgerPage() {
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
@@ -78,9 +79,28 @@ export default function LedgerPage() {
               <h3 className="font-semibold text-lg">{selectedAccount?.name}</h3>
               <p className="text-sm text-muted-foreground">Account Code: {selectedAccount?.code} • Type: <span className="capitalize">{selectedAccount?.type}</span></p>
             </div>
-            <div className="text-right">
-              <p className="text-sm text-muted-foreground">Current Balance</p>
-              <h3 className="text-2xl font-bold">₹{selectedAccount?.balance?.toLocaleString('en-IN') || 0}</h3>
+            <div className="flex items-center gap-3">
+              <ExportMenu
+                title="General Ledger"
+                subtitle={`${selectedAccount?.name || ""} — ${entries.length} transactions`}
+                data={entries
+                  .filter((entry: any) => entry.lines.find((l: any) => l.accountId === selectedAccountId))
+                  .map((entry: any) => {
+                    const line = entry.lines.find((l: any) => l.accountId === selectedAccountId);
+                    return {
+                      Date: format(new Date(entry.date), "dd MMM, yyyy"),
+                      Description: entry.description,
+                      Ref: entry.entryNumber,
+                      "Debit (₹)": line.debit > 0 ? line.debit : 0,
+                      "Credit (₹)": line.credit > 0 ? line.credit : 0,
+                    };
+                  })}
+                filename="general-ledger"
+              />
+              <div className="text-right">
+                <p className="text-sm text-muted-foreground">Current Balance</p>
+                <h3 className="text-2xl font-bold">₹{selectedAccount?.balance?.toLocaleString('en-IN') || 0}</h3>
+              </div>
             </div>
           </div>
           <div className="overflow-x-auto">

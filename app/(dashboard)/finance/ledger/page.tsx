@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { 
   Search, Printer, Eye, Sparkles, FileText, CheckCircle2, Clock, Plus, 
-  Building2, User, CreditCard, Receipt, MessageCircle, X, ShieldCheck, Download,
+  Building2, User, CreditCard, Receipt, MessageCircle, X, ShieldCheck,
   ExternalLink, ArrowDownLeft, Landmark, Tag, Calendar
 } from "lucide-react";
 import { FinanceDODocument } from "@/components/FinanceDODocument";
@@ -19,6 +19,7 @@ import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/s
 import { toast } from "sonner";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import Link from "next/link";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 const FINANCE_PROVIDERS = [
   "Bajaj Finance Limited",
@@ -199,34 +200,6 @@ export default function FinanceLedgerStandalonePage() {
   const totalDownPayment = filtered.reduce((acc: number, r: any) => acc + Number(r.customerDownPayment || 0), 0);
   const totalDisbursement = filtered.reduce((acc: number, r: any) => acc + Number(r.netDisbursement || 0), 0);
 
-  const downloadCSV = () => {
-    if (filtered.length === 0) {
-      toast.error("No finance records to export.");
-      return;
-    }
-    const headers = [
-      "S.No.", "Date", "Customer Name", "Mobile", "Finance Bank",
-      "Brand Name", "DA No / DO ID", "Tax Invoice No", "Product Model",
-      "Down Payment", "Gross Loan", "Net Disbursement", "Status"
-    ];
-    const rows = filtered.map((r: any, idx: number) => [
-      idx + 1, r.date, `"${r.customerName}"`, r.customerMobile || "N/A",
-      `"${r.financeProvider}"`, `"${r.brand || r.manufacturer || 'N/A'}"`,
-      r.doId, r.invoiceNumber || "N/A", `"${r.model || r.productModel || 'N/A'}"`,
-      r.customerDownPayment || 0, r.grossLoanAmount || r.productPrice || 0,
-      r.netDisbursement || 0, r.approvalStatus || "Approved",
-    ]);
-
-    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map((e: any) => e.join(","))].join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `ValuePlus_Finance_Ledger_${new Date().toISOString().split("T")[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
   if (selectedDO) {
     return (
       <FinanceDODocument 
@@ -242,9 +215,28 @@ export default function FinanceLedgerStandalonePage() {
       description="Official consumer loan ledger tracking finance banks, brands, DA numbers, customer down payments, and verified disbursement sheets."
       actions={
         <div className="flex items-center gap-2">
-          <Button onClick={downloadCSV} variant="outline" size="sm" className="text-xs font-bold gap-1 shadow-xs">
-            <Download className="w-3.5 h-3.5" /> Export CSV
-          </Button>
+          <ExportMenu
+            size="sm"
+            className="text-xs font-bold gap-1 shadow-xs"
+            title="Finance Ledger & Delivery Orders"
+            subtitle={`${filtered.length} records`}
+            data={filtered.map((r: any, idx: number) => ({
+              "S.No.": idx + 1,
+              "Date": r.date,
+              "Customer Name": r.customerName,
+              "Mobile": r.customerMobile || "N/A",
+              "Finance Bank": r.financeProvider,
+              "Brand Name": r.brand || r.manufacturer || "N/A",
+              "DA No / DO ID": r.doId,
+              "Tax Invoice No": r.invoiceNumber || "N/A",
+              "Product Model": r.model || r.productModel || "N/A",
+              "Down Payment": r.customerDownPayment || 0,
+              "Gross Loan": r.grossLoanAmount || r.productPrice || 0,
+              "Net Disbursement": r.netDisbursement || 0,
+              "Status": r.approvalStatus || "Approved",
+            }))}
+            filename={`ValuePlus_Finance_Ledger_${new Date().toISOString().split("T")[0]}`}
+          />
           <Button onClick={() => window.print()} variant="outline" size="sm" className="text-xs font-bold gap-1 shadow-xs">
             <Printer className="w-3.5 h-3.5" /> Print Ledger
           </Button>

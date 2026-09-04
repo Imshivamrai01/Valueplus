@@ -17,6 +17,7 @@ import {
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { cn, indianNumberFormat, formatCurrency } from "@/lib/utils";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 const LEAD_STATUSES = ["all", "New", "Contacted", "Interested", "Follow-up", "Converted", "Lost"] as const;
 
@@ -239,6 +240,23 @@ export default function LeadsPipelinePage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <ExportMenu
+              title="Lead Management & Sales Pipeline"
+              subtitle={`${filtered.length} leads`}
+              data={filtered.map((l: any) => ({
+                "Lead ID": l.leadId,
+                Customer: l.customerName,
+                Mobile: l.mobile,
+                Source: l.source || "Walk-in Store",
+                "Interested Product": l.interestedProduct,
+                "VP Code": l.vpCode || "",
+                "Est. Value": Number(l.estimatedValue) || 0,
+                "Assigned Staff": l.assignedStaff || "Sales Team",
+                "Next Follow-up": l.followUpDate || "",
+                Status: l.status,
+              }))}
+              filename="leads"
+            />
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-[160px] text-xs bg-slate-50 border-slate-300 font-semibold">
                 <SelectValue placeholder="Filter Status" />

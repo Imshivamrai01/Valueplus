@@ -12,6 +12,7 @@ import { Truck, Plus, Search, CheckCircle2, FileText, Printer, ArrowRight } from
 import { toast } from "sonner";
 import { useBranch } from "@/context/BranchContext";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 export default function EWayBillPage() {
   const queryClient = useQueryClient();
@@ -138,12 +139,29 @@ export default function EWayBillPage() {
             />
           </div>
 
-          <Button
-            onClick={() => setIsPrepModalOpen(true)}
-            className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white text-xs font-bold shadow-sm"
-          >
-            <Plus className="w-3.5 h-3.5 mr-1.5" /> Prepare E-Way Bill
-          </Button>
+          <div className="flex items-center gap-2">
+            <ExportMenu
+              title="E-Way Bills"
+              subtitle={`${filtered.length} e-way bills`}
+              data={(filtered as any[]).map((b) => ({
+                "E-Way Bill #": b.ewayBillNo,
+                "Invoice Number": b.invoiceNumber,
+                Customer: b.customerName,
+                "Delivery Address": b.deliveryAddress,
+                "Vehicle Number": b.vehicleNumber,
+                "Taxable Value": b.taxableValue,
+                "Consignment Total": b.totalAmount,
+                Status: b.status,
+              }))}
+              filename="eway-bills"
+            />
+            <Button
+              onClick={() => setIsPrepModalOpen(true)}
+              className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white text-xs font-bold shadow-sm"
+            >
+              <Plus className="w-3.5 h-3.5 mr-1.5" /> Prepare E-Way Bill
+            </Button>
+          </div>
         </div>
 
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">

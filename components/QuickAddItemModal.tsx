@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { BrandSelect } from "@/components/shared/brand-select";
 
 interface QuickAddItemModalProps {
   isOpen: boolean;
@@ -42,15 +43,6 @@ export function QuickAddItemModal({ isOpen, onClose, initialName = "", onCreated
     queryKey: ["categories"],
     queryFn: async () => {
       const res = await fetch("/api/categories");
-      const json = await res.json();
-      return json.success ? json.data : [];
-    },
-  });
-
-  const { data: brands = [] } = useQuery({
-    queryKey: ["brands"],
-    queryFn: async () => {
-      const res = await fetch("/api/brands");
       const json = await res.json();
       return json.success ? json.data : [];
     },
@@ -148,14 +140,11 @@ export function QuickAddItemModal({ isOpen, onClose, initialName = "", onCreated
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold text-slate-700">Brand *</Label>
-              <Select value={form.brand} onValueChange={(v) => setForm({ ...form, brand: v })}>
-                <SelectTrigger><SelectValue placeholder="Select brand..." /></SelectTrigger>
-                <SelectContent>
-                  {brands.map((b: any) => (
-                    <SelectItem key={b._id || b.id || b.name} value={b.name}>{b.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <BrandSelect
+                value={form.brand}
+                onValueChange={(v) => setForm({ ...form, brand: v })}
+                placeholder="Select brand..."
+              />
             </div>
           </div>
 

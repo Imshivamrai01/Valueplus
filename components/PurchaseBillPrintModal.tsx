@@ -101,16 +101,23 @@ export function PurchaseBillPrintModal({ isOpen, onClose, billData }: PurchaseBi
   const paid = Number(billData.paid ?? (billData.status === "paid" ? total : 0));
   const balance = Number(billData.balance ?? Math.max(0, total - paid));
 
+  // Debit notes are stored as the same PurchaseEntry document with
+  // type: "debit-note", so this already tells the two apart with no new prop —
+  // an ordinary purchase entry's `type` is "entry" and every existing caller
+  // keeps seeing the exact wording it always has.
+  const isDebitNote = billData.type === "debit-note";
+  const docLabel = isDebitNote ? "DEBIT NOTE / RETURN VOUCHER" : "PURCHASE INWARD VOUCHER";
+
   const handlePrint = () => {
     if (printRef.current) {
-      printElement(printRef.current, `PurchaseInvoice_${billData.billNo || billData.billNumber || "ValuePlus"}`);
+      printElement(printRef.current, `${isDebitNote ? "DebitNote" : "PurchaseInvoice"}_${billData.billNo || billData.billNumber || "ValuePlus"}`);
     } else {
       window.print();
     }
   };
 
   const handleWhatsAppShare = () => {
-    const text = `*PURCHASE INWARD VOUCHER - VALUE PLUS*\nBill No: ${billData.billNo || billData.billNumber}\nSupplier: ${billData.supplierName}\nDate: ${billData.billDate || billData.date || "Today"}\nTotal Amount: ${formatCurrency(total)}\nStatus: ${billData.status || "Paid"}\nThank you!`;
+    const text = `*${docLabel} - VALUE PLUS*\nBill No: ${billData.billNo || billData.billNumber}\nSupplier: ${billData.supplierName}\nDate: ${billData.billDate || billData.date || "Today"}\nTotal Amount: ${formatCurrency(total)}\nStatus: ${billData.status || "Paid"}\nThank you!`;
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
   };
 
@@ -124,7 +131,7 @@ export function PurchaseBillPrintModal({ isOpen, onClose, billData }: PurchaseBi
               {billData.billNo || billData.billNumber || "BILL-001"}
             </span>
             <span className="text-sm font-bold text-slate-100">
-              Supplier Purchase Invoice Voucher
+              {isDebitNote ? "Debit Note / Return Voucher" : "Supplier Purchase Invoice Voucher"}
             </span>
           </div>
 
@@ -179,7 +186,11 @@ export function PurchaseBillPrintModal({ isOpen, onClose, billData }: PurchaseBi
           {/* DOCUMENT TITLE & META ROW */}
           <div className="flex items-center justify-between py-2 border-b border-slate-400 font-bold">
             <span className="text-xs text-slate-900 font-black uppercase tracking-wide">
-              PURCHASE INWARD INVOICE VOUCHER <span className="font-normal text-[10px] text-slate-600">(Goods Receipt Note)</span>
+              {isDebitNote ? (
+                <>DEBIT NOTE / RETURN VOUCHER <span className="font-normal text-[10px] text-slate-600">(Goods Returned to Supplier)</span></>
+              ) : (
+                <>PURCHASE INWARD INVOICE VOUCHER <span className="font-normal text-[10px] text-slate-600">(Goods Receipt Note)</span></>
+              )}
             </span>
             <span className="text-xs font-mono">
               Voucher / Bill No: <span className="text-[#30539C] font-black">{billData.billNo || billData.billNumber}</span>

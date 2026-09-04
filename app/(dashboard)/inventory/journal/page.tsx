@@ -11,6 +11,7 @@ import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 export default function StockJournalPage() {
   const queryClient = useQueryClient();
@@ -72,7 +73,19 @@ export default function StockJournalPage() {
           <Input placeholder="Search Journals..." className="pl-9" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
         </div>
         
-        <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+        <div className="flex items-center gap-2">
+          <ExportMenu
+            title="Stock Journal"
+            subtitle={`${filtered.length} journal entries`}
+            data={filtered.map((row: any) => ({
+              "Journal No.": row.journalNumber,
+              Date: format(new Date(row.date), "dd MMM, yyyy"),
+              Purpose: row.purpose,
+              "Affected Items": (row.items || []).map((line: any) => `${line.type === 'in' ? '+' : '-'}${line.quantity} ${line.itemName}`).join(", "),
+            }))}
+            filename="stock-journal"
+          />
+          <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
           <DialogTrigger asChild>
             <Button className="bg-[#3F63AD] hover:bg-[#3F63AD]/90"><Plus className="w-4 h-4 mr-2" /> New Entry</Button>
           </DialogTrigger>
@@ -157,6 +170,7 @@ export default function StockJournalPage() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <Card className="overflow-hidden border border-slate-200">

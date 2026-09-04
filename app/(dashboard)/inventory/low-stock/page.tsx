@@ -3,11 +3,12 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { Package, ArrowLeft, Search, AlertTriangle, Download } from "lucide-react";
+import { Package, ArrowLeft, Search, AlertTriangle } from "lucide-react";
 import { PageShell } from "@/components/shared/page-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { formatCurrency, downloadCSV } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 
 export default function LowStockPage() {
@@ -35,17 +36,14 @@ export default function LowStockPage() {
     (item.code || "").toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleExport = () => {
-    const data = filteredItems.map((i: any) => ({
-      Code: i.code,
-      Name: i.name,
-      Category: i.category,
-      CurrentStock: i.currentStock,
-      ReorderLevel: i.reorderLevel,
-      PurchasePrice: i.purchasePrice
-    }));
-    downloadCSV(data, "Low_Stock_Report");
-  };
+  const exportData = filteredItems.map((i: any) => ({
+    Code: i.code,
+    Name: i.name,
+    Category: i.category,
+    CurrentStock: i.currentStock,
+    ReorderLevel: i.reorderLevel,
+    PurchasePrice: i.purchasePrice
+  }));
 
   return (
     <PageShell
@@ -57,9 +55,13 @@ export default function LowStockPage() {
           <Button variant="outline" onClick={() => router.push('/dashboard')} className="rounded-xl shadow-sm h-10">
             <ArrowLeft className="w-4 h-4 mr-2" /> Back to Dashboard
           </Button>
-          <Button variant="outline" onClick={handleExport} className="rounded-xl shadow-sm h-10">
-            <Download className="w-4 h-4 mr-2" /> Export
-          </Button>
+          <ExportMenu
+            className="rounded-xl shadow-sm h-10"
+            title="Low Stock Alerts"
+            subtitle={`${lowStockItems.length} items require attention`}
+            data={exportData}
+            filename="Low_Stock_Report"
+          />
         </>
       }
     >

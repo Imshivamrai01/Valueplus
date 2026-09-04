@@ -5,6 +5,8 @@ export interface IPurchaseEntry extends Document {
   supplierName: string;
   warehouse?: string;
   linkedPoNo?: string;
+  /** Why this entry was billed without going through a Purchase Order first — mandatory when linkedPoNo is empty. */
+  noPoReason?: string;
   type: "entry" | "debit-note";
   billDate: string;
   dueDate?: string;
@@ -30,6 +32,7 @@ const PurchaseEntrySchema = new Schema<IPurchaseEntry>(
     supplierName: { type: String, required: true },
     warehouse: { type: String, default: "Ashoka Enterprises (Kunraghat Showroom)" },
     linkedPoNo: { type: String },
+    noPoReason: { type: String, default: "" },
     type: { type: String, enum: ["entry", "debit-note"], default: "entry" },
     billDate: { type: String, required: true },
     dueDate: { type: String },

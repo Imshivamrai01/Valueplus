@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/shared/page-shell";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -205,6 +206,26 @@ export default function StaffTasksPage() {
       ]}
       actions={
         <div className="flex items-center gap-2">
+          <ExportMenu
+            title={isIndividualStaff ? "My Tasks" : "Staff Tasks"}
+            subtitle={`${filtered.length} tasks`}
+            data={(filtered as any[]).map((t) => ({
+              "Task Title": t.taskTitle,
+              Description: t.description || "",
+              "Assigned To": t.assignedStaff,
+              "Assigned Date": t.assignedDate || "",
+              "Due Date": t.dueDate || "",
+              "Due Time": t.dueTime || "",
+              Priority: t.priority,
+              Status:
+                t.status === "Completed"
+                  ? "Completed"
+                  : t.dueDate && t.dueDate < todayStr && t.status !== "Completed"
+                  ? "Overdue"
+                  : t.status,
+            }))}
+            filename="staff-tasks"
+          />
           <Button variant="outline" size="sm" onClick={() => refetch()}>
             <RefreshCw className="w-4 h-4 mr-1.5" /> Refresh
           </Button>

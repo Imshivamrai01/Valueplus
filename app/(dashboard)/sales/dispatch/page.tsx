@@ -30,6 +30,7 @@ import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/s
 import { toast } from "sonner";
 import Link from "next/link";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 export default function OrderDispatchHubPage() {
   const [invoices, setInvoices] = useState<any[]>([]);
@@ -261,6 +262,26 @@ export default function OrderDispatchHubPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <ExportMenu
+              title="Order Dispatch & Delivery"
+              subtitle={`${filteredOrders.length} shipments`}
+              data={(filteredOrders as any[]).map((inv) => ({
+                "Invoice No": inv.invoiceNumber,
+                Date: formatDate(inv.date),
+                Customer: inv.customerName,
+                Phone: inv.customerPhone,
+                Address: inv.shippingAddress || inv.customerAddress || "",
+                Items: (inv.items || []).map((it: any) => `${it.itemName} x${it.quantity || 1}`).join(", "),
+                Amount: inv.total || inv.grandTotal || 0,
+                "Payment Mode": inv.paymentMode || "Cash",
+                Status: inv.deliveryStatus || "pending_dispatch",
+                Driver: inv.driverName || "",
+                "Driver Phone": inv.driverPhone || "",
+                Vehicle: inv.driverVehicleNo || "",
+              }))}
+              filename="order-dispatch"
+              className="h-9 rounded-xl"
+            />
             <Button variant="outline" size="sm" onClick={fetchOrders} className="h-9 rounded-xl text-xs font-semibold">
               <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Refresh
             </Button>

@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 export default function BankAccountsAndCashRegisterPage() {
   const queryClient = useQueryClient();
@@ -511,6 +512,21 @@ export default function BankAccountsAndCashRegisterPage() {
               </div>
 
               <div className="flex items-center gap-2">
+                <ExportMenu
+                  title="Cash Book Ledger"
+                  subtitle={`${filteredLedger.length} transactions`}
+                  data={filteredLedger.map((tx: any) => ({
+                    Date: tx.date,
+                    Time: tx.time,
+                    Category: tx.category,
+                    "Reference No": tx.referenceNo,
+                    Particulars: tx.partyName || tx.description,
+                    "Cash In (₹)": tx.type === "INFLOW" ? Number(tx.amount || 0) : 0,
+                    "Cash Out (₹)": tx.type !== "INFLOW" ? Number(tx.amount || 0) : 0,
+                    "Recorded By": tx.recordedBy || "Cashier",
+                  }))}
+                  filename="cash-book-ledger"
+                />
                 <Select value={ledgerFilter} onValueChange={setLedgerFilter}>
                   <SelectTrigger className="w-[190px] h-9 text-xs bg-slate-50 font-bold text-slate-800">
                     <SelectValue />

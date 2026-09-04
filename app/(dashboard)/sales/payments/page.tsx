@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/shared/date-range-filter";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 export default function ReceivePaymentPage() {
   const [search, setSearch] = useState("");
@@ -88,9 +89,25 @@ export default function ReceivePaymentPage() {
       subtitle="Track and record incoming payments from customers"
       breadcrumbs={[{ label: "Sales" }, { label: "Receive Payments" }]}
       actions={
-        <Button size="sm" onClick={() => setIsFormOpen(true)} className="bg-[#76C043] hover:bg-[#65A639] text-white">
-          <Plus className="w-4 h-4 mr-1.5" /> Record Payment
-        </Button>
+        <div className="flex items-center gap-2">
+          <ExportMenu
+            title={activeTab === "customers" ? "Customer Receipts" : "Supplier Payouts"}
+            subtitle={`${filtered.length} transactions`}
+            data={(filtered as any[]).map((p) => ({
+              "Transaction ID": p.transactionId,
+              Date: formatDate(p.date),
+              [activeTab === "customers" ? "Customer" : "Supplier"]: p.partyName,
+              Mode: p.paymentMode,
+              Reference: p.referenceId || "",
+              Type: p.type === "received" ? "Received (In)" : "Paid (Out)",
+              Amount: formatCurrency(p.amount),
+            }))}
+            filename="payments"
+          />
+          <Button size="sm" onClick={() => setIsFormOpen(true)} className="bg-[#76C043] hover:bg-[#65A639] text-white">
+            <Plus className="w-4 h-4 mr-1.5" /> Record Payment
+          </Button>
+        </div>
       }
     >
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">

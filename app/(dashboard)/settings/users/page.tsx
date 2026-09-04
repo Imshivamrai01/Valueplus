@@ -52,6 +52,7 @@ import {
 import { toast } from "sonner";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 import { formatCurrency } from "@/lib/utils";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 const ROLE_OPTIONS = [
   { value: "admin", label: "👑 Super Admin (Full Master Access)" },
@@ -334,6 +335,26 @@ export default function UsersAndStaffPage() {
     <PageShell
       title="Staff & User Management (KYC, Salary & Roles)"
       description="Create login credentials, manage Aadhaar/KYC identity proofs, brand representative assignments, base salary, advance loans, and showroom/godown permissions."
+      actions={
+        <ExportMenu
+          title="Staff & Users"
+          subtitle={`${filteredUsers.length} staff members`}
+          data={(filteredUsers as any[]).map((u) => ({
+            Name: u.name,
+            Role: u.role,
+            Designation: u.designation || "Staff",
+            "Assigned Brand": u.assignedBrand || "General Store Staff",
+            Location: u.assignedWarehouseName || "Kunraghat Showroom",
+            Mobile: u.mobile || "",
+            Email: u.email || "",
+            "KYC Type": u.idProofType || "Aadhaar Card",
+            "KYC Number": u.idProofNumber || "",
+            "Monthly Salary": formatCurrency(u.monthlySalary || 0),
+            "Advance Loan": formatCurrency(u.advanceBalance || 0),
+          }))}
+          filename="staff-users"
+        />
+      }
     >
       <div className="space-y-5">
         {/* KPI OVERVIEW CARDS */}

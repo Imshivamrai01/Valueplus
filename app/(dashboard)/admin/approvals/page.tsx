@@ -16,6 +16,7 @@ import {
 import { toast } from "sonner";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { useSession } from "next-auth/react";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 export default function SuperAdminApprovalsPage() {
   const queryClient = useQueryClient();
@@ -84,9 +85,28 @@ export default function SuperAdminApprovalsPage() {
       subtitle="Super Admin Master Control: Review and authorize branch manager activities"
       breadcrumbs={[{ label: "Super Admin" }, { label: "Activity Approvals" }]}
       actions={
-        <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-1.5">
-          <RefreshCw className="w-3.5 h-3.5" /> Refresh Live Requests
-        </Button>
+        <div className="flex items-center gap-2">
+          <ExportMenu
+            title="Store Incharge Activity Approvals"
+            subtitle={`${approvals.length} requests (${filterStatus})`}
+            data={approvals.map((act: any) => ({
+              "Request ID": act.activityId,
+              Date: formatDate(act.createdAt),
+              Store: act.storeName,
+              Incharge: act.storeInchargeName,
+              "Incharge Email": act.storeInchargeEmail,
+              "Activity Type": act.activityType?.replace("_", " "),
+              Title: act.title,
+              Description: act.description,
+              "Value (₹)": act.amount > 0 ? act.amount : 0,
+              Status: act.status,
+            }))}
+            filename="activity-approvals"
+          />
+          <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-1.5">
+            <RefreshCw className="w-3.5 h-3.5" /> Refresh Live Requests
+          </Button>
+        </div>
       }
     >
       {/* KPI Cards */}

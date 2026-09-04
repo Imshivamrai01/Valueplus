@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useBranch } from "@/context/BranchContext";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 export default function InventoryAuditPage() {
   const queryClient = useQueryClient();
@@ -106,12 +107,28 @@ export default function InventoryAuditPage() {
             />
           </div>
 
-          <Button
-            onClick={startNewAudit}
-            className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white text-xs font-bold shadow-sm"
-          >
-            <ClipboardCheck className="w-3.5 h-3.5 mr-1.5" /> Start Daily Physical Audit
-          </Button>
+          <div className="flex items-center gap-2">
+            <ExportMenu
+              title="Daily Inventory Inspection Audit"
+              subtitle={`${audits.length} audit records`}
+              data={audits.map((a: any) => ({
+                "Audit Date": a.auditDate,
+                Auditor: a.auditor,
+                "Expected Stock": a.totalExpected,
+                "Physical Count": a.totalPhysical,
+                "Discrepancy (Units)": a.totalDiscrepancy,
+                Status: a.status,
+                "Completion Time": a.completionTime || "",
+              }))}
+              filename="inventory-audits"
+            />
+            <Button
+              onClick={startNewAudit}
+              className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white text-xs font-bold shadow-sm"
+            >
+              <ClipboardCheck className="w-3.5 h-3.5 mr-1.5" /> Start Daily Physical Audit
+            </Button>
+          </div>
         </div>
 
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">

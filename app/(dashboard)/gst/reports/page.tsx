@@ -4,10 +4,11 @@ import { useState } from "react";
 import { PageShell } from "@/components/shared/page-shell";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Download, FileText, ArrowUpRight, ArrowDownRight, Calculator } from "lucide-react";
+import { FileText, ArrowUpRight, ArrowDownRight, Calculator } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { downloadCSV, formatDate } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 export default function GSTReportsPage() {
   const [period, setPeriod] = useState("August 2026");
@@ -77,13 +78,13 @@ export default function GSTReportsPage() {
             <option>July 2026</option>
             <option>June 2026</option>
           </select>
-          <Button size="sm" variant="outline" onClick={() => {
-            const data = gstr1.concat(gstr2);
-            downloadCSV(data.map((i: any) => ({ ...i })), "gst_report.csv");
-          }}>
-            <Download className="w-4 h-4 mr-2" />
-            Export Data
-          </Button>
+          <ExportMenu
+            size="sm"
+            title="GST Reports"
+            subtitle={`${period} · ${gstr1.length + gstr2.length} records`}
+            data={gstr1.concat(gstr2).map((i: any) => ({ ...i }))}
+            filename="gst_report"
+          />
         </div>
       }
     >

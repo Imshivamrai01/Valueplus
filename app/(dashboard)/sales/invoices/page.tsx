@@ -2,9 +2,9 @@
 
 import { useState, useMemo, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { 
-  Plus, Search, Download, Eye, Edit, Trash2, MoreHorizontal, Receipt, CheckCircle, 
-  Clock, AlertTriangle, XCircle, Printer, ShoppingCart, User, Building, CreditCard, 
+import {
+  Plus, Search, Eye, Edit, Trash2, MoreHorizontal, Receipt, CheckCircle,
+  Clock, AlertTriangle, XCircle, Printer, ShoppingCart, User, Building, CreditCard,
   Sparkles, CheckCircle2, FileText, Calendar, MapPin, Calculator, ShieldCheck, Ban, MessageCircle
 } from "lucide-react";
 import { InvoiceCreationModal } from "@/components/InvoiceCreationModal";
@@ -21,7 +21,8 @@ import { AutocompleteSearch } from "@/components/shared/autocomplete-search";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { formatCurrency, formatDate, downloadCSV, cn } from "@/lib/utils";
+import { formatCurrency, formatDate, cn } from "@/lib/utils";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/shared/date-range-filter";
 import ValueplusInvoice from "@/app/invoice/page";
 
@@ -279,9 +280,13 @@ function SalesInvoicesContent() {
               {isSyncing ? "Syncing..." : `Sync Offline (${pendingCount})`}
             </Button>
           )}
-          <Button variant="outline" size="sm" onClick={() => downloadCSV(allInvoices.map(i => ({ ...i })), "invoices.csv")} className="h-9">
-            <Download className="w-4 h-4 mr-1.5" /> Export
-          </Button>
+          <ExportMenu
+            className="h-9"
+            title="Invoices & GST Billing"
+            subtitle={`${allInvoices.length} GST Tax Invoices`}
+            data={allInvoices.map(i => ({ ...i }))}
+            filename="invoices"
+          />
           {!isSalesperson ? (
             <Button size="sm" onClick={() => setIsBillingFormOpen(true)} className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white font-bold shadow-md h-9">
               <Plus className="w-4 h-4 mr-1.5" /> New Invoice Billing

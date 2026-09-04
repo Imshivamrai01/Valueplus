@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/shared/page-shell";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -98,6 +99,25 @@ export default function WhatsAppPage() {
       breadcrumbs={[{ label: "Marketing" }, { label: "WhatsApp" }]}
       actions={
         <div className="flex items-center gap-2">
+          {tab === "outbox" && (
+            <ExportMenu
+              title="WhatsApp Outbox"
+              subtitle={`${rows.length} messages · ${statusFilter === "all" ? "all statuses" : statusFilter}`}
+              data={(rows as any[]).map((row) => ({
+                Audience: row.audience === "admin" ? "Admin alert" : "Customer",
+                Status: row.status || "",
+                Reference: row.entityRef || "",
+                Name: row.toName || "",
+                Number: row.toNumber || "",
+                Message: row.message || "",
+                Error: row.error || "",
+                "Created At": formatDate(row.createdAt),
+                "Sent By": row.sentBy || "",
+                "Sent At": row.sentAt ? formatDate(row.sentAt) : "",
+              }))}
+              filename="whatsapp-outbox"
+            />
+          )}
           <Button
             variant="outline"
             size="sm"

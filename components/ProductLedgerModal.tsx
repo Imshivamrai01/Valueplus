@@ -8,12 +8,13 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { 
-  Package, ShoppingBag, Truck, DollarSign, TrendingUp, 
-  ArrowDownRight, ArrowUpRight, Barcode, Calendar, RefreshCw, 
-  Download, FileText, CheckCircle2, AlertTriangle, XCircle, Store, Warehouse
+import {
+  Package, ShoppingBag, Truck, DollarSign, TrendingUp,
+  ArrowDownRight, ArrowUpRight, Barcode, Calendar, RefreshCw,
+  FileText, CheckCircle2, AlertTriangle, XCircle, Store, Warehouse
 } from "lucide-react";
-import { formatCurrency, formatDate, downloadCSV, cn } from "@/lib/utils";
+import { formatCurrency, formatDate, cn } from "@/lib/utils";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 interface ProductLedgerModalProps {
   isOpen: boolean;
@@ -74,26 +75,6 @@ export function ProductLedgerModal({
   const salesTransactions = transactions.filter(t => t.type === "SALE_INVOICE");
   const purchaseTransactions = transactions.filter(t => t.type === "PURCHASE_INWARD" || t.type === "PURCHASE_RETURN");
 
-  const handleExportLedger = () => {
-    if (!transactions.length) return;
-    const csvRows = transactions.map((t, idx) => ({
-      "#": idx + 1,
-      "Date": formatDate(t.date),
-      "Type": t.type,
-      "Ref #": t.refNo,
-      "Party (Customer/Supplier)": t.party,
-      "Qty In": t.qtyIn || 0,
-      "Qty Out": t.qtyOut || 0,
-      "Rate (₹)": t.rate,
-      "Cost Rate (₹)": t.costRate,
-      "Total Amount (₹)": t.amount,
-      "Profit on Sale (₹)": t.profit || 0,
-      "Margin %": t.marginPct ? `${t.marginPct}%` : "-",
-      "Payment Mode": t.paymentMode || "-",
-    }));
-    downloadCSV(csvRows, `product_ledger_${product?.vpCode || product?.code || "item"}.csv`);
-  };
-
   const isProfitable = summary.totalProfit >= 0;
 
   return (
@@ -123,14 +104,27 @@ export function ProductLedgerModal({
             </div>
 
             <div className="flex items-center gap-2 self-start md:self-auto">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleExportLedger}
+              <ExportMenu
                 className="h-8 text-xs bg-white/10 hover:bg-white/20 text-white border-white/20 font-semibold"
-              >
-                <Download className="w-3.5 h-3.5 mr-1" /> Export Ledger
-              </Button>
+                title={`${product?.name || productIdentifier?.name || "Product"} — Ledger`}
+                subtitle={`${transactions.length} transactions`}
+                data={transactions.map((t, idx) => ({
+                  "#": idx + 1,
+                  "Date": formatDate(t.date),
+                  "Type": t.type,
+                  "Ref #": t.refNo,
+                  "Party (Customer/Supplier)": t.party,
+                  "Qty In": t.qtyIn || 0,
+                  "Qty Out": t.qtyOut || 0,
+                  "Rate (₹)": t.rate,
+                  "Cost Rate (₹)": t.costRate,
+                  "Total Amount (₹)": t.amount,
+                  "Profit on Sale (₹)": t.profit || 0,
+                  "Margin %": t.marginPct ? `${t.marginPct}%` : "-",
+                  "Payment Mode": t.paymentMode || "-",
+                }))}
+                filename={`product_ledger_${product?.vpCode || product?.code || "item"}`}
+              />
               <Button
                 variant="outline"
                 size="sm"

@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { formatDate } from "@/lib/utils";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 export default function StockAdjustmentPage() {
   const queryClient = useQueryClient();
@@ -127,9 +128,24 @@ export default function StockAdjustmentPage() {
       subtitle="Record stock additions and reductions."
       breadcrumbs={[{ label: "Inventory" }, { label: "Stock Adjustment" }]}
       actions={
-        <Button size="sm" onClick={() => setIsFormOpen(true)}>
-          <Plus className="w-4 h-4 mr-1.5" /> New Adjustment
-        </Button>
+        <div className="flex items-center gap-2">
+          <ExportMenu
+            title="Stock Adjustments"
+            subtitle={`${filtered.length} adjustments`}
+            data={filtered.map((a: any) => ({
+              "Adjustment #": a.adjustmentNo,
+              Date: formatDate(a.date),
+              Reason: a.reason,
+              "Items Adjusted": (a.items || [])
+                .map((line: any) => `${line.itemName} (${line.type === "in" ? "+" : "-"}${line.quantity})`)
+                .join(", "),
+            }))}
+            filename="stock-adjustments"
+          />
+          <Button size="sm" onClick={() => setIsFormOpen(true)}>
+            <Plus className="w-4 h-4 mr-1.5" /> New Adjustment
+          </Button>
+        </div>
       }
     >
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

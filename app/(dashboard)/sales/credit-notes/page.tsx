@@ -2,8 +2,8 @@
 
 import { useState, useMemo, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { 
-  Plus, Search, Download, FileMinus, MoreHorizontal, FileText, XCircle,
+import {
+  Plus, Search, FileMinus, MoreHorizontal, FileText, XCircle,
   CheckCircle2, Printer, MessageCircle, Truck
 } from "lucide-react";
 import { InvoiceCreationModal } from "@/components/InvoiceCreationModal";
@@ -13,7 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { formatCurrency, formatDate, downloadCSV, cn } from "@/lib/utils";
+import { formatCurrency, formatDate, cn } from "@/lib/utils";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 
@@ -173,9 +174,12 @@ function CreditNotesContent() {
       breadcrumbs={[{ label: "Sales" }, { label: "Credit Notes" }]}
       actions={
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => downloadCSV(unifiedCreditNotes.map((i: any) => ({ ...i })), "credit_notes.csv")}>
-            <Download className="w-4 h-4 mr-1.5" /> Export
-          </Button>
+          <ExportMenu
+            title="Credit Notes"
+            subtitle={`${unifiedCreditNotes.length} Credit Notes issued • Total Refund & Credit Value: ${formatCurrency(totalCreditAmount)}`}
+            data={unifiedCreditNotes.map((i: any) => ({ ...i }))}
+            filename="credit_notes"
+          />
           <Button size="sm" onClick={() => setIsFormOpen(true)} className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white font-bold shadow-md">
             <Plus className="w-4 h-4 mr-1.5" /> Issue Credit Note
           </Button>

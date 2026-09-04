@@ -41,6 +41,7 @@ import {
   Settings,
   AlertCircle,
   TrendingUp,
+  ExternalLink,
   type LucideIcon,
 } from "lucide-react";
 
@@ -192,6 +193,13 @@ export const NAV_GROUPS: NavGroup[] = [
       { title: "Security PIN", href: "/settings/security-pin", icon: Lock, roles: ["admin", "manager", "accounts", "cashier"] },
       { title: "Bank Accounts Master", href: "/banking/accounts", icon: Landmark, roles: ["admin", "accounts", "manager"] },
       { title: "System Settings", href: "/settings", icon: Settings, roles: ["admin"] },
+    ],
+  },
+  {
+    title: "External Portals",
+    roles: ["admin", "manager", "accounts"],
+    items: [
+      { title: "Value Plus Retail (CP)", href: "/external/valueplus-retail", icon: ExternalLink, roles: ["admin", "manager", "accounts"] },
     ],
   },
 ];

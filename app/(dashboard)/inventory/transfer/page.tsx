@@ -14,6 +14,7 @@ import { formatDate } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useBranch } from "@/context/BranchContext";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 interface TransferItem {
   id: string;
@@ -355,9 +356,25 @@ export default function StockTransferPage() {
       subtitle="Transfer stock between stores and warehouses"
       breadcrumbs={[{ label: "Inventory" }, { label: "Stock Transfer" }]}
       actions={
-        <Button size="sm" onClick={() => setIsFormOpen(true)}>
-          <Plus className="w-4 h-4 mr-1.5" /> New Stock Transfer
-        </Button>
+        <div className="flex items-center gap-2">
+          <ExportMenu
+            title="Stock Transfers"
+            subtitle={`${filtered.length} transfers`}
+            data={filtered.map((t: any) => ({
+              "Transfer #": t.transferNo,
+              "From Store": t.fromWarehouse,
+              "To Store": t.toWarehouse,
+              "Item Name": (t.items || []).map((line: any) => `${line.quantity} x ${line.itemName}`).join(", "),
+              Quantity: (t.items || []).reduce((acc: number, item: any) => acc + item.quantity, 0),
+              Date: formatDate(t.date),
+              Status: t.status === "received" ? "Delivered & Received" : "In-Transit",
+            }))}
+            filename="stock-transfers"
+          />
+          <Button size="sm" onClick={() => setIsFormOpen(true)}>
+            <Plus className="w-4 h-4 mr-1.5" /> New Stock Transfer
+          </Button>
+        </div>
       }
     >
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

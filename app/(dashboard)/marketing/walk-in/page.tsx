@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSession } from "next-auth/react";
 import { PageShell } from "@/components/shared/page-shell";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -142,6 +143,25 @@ export default function WalkInQueriesPage() {
       ]}
       actions={
         <div className="flex items-center gap-2">
+          <ExportMenu
+            title="Customer Walk-in Queries"
+            subtitle={`${filtered.length} queries logged`}
+            data={(filtered as any[]).map((q) => ({
+              Date: q.date || "",
+              Time: q.time || "",
+              Customer: q.customerName || "",
+              Mobile: q.mobile || "",
+              "Visit Reason": q.reason || "",
+              "Interested Product": q.interestedProduct || "",
+              Category: q.category || "",
+              Budget: q.budget || 0,
+              "Sales Staff": q.staff || "",
+              "Follow-up Date": q.followUpDate || "",
+              Status: q.status || "",
+              "Lead ID": q.leadId || "",
+            }))}
+            filename="walk-in-queries"
+          />
           <Button variant="outline" size="sm" onClick={() => refetch()}>
             <RefreshCw className="w-4 h-4 mr-1.5" /> Refresh
           </Button>

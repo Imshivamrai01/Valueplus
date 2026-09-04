@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/shared/page-shell";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -213,7 +214,27 @@ export default function SuppliersPage() {
 
   return (
     <PageShell title="Suppliers" subtitle={`${suppliers.length} suppliers in network`} breadcrumbs={[{ label: "Masters" }, { label: "Suppliers" }]}
-      actions={<Button size="sm" onClick={handleAddNew}><Plus className="w-4 h-4 mr-1.5" /> Add Supplier</Button>}>
+      actions={
+        <div className="flex items-center gap-2">
+          <ExportMenu
+            title="Suppliers"
+            subtitle={`${filtered.length} suppliers in network`}
+            data={(filtered as any[]).map((s) => ({
+              Code: s.code,
+              "Supplier Name": s.name,
+              Phone: s.phone || "",
+              Email: s.email || "",
+              City: s.address?.city || "",
+              State: s.address?.state || "",
+              GSTIN: s.gstNumber || "",
+              "Payable Outstanding": balanceById.get(String(s._id))?.pending ?? 0,
+              Status: s.status,
+            }))}
+            filename="suppliers"
+          />
+          <Button size="sm" onClick={handleAddNew}><Plus className="w-4 h-4 mr-1.5" /> Add Supplier</Button>
+        </div>
+      }>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[{label:"Total Suppliers",value:suppliers.length},{label:"Active",value:suppliers.filter((s:any)=>s.status==="active").length},{label:"Total Payables",value:formatCurrency(ledgerSummary?.totals?.outstanding || 0)},{label:"Overdue",value:formatCurrency(ledgerSummary?.totals?.overdue || 0)}].map(s=>(
           <div key={s.label} className="metric-card"><p className="text-2xl font-bold">{s.value}</p><p className="text-xs text-muted-foreground mt-1">{s.label}</p></div>

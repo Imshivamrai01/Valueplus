@@ -4,18 +4,19 @@ import React, { useState, useMemo } from "react";
 import { PageShell } from "@/components/shared/page-shell";
 import { useQuery } from "@tanstack/react-query";
 import { 
-  Award, TrendingUp, DollarSign, Users, Calendar, Download, 
+  Award, TrendingUp, DollarSign, Users, Calendar,
   Search, Filter, Receipt, ChevronRight, ShieldCheck, Sparkles, Trophy, User
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { cn, downloadCSV, formatCurrency, formatDate } from "@/lib/utils";
+import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import ValueplusInvoice from "@/app/invoice/page";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useSession } from "next-auth/react";
 import { TableShimmer, MetricCardsShimmer } from "@/components/shared/shimmer-skeleton";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 export default function SalesIncentivesPage() {
   const { data: session } = useSession();
@@ -120,20 +121,6 @@ export default function SalesIncentivesPage() {
 
   const topPerformer = staffSummary[0] || null;
 
-  const handleExportCSV = () => {
-    const rows = filteredInvoices.map((inv: any) => ({
-      InvoiceNumber: inv.invoiceNumber,
-      Date: formatDate(inv.date),
-      SalesExecutive: inv.salesExecutive || "N/A",
-      CustomerName: inv.customerName,
-      TotalBillAmount: inv.total,
-      SalespersonIncentive: inv.salesExecutiveIncentive || 0,
-      AdminPINUsed: inv.adminOverridePinUsed ? "YES" : "NO",
-      PaymentMode: inv.paymentMode
-    }));
-    downloadCSV(rows, isIndividualSalesman ? "my_sales_incentives.csv" : "salesperson_incentives_report.csv");
-  };
-
   return (
     <PageShell
       title={isIndividualSalesman ? "My Sales Incentives & Commission Ledger" : "Salesperson Incentives Master"}
@@ -144,14 +131,23 @@ export default function SalesIncentivesPage() {
       }
       breadcrumbs={[{ label: isIndividualSalesman ? "My Panel" : "Staff & Operations" }, { label: "Sales Incentives" }]}
       actions={
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={handleExportCSV}
+        <ExportMenu
+          size="sm"
           className="border-slate-300 font-semibold gap-1.5"
-        >
-          <Download className="w-4 h-4 text-slate-600" /> Export My Ledger CSV
-        </Button>
+          title={isIndividualSalesman ? "My Sales Incentives" : "Salesperson Incentives Report"}
+          subtitle={`${filteredInvoices.length} invoices`}
+          data={filteredInvoices.map((inv: any) => ({
+            InvoiceNumber: inv.invoiceNumber,
+            Date: formatDate(inv.date),
+            SalesExecutive: inv.salesExecutive || "N/A",
+            CustomerName: inv.customerName,
+            TotalBillAmount: inv.total,
+            SalespersonIncentive: inv.salesExecutiveIncentive || 0,
+            AdminPINUsed: inv.adminOverridePinUsed ? "YES" : "NO",
+            PaymentMode: inv.paymentMode
+          }))}
+          filename={isIndividualSalesman ? "my_sales_incentives" : "salesperson_incentives_report"}
+        />
       }
     >
       {/* KPI Cards */}

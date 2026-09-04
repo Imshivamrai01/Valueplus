@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { numberToWordsIndian } from "@/lib/number-to-words";
 import { useSession } from "next-auth/react";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 function formatCurrency(val: number) {
   return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 }).format(val || 0);
@@ -207,6 +208,27 @@ export default function CustomerAdvancesPage() {
         </div>
 
         <div className="flex items-center gap-3">
+          <ExportMenu
+            title="Customer Advances"
+            subtitle={`${advances.length} advance booking receipts`}
+            data={(advances as any[]).map((adv) => ({
+              "Receipt #": adv.receiptNumber,
+              Date: adv.date,
+              Time: adv.time,
+              Customer: adv.customerName,
+              Phone: adv.customerPhone,
+              "Product Booked": adv.productBooked || "General Store Credit",
+              "Target Brand": adv.targetBrand || "",
+              "Advance Amount": adv.amount,
+              "Payment Mode": adv.paymentMode,
+              "Available Balance": adv.remainingBalance,
+              "Used Amount": adv.usedAmount || 0,
+              Status: adv.status,
+              "Linked Invoice": adv.linkedInvoiceNumber || "",
+            }))}
+            filename="customer-advances"
+            className="bg-white hover:bg-slate-50"
+          />
           <Button
             onClick={() => setIsCreateModalOpen(true)}
             className="bg-[#76C043] hover:bg-[#68ab3a] text-[#1B2537] font-black px-5 py-2.5 rounded-xl shadow-lg flex items-center gap-2 text-sm transition-all transform active:scale-95 cursor-pointer"

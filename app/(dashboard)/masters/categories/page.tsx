@@ -1,5 +1,6 @@
 "use client";
 import { PageShell } from "@/components/shared/page-shell";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 import { Button } from "@/components/ui/button";
 import { Plus, Tag, Search, Trash2, Edit } from "lucide-react";
 import { useState, useMemo } from "react";
@@ -131,9 +132,22 @@ export default function CategoriesPage() {
       subtitle="Organize your mobile & electronics items"
       breadcrumbs={[{ label: "Masters", href: "/masters/items" }, { label: "Categories" }]}
       actions={
-        <Button size="sm" onClick={openAdd}>
-          <Plus className="w-4 h-4 mr-1.5" /> Add Category
-        </Button>
+        <div className="flex items-center gap-2">
+          <ExportMenu
+            title="Categories"
+            subtitle={`${filtered.length} categories`}
+            data={(filtered as any[]).map((cat) => ({
+              Name: cat.name || "",
+              Description: cat.description || "",
+              Items: cat.items || 0,
+              Status: cat.status === "active" ? "Active" : "Inactive",
+            }))}
+            filename="categories"
+          />
+          <Button size="sm" onClick={openAdd}>
+            <Plus className="w-4 h-4 mr-1.5" /> Add Category
+          </Button>
+        </div>
       }
     >
       {/* Stats */}

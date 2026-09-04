@@ -16,18 +16,20 @@ import {
   Phone,
   MapPin,
   FileText,
-  Download,
   Printer,
   AlertTriangle,
   ArrowLeft,
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
-import { formatCurrency, formatDate, cn, downloadCSV } from "@/lib/utils";
+import { formatCurrency, formatDate, cn } from "@/lib/utils";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 import { RoleGuard, usePermissions } from "@/components/shared/role-guard";
 import { PartyLedgerPanel } from "@/components/PartyLedgerPanel";
 import { VendorBillModal } from "@/components/vendor/VendorBillModal";
 import { VendorPaymentModal } from "@/components/vendor/VendorPaymentModal";
+import { VendorBillPrintModal } from "@/components/vendor/VendorBillPrintModal";
+import { VendorPaymentReceiptModal } from "@/components/vendor/VendorPaymentReceiptModal";
 
 /**
  * One vendor, answering the four questions the counter actually asks:
@@ -67,6 +69,8 @@ function VendorDetailInner() {
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [ledgerOpen, setLedgerOpen] = useState(false);
   const [expandedBill, setExpandedBill] = useState<string | null>(null);
+  const [billToPrint, setBillToPrint] = useState<any | null>(null);
+  const [paymentToPrint, setPaymentToPrint] = useState<any | null>(null);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["vendor-detail", vendorId],
@@ -255,27 +259,21 @@ function VendorDetailInner() {
               Click a bill to see the items on it
             </p>
             {can("ledger.export") && (
-              <Button
-                variant="outline"
-                size="sm"
+              <ExportMenu
                 className="h-8 text-xs"
-                onClick={() =>
-                  downloadCSV(
-                    bills.map((b: any) => ({
-                      "Bill No": b.billNo,
-                      Date: b.date,
-                      "Due Date": b.dueDate,
-                      Amount: b.total,
-                      Paid: b.paid,
-                      Balance: b.balance,
-                      Status: b.status,
-                    })),
-                    `${party?.code}-bills.csv`
-                  )
-                }
-              >
-                <Download className="w-3.5 h-3.5 mr-1.5" /> Export
-              </Button>
+                title={`${party?.name || "Vendor"} — Bills`}
+                subtitle={`${bills.length} bills`}
+                data={bills.map((b: any) => ({
+                  "Bill No": b.billNo,
+                  Date: b.date,
+                  "Due Date": b.dueDate,
+                  Amount: b.total,
+                  Paid: b.paid,
+                  Balance: b.balance,
+                  Status: b.status,
+                }))}
+                filename={`${party?.code}-bills`}
+              />
             )}
           </div>
           <div className="overflow-x-auto">
@@ -289,18 +287,19 @@ function VendorDetailInner() {
                   <th className="px-4 py-3 text-right">Paid</th>
                   <th className="px-4 py-3 text-right">Balance</th>
                   <th className="px-4 py-3 text-center">Status</th>
+                  <th className="px-4 py-3 text-center">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={7} className="p-0">
-                      <TableShimmer rows={5} cols={7} />
+                    <td colSpan={8} className="p-0">
+                      <TableShimmer rows={5} cols={8} />
                     </td>
                   </tr>
                 ) : bills.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="text-center p-10 text-muted-foreground">
+                    <td colSpan={8} className="text-center p-10 text-muted-foreground">
                       <Receipt className="w-8 h-8 mx-auto mb-2 text-slate-300" />
                       No bills raised on this vendor yet.
                     </td>
@@ -361,10 +360,21 @@ function VendorDetailInner() {
                             {b.status}
                           </Badge>
                         </td>
+                        <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-slate-500 hover:text-[#3F63AD]"
+                            title="Print / Share"
+                            onClick={() => setBillToPrint(b)}
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                          </Button>
+                        </td>
                       </tr>
                       {expandedBill === b.billNo && (
                         <tr key={`${b.billNo}-items`} className="bg-slate-50/70">
-                          <td colSpan={7} className="px-8 py-3">
+                          <td colSpan={8} className="px-8 py-3">
                             {b.items?.length ? (
                               <table className="w-full text-xs">
                                 <thead>
@@ -428,27 +438,21 @@ function VendorDetailInner() {
                 : "Every payment is applied to a bill"}
             </p>
             {can("ledger.export") && (
-              <Button
-                variant="outline"
-                size="sm"
+              <ExportMenu
                 className="h-8 text-xs"
-                onClick={() =>
-                  downloadCSV(
-                    payments.map((p: any) => ({
-                      Date: p.date,
-                      Amount: p.amount,
-                      Mode: p.mode,
-                      Reference: p.refNo,
-                      "Against Bill": p.againstBillNo,
-                      "Received By": p.receivedBy,
-                      Direction: p.type,
-                    })),
-                    `${party?.code}-payments.csv`
-                  )
-                }
-              >
-                <Download className="w-3.5 h-3.5 mr-1.5" /> Export
-              </Button>
+                title={`${party?.name || "Vendor"} — Payments`}
+                subtitle={`${payments.length} payments`}
+                data={payments.map((p: any) => ({
+                  Date: p.date,
+                  Amount: p.amount,
+                  Mode: p.mode,
+                  Reference: p.refNo,
+                  "Against Bill": p.againstBillNo,
+                  "Received By": p.receivedBy,
+                  Direction: p.type,
+                }))}
+                filename={`${party?.code}-payments`}
+              />
             )}
           </div>
           <div className="overflow-x-auto">
@@ -461,18 +465,19 @@ function VendorDetailInner() {
                   <th className="px-4 py-3 text-left">Against Bill</th>
                   <th className="px-4 py-3 text-left">Received By</th>
                   <th className="px-4 py-3 text-right">Amount</th>
+                  <th className="px-4 py-3 text-center">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={6} className="p-0">
-                      <TableShimmer rows={5} cols={6} />
+                    <td colSpan={7} className="p-0">
+                      <TableShimmer rows={5} cols={7} />
                     </td>
                   </tr>
                 ) : payments.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="text-center p-10 text-muted-foreground">
+                    <td colSpan={7} className="text-center p-10 text-muted-foreground">
                       <WalletCards className="w-8 h-8 mx-auto mb-2 text-slate-300" />
                       No payments received from this vendor yet.
                     </td>
@@ -515,6 +520,17 @@ function VendorDetailInner() {
                         {p.type === "paid" && (
                           <p className="text-[10px] font-medium text-red-400">refund out</p>
                         )}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-slate-500 hover:text-[#3F63AD]"
+                          title="Print / Share"
+                          onClick={() => setPaymentToPrint(p)}
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                        </Button>
                       </td>
                     </tr>
                   ))
@@ -586,6 +602,20 @@ function VendorDetailInner() {
           <PartyLedgerPanel party="vendor" partyId={vendorId} />
         </DialogContent>
       </Dialog>
+
+      <VendorBillPrintModal
+        isOpen={!!billToPrint}
+        onClose={() => setBillToPrint(null)}
+        bill={billToPrint}
+        vendor={party}
+      />
+
+      <VendorPaymentReceiptModal
+        isOpen={!!paymentToPrint}
+        onClose={() => setPaymentToPrint(null)}
+        payment={paymentToPrint}
+        vendor={party}
+      />
     </PageShell>
   );
 }

@@ -9,8 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
-import { Search, Download, FileText, RefreshCw } from "lucide-react";
-import { formatCurrency, formatDate, cn, downloadCSV } from "@/lib/utils";
+import { Search, FileText, RefreshCw } from "lucide-react";
+import { formatCurrency, formatDate, cn } from "@/lib/utils";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 import { RoleGuard, usePermissions, AccessDenied } from "@/components/shared/role-guard";
 import { PartyLedgerPanel, LedgerParty } from "@/components/PartyLedgerPanel";
 
@@ -96,29 +97,23 @@ function OutstandingInner() {
             <RefreshCw className={cn("w-3.5 h-3.5 mr-1.5", isFetching && "animate-spin")} /> Refresh
           </Button>
           {can("ledger.export") && (
-            <Button
-              variant="outline"
-              size="sm"
+            <ExportMenu
               className="h-9"
-              onClick={() =>
-                downloadCSV(
-                  rows.map((p: any) => ({
-                    Code: p.code,
-                    Name: p.name,
-                    Phone: p.phone || "",
-                    Pending: p.summary.closingBalance,
-                    "0-30": p.summary.ageing.current,
-                    "31-60": p.summary.ageing.d31to60,
-                    "61-90": p.summary.ageing.d61to90,
-                    "90+": p.summary.ageing.d90plus,
-                    "Last Payment": p.summary.lastPaymentDate || "Never",
-                  })),
-                  `${party}-ageing.csv`
-                )
-              }
-            >
-              <Download className="w-3.5 h-3.5 mr-1.5" /> Export
-            </Button>
+              title={isPayable ? "Supplier Outstanding & Ageing" : "Vendor Outstanding & Ageing"}
+              subtitle={`${rows.length} ${party}s`}
+              data={rows.map((p: any) => ({
+                Code: p.code,
+                Name: p.name,
+                Phone: p.phone || "",
+                Pending: p.summary.closingBalance,
+                "0-30": p.summary.ageing.current,
+                "31-60": p.summary.ageing.d31to60,
+                "61-90": p.summary.ageing.d61to90,
+                "90+": p.summary.ageing.d90plus,
+                "Last Payment": p.summary.lastPaymentDate || "Never",
+              }))}
+              filename={`${party}-ageing`}
+            />
           )}
         </div>
       }

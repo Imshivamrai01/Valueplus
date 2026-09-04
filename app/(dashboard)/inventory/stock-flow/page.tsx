@@ -2,29 +2,27 @@
 
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { 
-  Package, 
-  ArrowDownLeft, 
-  ArrowUpRight, 
-  ArrowLeftRight, 
-  Search, 
-  Filter, 
-  Download, 
-  RefreshCw, 
-  Calendar, 
-  Truck, 
-  User, 
-  FileText, 
-  Clock, 
-  Building2, 
-  ChevronRight, 
-  AlertTriangle, 
-  CheckCircle2, 
-  Layers, 
+import {
+  Package,
+  ArrowDownLeft,
+  ArrowUpRight,
+  ArrowLeftRight,
+  Search,
+  Filter,
+  RefreshCw,
+  Calendar,
+  Truck,
+  User,
+  FileText,
+  Clock,
+  Building2,
+  ChevronRight,
+  AlertTriangle,
+  CheckCircle2,
+  Layers,
   X,
   Eye
 } from "lucide-react";
-import { toast } from "sonner";
 import { PageShell } from "@/components/shared/page-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,7 +43,8 @@ import {
   DialogFooter 
 } from "@/components/ui/dialog";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
-import { formatCurrency, downloadCSV, formatDate, cn } from "@/lib/utils";
+import { formatCurrency, formatDate, cn } from "@/lib/utils";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 import { DateRangeFilter } from "@/components/shared/date-range-filter";
 import { BrandLogo } from "@/components/shared/brand-logo";
 import { useBranch } from "@/context/BranchContext";
@@ -146,33 +145,30 @@ export default function StockFlowPage() {
     setIsLedgerOpen(true);
   };
 
-  const handleExportCSV = () => {
-    const exportRows = filteredItems.map((item: any) => ({
-      "VP Code": item.vpCode || item.code,
-      "Item Name": item.name,
-      Brand: item.brand,
-      Category: item.category,
-      "Current Stock": item.currentStock,
-      Unit: item.unit,
-      "Purchase Rate": item.purchasePrice,
-      "Selling Price": item.sellingPrice,
-      "Stock Valuation": item.currentStock * item.purchasePrice,
-      "Last Stock In (Date)": item.lastInward?.date || "N/A",
-      "Last Stock In (Qty)": item.lastInward?.quantity || "N/A",
-      "Last Stock In (Supplier/Bill)": `${item.lastInward?.supplierName || ""} (${item.lastInward?.billNo || ""})`,
-      "Last Stock Out (Date)": item.lastOutward?.date || "N/A",
-      "Last Stock Out (Qty)": item.lastOutward?.quantity || "N/A",
-      "Last Stock Out (Customer/Inv)": `${item.lastOutward?.customerName || ""} (${item.lastOutward?.invoiceNo || ""})`,
-      Warehouse: item.warehouse,
-    }));
+  const exportRows = filteredItems.map((item: any) => ({
+    "VP Code": item.vpCode || item.code,
+    "Item Name": item.name,
+    Brand: item.brand,
+    Category: item.category,
+    "Current Stock": item.currentStock,
+    Unit: item.unit,
+    "Purchase Rate": item.purchasePrice,
+    "Selling Price": item.sellingPrice,
+    "Stock Valuation": item.currentStock * item.purchasePrice,
+    "Last Stock In (Date)": item.lastInward?.date || "N/A",
+    "Last Stock In (Qty)": item.lastInward?.quantity || "N/A",
+    "Last Stock In (Supplier/Bill)": `${item.lastInward?.supplierName || ""} (${item.lastInward?.billNo || ""})`,
+    "Last Stock Out (Date)": item.lastOutward?.date || "N/A",
+    "Last Stock Out (Qty)": item.lastOutward?.quantity || "N/A",
+    "Last Stock Out (Customer/Inv)": `${item.lastOutward?.customerName || ""} (${item.lastOutward?.invoiceNo || ""})`,
+    Warehouse: item.warehouse,
+  }));
 
-    const periodTag = dateRange.start && dateRange.end
-      ? `${dateRange.start}_to_${dateRange.end}`
-      : new Date().toISOString().split("T")[0];
-    const movementTag = movementFilter === "all" ? "" : `_${movementFilter}`;
-    downloadCSV(exportRows, `Stock_Flow_Report${movementTag}_${periodTag}.csv`);
-    toast.success("Stock Flow report exported successfully!");
-  };
+  const exportPeriodTag = dateRange.start && dateRange.end
+    ? `${dateRange.start}_to_${dateRange.end}`
+    : new Date().toISOString().split("T")[0];
+  const exportMovementTag = movementFilter === "all" ? "" : `_${movementFilter}`;
+  const exportFilename = `Stock_Flow_Report${exportMovementTag}_${exportPeriodTag}`;
 
   return (
     <PageShell
@@ -200,15 +196,13 @@ export default function StockFlowPage() {
             <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isFetching ? "animate-spin" : ""}`} />
             Refresh
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExportCSV}
+          <ExportMenu
             className="text-xs h-8 text-[#3F63AD] border-blue-200 hover:bg-blue-50"
-          >
-            <Download className="w-3.5 h-3.5 mr-1.5" />
-            Export CSV
-          </Button>
+            title="Stock Flow (In / Out)"
+            subtitle={`${filteredItems.length} SKUs`}
+            data={exportRows}
+            filename={exportFilename}
+          />
         </div>
       }
     >

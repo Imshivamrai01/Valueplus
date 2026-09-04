@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { AutocompleteSearch } from "@/components/shared/autocomplete-search";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, Search, ClipboardList, Trash2, AlertTriangle, MoreHorizontal, XCircle, Printer, Download, Eye } from "lucide-react";
+import { Plus, Search, ClipboardList, Trash2, AlertTriangle, MoreHorizontal, XCircle, Printer, Download, Eye, UploadCloud } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useState, useMemo, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
@@ -16,9 +16,11 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PurchaseCreationModal } from "@/components/PurchaseCreationModal";
 import { PurchaseBillPrintModal } from "@/components/PurchaseBillPrintModal";
+import { PurchaseImportModal } from "@/components/purchase/PurchaseImportModal";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/shared/date-range-filter";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 interface PurchaseEntryItem {
   id: string;
@@ -64,6 +66,11 @@ function PurchaseEntriesContent() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [entryToDelete, setEntryToDelete] = useState<string | null>(null);
   const [billToPrint, setBillToPrint] = useState<any | null>(null);
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  // Rows resolved by the import flow, handed to PurchaseCreationModal as
+  // preloadedItems. Cleared whenever the creation modal closes, so a later
+  // plain "New Purchase Entry" click doesn't reopen with stale import data.
+  const [importedItems, setImportedItems] = useState<any[] | null>(null);
 
   useEffect(() => {
     if (actionParam === "create" || newParam === "true" || actionParam === "new") {
@@ -104,9 +111,29 @@ function PurchaseEntriesContent() {
       subtitle="Record and manage supplier purchase invoices & payables"
       breadcrumbs={[{ label: "Purchase" }, { label: "Purchase Entry" }]}
       actions={
-        <Button size="sm" onClick={() => setIsFormOpen(true)}>
-          <Plus className="w-4 h-4 mr-1.5" /> New Purchase Entry
-        </Button>
+        <div className="flex items-center gap-2">
+          <ExportMenu
+            title="Purchase Entry (Supplier Bills)"
+            subtitle={`${filtered.length} supplier bills`}
+            data={filtered.map((e: any) => ({
+              "Bill No": e.billNo,
+              "Supplier Name": e.supplierName,
+              "Linked PO": e.linkedPoNo || "Direct Inward",
+              "Bill Date": formatDate(e.date || e.billDate),
+              Subtotal: e.amount || e.subtotal,
+              GST: e.totalTax || e.gst,
+              "Total Amount": (e.amount || e.subtotal) + (e.totalTax || e.gst),
+              Status: e.status,
+            }))}
+            filename="purchase-entries"
+          />
+          <Button variant="outline" size="sm" onClick={() => setIsImportOpen(true)}>
+            <UploadCloud className="w-4 h-4 mr-1.5" /> Upload Excel / PDF
+          </Button>
+          <Button size="sm" onClick={() => setIsFormOpen(true)}>
+            <Plus className="w-4 h-4 mr-1.5" /> New Purchase Entry
+          </Button>
+        </div>
       }
     >
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -184,7 +211,17 @@ function PurchaseEntriesContent() {
                           {e.linkedPoNo}
                         </span>
                       ) : (
-                        <span className="text-xs text-slate-400">Direct Inward</span>
+                        <div className="text-xs text-slate-400">
+                          <span>Direct Inward</span>
+                          {e.noPoReason && (
+                            <p
+                              className="text-[10px] text-slate-500 mt-0.5 max-w-[160px] truncate"
+                              title={e.noPoReason}
+                            >
+                              {e.noPoReason}
+                            </p>
+                          )}
+                        </div>
                       )}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground text-xs">{formatDate(e.date || e.billDate)}</td>
@@ -240,10 +277,24 @@ function PurchaseEntriesContent() {
         </div>
       </div>
 
-      <PurchaseCreationModal 
-        isOpen={isFormOpen} 
-        onClose={() => setIsFormOpen(false)} 
-        mode="entry" 
+      <PurchaseCreationModal
+        isOpen={isFormOpen}
+        onClose={() => {
+          setIsFormOpen(false);
+          setImportedItems(null);
+        }}
+        mode="entry"
+        preloadedItems={importedItems || undefined}
+      />
+
+      <PurchaseImportModal
+        open={isImportOpen}
+        onOpenChange={setIsImportOpen}
+        onResolved={(items) => {
+          setImportedItems(items);
+          setIsImportOpen(false);
+          setIsFormOpen(true);
+        }}
       />
 
       {/* Print / Download Purchase Bill Modal */}

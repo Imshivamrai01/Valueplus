@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { INDIA_STATES, INDIA_STATES_AND_DISTRICTS } from "@/lib/data/locations";
 import { MetricCardsShimmer, Skeleton } from "@/components/shared/shimmer-skeleton";
 import { useRouter } from "next/navigation";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 export default function WarehousesPage() {
   const router = useRouter();
@@ -113,6 +114,26 @@ export default function WarehousesPage() {
       breadcrumbs={[{ label: "Masters" }, { label: "Warehouses" }]}
       actions={
         <div className="flex items-center gap-2">
+          <ExportMenu
+            title="Warehouses & Showroom Outlets"
+            subtitle={`${warehouses.length} registered locations (Showrooms & Central Godowns)`}
+            data={warehouses.map((wh: any) => {
+              const isGodown = wh.name?.toLowerCase().includes("godown") || wh.name?.toLowerCase().includes("warehouse") || wh.name?.toLowerCase().includes("gida") || wh.name?.toLowerCase().includes("logistics");
+              return {
+                Code: wh.code,
+                Name: wh.name,
+                Type: isGodown ? "Central Godown & Hub" : "Showroom Outlet",
+                Address: wh.address,
+                City: wh.city,
+                State: wh.state,
+                Pincode: wh.pincode,
+                "Contact Person": wh.contactPerson || wh.contact || "",
+                Phone: wh.phone,
+                Primary: wh.isDefault ? "Yes" : "No",
+              };
+            })}
+            filename="warehouses"
+          />
           <Button variant="outline" size="sm" onClick={() => router.push("/purchase/entries?action=create")}>
             <ShoppingBag className="w-4 h-4 mr-1.5 text-[#3F63AD]" /> Inward Purchase Entry
           </Button>

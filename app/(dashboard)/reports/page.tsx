@@ -5,36 +5,33 @@ import { PageShell } from "@/components/shared/page-shell";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
-import { 
-  Download, 
-  TrendingUp, 
-  Truck, 
-  ShoppingCart, 
-  Package, 
+import {
+  TrendingUp,
+  Truck,
+  ShoppingCart,
+  Package,
   Wallet,
   FileText
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import ValueplusInvoice from "@/app/invoice/page";
-import { exportToCSV } from "@/lib/export";
 import { formatDate } from "@/lib/utils";
+import { ExportMenu } from "@/components/shared/ExportMenu";
+
+const REPORT_TAB_META: Record<string, { title: string; filenamePrefix: string }> = {
+  sales: { title: "Sales Report", filenamePrefix: "sales-report" },
+  challans: { title: "Delivery Challans Report", filenamePrefix: "challans-report" },
+  purchases: { title: "Purchases Report", filenamePrefix: "purchases-report" },
+  inventory: { title: "Inventory Report", filenamePrefix: "inventory-report" },
+  expenses: { title: "Expenses Report", filenamePrefix: "expenses-report" },
+};
 
 export default function ReportsPage() {
   const [period, setPeriod] = useState("All Time");
   const [activeTab, setActiveTab] = useState("sales");
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [activePrintInvoice, setActivePrintInvoice] = useState<any | null>(null);
-
-  const handleExport = () => {
-    switch (activeTab) {
-      case "sales": exportToCSV(filteredInvoices, `sales_report_${new Date().toISOString().split('T')[0]}.csv`); break;
-      case "challans": exportToCSV(filteredChallans, `challans_report_${new Date().toISOString().split('T')[0]}.csv`); break;
-      case "purchases": exportToCSV(filteredPurchases, `purchases_report_${new Date().toISOString().split('T')[0]}.csv`); break;
-      case "inventory": exportToCSV(items, `inventory_report_${new Date().toISOString().split('T')[0]}.csv`); break;
-      case "expenses": exportToCSV(filteredExpenses, `expenses_report_${new Date().toISOString().split('T')[0]}.csv`); break;
-    }
-  };
 
   // Fetching data
   const { data: invoices = [], isLoading: loadingInvoices } = useQuery({
@@ -137,6 +134,59 @@ export default function ReportsPage() {
   const totalStockValue = items.reduce((acc: any, curr: any) => acc + ((curr.currentStock || 0) * (curr.purchasePrice || 0)), 0);
   const lowStockCount = items.filter((item: any) => item.currentStock <= (item.minStock || 5)).length;
 
+  // Export data mirrors the columns shown in the active tab's table.
+  const exportData: Record<string, unknown>[] = (() => {
+    switch (activeTab) {
+      case "sales":
+        return filteredInvoices.map((row: any) => ({
+          "Invoice No": row.invoiceNumber,
+          Date: formatDate(row.date),
+          Customer: row.customerName,
+          Taxable: row.taxableAmount || 0,
+          Tax: row.totalGST || 0,
+          Total: row.total || 0,
+          Status: row.type === "credit-note" ? (row.status === "paid" ? "Refunded" : "Pending") : (row.status || (row.balanceAmount === 0 ? "paid" : row.balanceAmount === row.total ? "unpaid" : "partial")),
+        }));
+      case "challans":
+        return filteredChallans.map((row: any) => ({
+          "Challan No": row.challanNo,
+          Date: formatDate(row.date),
+          Customer: row.customerName,
+          "Vehicle No": row.vehicleNo || "-",
+          "Items Count": row.items?.length || 0,
+        }));
+      case "purchases":
+        return filteredPurchases.map((row: any) => ({
+          "Bill No": row.billNo,
+          Date: formatDate(row.billDate || row.createdAt),
+          Supplier: row.supplierName,
+          Taxable: row.subtotal || 0,
+          Total: row.total || 0,
+          Status: row.balance === 0 ? "Paid" : row.balance === row.total ? "Unpaid" : "Partial",
+        }));
+      case "inventory":
+        return items.map((row: any) => ({
+          "VP Code": row.code || "-",
+          "Item Name": row.name,
+          Category: row.category?.name || "General",
+          "Unit Price": row.salesPrice || 0,
+          "Current Stock": `${row.currentStock} ${row.unit}`,
+          Value: (row.currentStock || 0) * (row.purchasePrice || 0),
+        }));
+      case "expenses":
+        return filteredExpenses.map((row: any) => ({
+          Date: formatDate(row.date),
+          Category: row.category,
+          Description: row.description || "-",
+          "Payment Mode": row.paymentMode,
+          Amount: row.amount || 0,
+        }));
+      default:
+        return [];
+    }
+  })();
+  const activeReportMeta = REPORT_TAB_META[activeTab] || { title: "Report", filenamePrefix: "report" };
+
   return (
     <PageShell
       title="Comprehensive Reports"
@@ -155,10 +205,12 @@ export default function ReportsPage() {
             <option>This Year</option>
             <option>Last Year</option>
           </select>
-          <Button size="sm" variant="outline" className="text-slate-700" onClick={handleExport}>
-            <Download className="w-4 h-4 mr-2" />
-            Export Data
-          </Button>
+          <ExportMenu
+            title={activeReportMeta.title}
+            subtitle={`${exportData.length} records • ${period}`}
+            data={exportData}
+            filename={activeReportMeta.filenamePrefix}
+          />
         </div>
       }
     >

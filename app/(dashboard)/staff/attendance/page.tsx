@@ -22,16 +22,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { 
-  Clock, CheckCircle2, UserCheck, Calendar, 
+import {
+  Clock, CheckCircle2, UserCheck, Calendar,
   LogIn, LogOut, Search, ShieldCheck, User,
-  SlidersHorizontal, Download, Plus, AlertCircle,
+  SlidersHorizontal, Plus, AlertCircle,
   Sparkles, Zap, Trash2, Edit3, UserX, Sun, Users
 } from "lucide-react";
 import { TableShimmer, MetricCardsShimmer } from "@/components/shared/shimmer-skeleton";
 import { toast } from "sonner";
 import { useSession } from "next-auth/react";
 import { useBranch } from "@/context/BranchContext";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 function getISTDateString() {
   try {
@@ -238,32 +239,15 @@ export default function StaffAttendancePage() {
     };
   }, [attendanceList, usersList]);
 
-  // Export CSV
-  const handleExportCSV = () => {
-    if (filteredList.length === 0) {
-      toast.error("No attendance data to export");
-      return;
-    }
-    const headers = ["Employee Name", "Role", "Date", "Check-In Time", "Check-Out Time", "Duration (Mins)", "Status", "Remarks"];
-    const rows = filteredList.map((r: any) => [
-      `"${r.staffName || ""}"`,
-      `"${r.staffRole || "Staff"}"`,
-      `"${r.date || ""}"`,
-      `"${r.checkInTime || "--"}"`,
-      `"${r.checkOutTime || "--"}"`,
-      `"${r.workingDurationMinutes || 0}"`,
-      `"${r.status || "Present"}"`,
-      `"${r.notes || ""}"`,
-    ]);
-    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `ValuePlus_Attendance_${selectedDate}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success("Attendance sheet downloaded!");
+  // Duration label for export (mirrors the table's duration column)
+  const durationLabelForExport = (r: any) => {
+    if (r.status === "On Leave") return "On Leave";
+    if (r.status === "Absent") return "Absent";
+    const mins = typeof r.workingDurationMinutes === "number" ? r.workingDurationMinutes : 0;
+    if (!mins) return "--";
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return `${h}h ${m}m`;
   };
 
   return (
@@ -509,9 +493,22 @@ export default function StaffAttendancePage() {
                   View All
                 </Button>
               )}
-              <Button size="sm" variant="outline" onClick={handleExportCSV} className="h-8 text-xs font-bold gap-1">
-                <Download className="w-3.5 h-3.5 text-slate-600" /> CSV
-              </Button>
+              <ExportMenu
+                title="Staff Attendance"
+                subtitle={`${filteredList.length} attendance records${selectedDate !== "all" ? ` for ${selectedDate}` : ""}`}
+                data={(filteredList as any[]).map((r) => ({
+                  "Employee Name": r.staffName || "",
+                  Role: r.staffRole || "Staff",
+                  Date: r.date || "",
+                  "Check-In Time": r.checkInTime || "--",
+                  "Check-Out Time": r.checkOutTime || "--",
+                  Duration: durationLabelForExport(r),
+                  Status: r.status || "Present",
+                  Remarks: r.notes || "",
+                }))}
+                filename="staff-attendance"
+                className="h-8 text-xs"
+              />
             </div>
           </div>
 

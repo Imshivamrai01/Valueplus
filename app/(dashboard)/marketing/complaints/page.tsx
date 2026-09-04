@@ -17,6 +17,7 @@ import {
   UserX, Filter, Eye, RefreshCw, Send, Check
 } from "lucide-react";
 import { toast } from "sonner";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 export default function CustomerComplaintsPage() {
   const queryClient = useQueryClient();
@@ -199,6 +200,23 @@ export default function CustomerComplaintsPage() {
       ]}
       actions={
         <div className="flex items-center gap-2">
+          <ExportMenu
+            title="Customer Complaints"
+            subtitle={`${totalTickets} complaint tickets`}
+            data={complaints.map((c: any) => ({
+              "Ticket No.": c.ticketNumber,
+              Type: c.complaintType,
+              Customer: c.customerName,
+              Phone: c.customerPhone,
+              Subject: c.issueTitle,
+              Description: c.issueDescription,
+              "Targeted Product/Staff": c.complaintType === "staff_conduct" ? (c.accusedStaffName || "") : (c.productName || ""),
+              Priority: c.priority,
+              Status: c.status,
+              "Assigned To": c.assignedTo || "Unassigned",
+            }))}
+            filename="customer-complaints"
+          />
           <Button
             variant="outline"
             size="sm"

@@ -4,6 +4,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -92,6 +93,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
     supplierPhone: "",
     supplierId: "" as string,
     linkedPoNo: "",
+    noPoReason: "",
     items: [] as Array<{
       id: string;
       itemId: string;
@@ -131,6 +133,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
           supplierPhone: matchedSupplier?.phone || "9876543210",
           supplierId: matchedSupplier?._id || "auto",
           linkedPoNo: "",
+          noPoReason: "",
           items: itemsToLoad.map((it: any) => {
             const reorderQty = Math.max(1, (Number(it.reorderLevel || 5) * 2) - Number(it.currentStock || 0));
             const purRate = Number(it.purchasePrice || it.rate || (it.sellingPrice ? it.sellingPrice * 0.82 : 1000));
@@ -465,6 +468,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
         supplierId: form.supplierId,
         billDate: form.billDate,
         linkedPoNo: form.linkedPoNo,
+        noPoReason: form.linkedPoNo ? "" : form.noPoReason.trim(),
         items: form.items.map(i => ({
           itemId: i.itemId,
           name: i.name,
@@ -526,6 +530,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
         supplierPhone: "",
         supplierId: "",
         linkedPoNo: "",
+        noPoReason: "",
         items: [],
       });
       setSupplierLookupStatus("idle");
@@ -552,6 +557,14 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
 
     if (form.items.length === 0) {
       toast.error("Please add or load at least one product item");
+      return;
+    }
+
+    // A purchase entry with no linked PO is still allowed — it just has to
+    // say why, so a direct entry always leaves an audit trail of the reason
+    // rather than silently bypassing the PO process.
+    if (currentMode === "entry" && !form.linkedPoNo && !form.noPoReason.trim()) {
+      toast.error("Enter a reason for skipping the Purchase Order, or link an existing PO above.");
       return;
     }
 
@@ -898,6 +911,29 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
                         <span>Optionally select a Purchase Order above to auto-load its products, quantities, and rates — or skip this and add products directly in section 3 below.</span>
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* A direct entry (no PO) is still allowed — it just has to say
+                    why, so the audit trail shows this was a deliberate call,
+                    not a skipped step. Required only once a supplier is picked,
+                    so the field doesn't demand an answer before there's even a
+                    PO list to have skipped. */}
+                {form.supplierName && !form.linkedPoNo && (
+                  <div className="mt-3 space-y-1.5">
+                    <Label className="text-xs font-bold text-red-700 flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5" /> Reason for No Purchase Order *
+                    </Label>
+                    <Textarea
+                      placeholder="e.g. Urgent local purchase, supplier doesn't issue POs, walk-in restock..."
+                      value={form.noPoReason}
+                      onChange={(e) => setForm(prev => ({ ...prev, noPoReason: e.target.value }))}
+                      className={cn(
+                        "text-xs bg-white",
+                        !form.noPoReason.trim() && "border-red-300"
+                      )}
+                      rows={2}
+                    />
                   </div>
                 )}
               </div>

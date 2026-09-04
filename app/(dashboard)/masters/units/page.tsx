@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 export default function UnitsPage() {
   const [units, setUnits] = useState<any[]>([]);
@@ -82,7 +83,22 @@ export default function UnitsPage() {
 
   return (
     <PageShell title="Units of Measurement" subtitle="Manage electronics product units" breadcrumbs={[{ label: "Masters" }, { label: "Units" }]}
-      actions={<Button size="sm" onClick={() => setIsFormOpen(true)}><Plus className="w-4 h-4 mr-1.5" /> Add Unit</Button>}>
+      actions={
+        <div className="flex items-center gap-2">
+          <ExportMenu
+            title="Units of Measurement"
+            subtitle={`${units.length} units`}
+            data={units.map((u: any) => ({
+              "Unit Name": u.name,
+              Abbreviation: u.shortName || u.abbr,
+              Type: u.type,
+              Status: u.status,
+            }))}
+            filename="units"
+          />
+          <Button size="sm" onClick={() => setIsFormOpen(true)}><Plus className="w-4 h-4 mr-1.5" /> Add Unit</Button>
+        </div>
+      }>
       <div className="data-table-container">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 border-b">

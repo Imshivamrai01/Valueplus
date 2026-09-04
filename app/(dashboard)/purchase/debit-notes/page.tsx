@@ -17,9 +17,11 @@ import { toast } from "sonner";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PurchaseCreationModal } from "@/components/PurchaseCreationModal";
+import { PurchaseBillPrintModal } from "@/components/PurchaseBillPrintModal";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useRouter } from "next/navigation";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 export default function DebitNotesPage() {
   const router = useRouter();
@@ -27,6 +29,7 @@ export default function DebitNotesPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [noteToPrint, setNoteToPrint] = useState<any | null>(null);
 
   // 1. Fetch Purchase Debit Notes
   const { data: debitNotes = [], isLoading: loadingDebitNotes } = useQuery({
@@ -203,9 +206,30 @@ export default function DebitNotesPage() {
       breadcrumbs={[{ label: "Purchase" }, { label: "Debit Notes" }]}
       actions={
         <div className="flex items-center gap-2">
-          <Button 
-            variant="outline" 
-            size="sm" 
+          <ExportMenu
+            title="Debit Notes & Return Claims"
+            subtitle={`${filteredRecords.length} claims & notes`}
+            data={filteredRecords.map((r: any) => ({
+              "Doc No": r.docNo,
+              Date: formatDate(r.date),
+              Type: r.recordType === "challan" ? "Delivery Challan" : "Purchase Debit Note",
+              Party: r.partyName,
+              Phone: r.partyPhone || "",
+              Item: r.itemName,
+              "VP Code": r.vpCode || "",
+              "Serial/IMEI": r.serialImei || "",
+              "Invoice Ref": r.invoiceNumber || "",
+              Defect: r.defectDescription || "",
+              Quantity: r.quantity,
+              Unit: r.unit,
+              Amount: r.amount,
+              Status: r.isApproved ? "Approved" : "CNR",
+            }))}
+            filename="debit-notes"
+          />
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => router.push("/sales/challan")}
             className="border-slate-300 font-semibold"
           >
@@ -369,7 +393,13 @@ export default function DebitNotesPage() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="w-44">
-                                <DropdownMenuItem 
+                                <DropdownMenuItem
+                                  className="gap-2 text-slate-700 focus:bg-slate-50 cursor-pointer text-xs"
+                                  onClick={() => setNoteToPrint(r.originalData)}
+                                >
+                                  <Printer className="w-4 h-4" /> Print / Share
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
                                   className="gap-2 text-red-600 focus:bg-red-50 focus:text-red-700 cursor-pointer text-xs"
                                   onClick={() => {
                                     if(confirm(`Are you sure you want to delete ${r.docNo}?`)) {
@@ -393,10 +423,16 @@ export default function DebitNotesPage() {
         </div>
       </div>
 
-      <PurchaseCreationModal 
-        isOpen={isFormOpen} 
-        onClose={() => setIsFormOpen(false)} 
-        mode="debit-note" 
+      <PurchaseCreationModal
+        isOpen={isFormOpen}
+        onClose={() => setIsFormOpen(false)}
+        mode="debit-note"
+      />
+
+      <PurchaseBillPrintModal
+        isOpen={!!noteToPrint}
+        onClose={() => setNoteToPrint(null)}
+        billData={noteToPrint}
       />
     </PageShell>
   );

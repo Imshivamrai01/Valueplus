@@ -17,6 +17,7 @@ import { PartyLedgerPanel } from "@/components/PartyLedgerPanel";
 import { VendorFormModal } from "@/components/vendor/VendorFormModal";
 import { VendorPaymentModal } from "@/components/vendor/VendorPaymentModal";
 import { VendorBillModal } from "@/components/vendor/VendorBillModal";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 const PER_PAGE = 10;
 
@@ -113,17 +114,36 @@ function VendorsPageInner() {
       subtitle={`${vendors.length} vendors on account`}
       breadcrumbs={[{ label: "Vendors & Ledger" }, { label: "Vendor Master" }]}
       actions={
-        can("vendor.manage") ? (
-          <Button
-            size="sm"
-            onClick={() => {
-              setFormVendor(null);
-              setIsFormOpen(true);
-            }}
-          >
-            <Plus className="w-4 h-4 mr-1.5" /> Add Vendor
-          </Button>
-        ) : null
+        <div className="flex items-center gap-2">
+          <ExportMenu
+            title="Vendors"
+            subtitle={`${filtered.length} vendors on account`}
+            data={(filtered as any[]).map((v) => ({
+              Code: v.code,
+              "Vendor Name": v.name,
+              "Contact Person": v.contactPerson || "",
+              Phone: v.phone || "",
+              Email: v.email || "",
+              City: v.address?.city || "",
+              State: v.address?.state || "",
+              GSTIN: v.gstNumber || "",
+              Pending: balanceByVendor.get(String(v._id)) ?? 0,
+              Status: v.status,
+            }))}
+            filename="vendors"
+          />
+          {can("vendor.manage") && (
+            <Button
+              size="sm"
+              onClick={() => {
+                setFormVendor(null);
+                setIsFormOpen(true);
+              }}
+            >
+              <Plus className="w-4 h-4 mr-1.5" /> Add Vendor
+            </Button>
+          )}
+        </div>
       }
     >
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/shared/page-shell";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -419,6 +420,26 @@ export default function WarehouseHubPage() {
                 />
               </div>
               <div className="flex items-center gap-2">
+                <ExportMenu
+                  title="Warehouse Stock"
+                  subtitle={`${activeLocation.name} • ${filteredItems.length} items`}
+                  data={filteredItems.map((item: any) => {
+                    const qty = getRealStock(item);
+                    const cost = Number(item.purchasePrice || item.mrp || 0);
+                    return {
+                      "Item Name": item.name,
+                      "VP Code / SKU": item.vpCode || item.code,
+                      Category: item.category || "Electronics",
+                      Brand: item.brand || "Value Plus",
+                      "Purchase Cost": cost,
+                      "Physical Quantity": qty,
+                      Unit: item.unit || "PCS",
+                      "Stock Valuation": qty * cost,
+                      Status: qty > 10 ? "In Stock" : qty > 0 ? "Low Stock" : "Out of Stock",
+                    };
+                  })}
+                  filename="warehouse-stock"
+                />
                 <Button
                   size="sm"
                   onClick={() => setIsTransferModalOpen(true)}

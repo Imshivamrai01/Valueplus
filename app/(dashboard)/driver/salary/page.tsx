@@ -26,6 +26,7 @@ import { useSession } from "next-auth/react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 import Link from "next/link";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 export default function DriverSalaryPage() {
   const { data: session } = useSession();
@@ -202,6 +203,20 @@ export default function DriverSalaryPage() {
               <h3 className="font-black text-sm text-slate-900">Salary & Advance Payout History</h3>
               <p className="text-xs text-slate-400">Chronological transaction record with Store Manager sign-off.</p>
             </div>
+            <ExportMenu
+              title="Salary & Advance Ledger"
+              subtitle={`${ledger.length} transactions`}
+              data={ledger.map((row) => ({
+                "Txn Ref #": row.id,
+                Date: row.date,
+                Type: row.type,
+                Description: row.description,
+                "Credit (Salary)": row.credit,
+                "Debit (Advance)": row.debit,
+                Status: row.status,
+              }))}
+              filename="driver-salary-ledger"
+            />
           </div>
 
           <div className="overflow-x-auto">

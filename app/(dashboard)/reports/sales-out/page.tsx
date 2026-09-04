@@ -8,8 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Download, Printer, Filter, Receipt, FileText, ArrowUpDown } from "lucide-react";
+import { Search, Printer, Filter, Receipt, FileText, ArrowUpDown } from "lucide-react";
 import { DateRangeFilter, resolveDateRange } from "@/components/shared/date-range-filter";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 import Link from "next/link";
 
@@ -101,33 +102,22 @@ function SalesOutReportContent() {
     (item.staff || "").toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const downloadCSV = () => {
-    if (filtered.length === 0) return;
-    const headers = ["Due", "Date", "Amount", "Bill Number", "Customer Name", "Mobile", "Staff", "Payment Mode", "Finance Bank", "Paid Amount", "Due Amount", "Invoice Status", "Finance Status"];
-    const rows = filtered.map((i: any) => [
-      i.due,
-      i.date,
-      i.amount,
-      i.billNumber,
-      `"${i.customerName}"`,
-      i.customerPhone,
-      `"${i.staff}"`,
-      i.paymentMode,
-      `"${i.financeProvider || 'N/A'}"`,
-      i.paidAmount,
-      i.dueAmount,
-      i.invoiceStatus,
-      i.financeStatus,
-    ]);
-    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map((e: any) => e.join(","))].join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `ValuePlus_Sales_Out_Report_${new Date().toISOString().split("T")[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
+  const exportData = filtered.map((i: any) => ({
+    Due: i.due,
+    Date: i.date,
+    Amount: i.amount,
+    "Bill Number": i.billNumber,
+    "Customer Name": i.customerName,
+    Mobile: i.customerPhone,
+    Staff: i.staff,
+    "Payment Mode": i.paymentMode,
+    "Finance Bank": i.financeProvider || "N/A",
+    "Paid Amount": i.paidAmount,
+    "Due Amount": i.dueAmount,
+    "Invoice Status": i.invoiceStatus,
+    "Finance Status": i.financeStatus,
+  }));
+  const exportFilename = `ValuePlus_Sales_Out_Report_${new Date().toISOString().split("T")[0]}`;
 
   return (
     <PageShell
@@ -212,9 +202,13 @@ function SalesOutReportContent() {
               </SelectContent>
             </Select>
 
-            <Button onClick={downloadCSV} variant="outline" size="sm" className="text-xs font-bold gap-1">
-              <Download className="w-3.5 h-3.5" /> Export CSV
-            </Button>
+            <ExportMenu
+              className="text-xs font-bold gap-1"
+              title="Sales Out Report"
+              subtitle={`${summary.totalInvoices} bills`}
+              data={exportData}
+              filename={exportFilename}
+            />
             <Button onClick={() => window.print()} variant="outline" size="sm" className="text-xs font-bold gap-1">
               <Printer className="w-3.5 h-3.5" /> Print
             </Button>

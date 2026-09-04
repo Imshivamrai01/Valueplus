@@ -16,6 +16,7 @@ import { PurchaseCreationModal } from "@/components/PurchaseCreationModal";
 import { ViewPurchaseOrderModal } from "@/components/ViewPurchaseOrderModal";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 import { Eye } from "lucide-react";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 interface POItem {
   id: string;
@@ -89,9 +90,22 @@ export default function PurchaseOrdersPage() {
         breadcrumbs={[{ label: "Purchase", href: "/purchase/orders" }, { label: "Purchase Orders" }]}
         actions={
           <div className="flex items-center gap-2">
-            <Button 
+            <ExportMenu
+              title="Purchase Orders"
+              subtitle={`${filtered.length} purchase orders`}
+              data={(filtered as any[]).map((p) => ({
+                "PO #": p.poNo,
+                "Supplier Name": p.supplierName,
+                "Order Date": formatDate(p.date),
+                "Expected Date": formatDate(p.expectedDate),
+                "PO Amount": p.totalAmount,
+                Status: p.status,
+              }))}
+              filename="purchase-orders"
+            />
+            <Button
               variant="outline"
-              size="sm" 
+              size="sm"
               onClick={() => router.push("/purchase/low-stock")}
               className="border-amber-300 text-amber-900 bg-amber-50/70 hover:bg-amber-100 font-bold text-xs shadow-2xs"
             >

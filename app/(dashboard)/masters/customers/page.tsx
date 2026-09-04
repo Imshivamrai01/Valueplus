@@ -2,6 +2,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/shared/page-shell";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -202,17 +203,36 @@ export default function CustomersPage() {
       subtitle={`${customers.length} registered customers`}
       breadcrumbs={[{ label: "Masters" }, { label: "Customers" }]}
       actions={
-        isSuperAdminOrAdmin ? (
-          <Button size="sm" onClick={handleAddNew}>
-            <Plus className="w-4 h-4 mr-1.5" /> Add Customer
-          </Button>
-        ) : (
-          <Link href="/sales/estimates">
-            <Button size="sm" variant="outline" className="text-xs font-bold text-[#30539C] border-blue-200 hover:bg-blue-50">
-              <FileText className="w-4 h-4 mr-1.5" /> Add Customer via Estimate
+        <div className="flex items-center gap-2">
+          <ExportMenu
+            title="Customers"
+            subtitle={`${filtered.length} registered customers`}
+            data={(filtered as any[]).map((c) => ({
+              Code: c.code,
+              "Customer Name": c.name,
+              Phone: c.phone || "",
+              Email: c.email || "",
+              City: c.billingAddress?.city || "",
+              State: c.billingAddress?.state || "",
+              GSTIN: c.gstNumber || "URP",
+              Group: c.customerGroup || "Retail",
+              Outstanding: balanceById.get(String(c._id)) ?? 0,
+              Status: c.status,
+            }))}
+            filename="customers"
+          />
+          {isSuperAdminOrAdmin ? (
+            <Button size="sm" onClick={handleAddNew}>
+              <Plus className="w-4 h-4 mr-1.5" /> Add Customer
             </Button>
-          </Link>
-        )
+          ) : (
+            <Link href="/sales/estimates">
+              <Button size="sm" variant="outline" className="text-xs font-bold text-[#30539C] border-blue-200 hover:bg-blue-50">
+                <FileText className="w-4 h-4 mr-1.5" /> Add Customer via Estimate
+              </Button>
+            </Link>
+          )}
+        </div>
       }
     >
       {!isSuperAdminOrAdmin && (

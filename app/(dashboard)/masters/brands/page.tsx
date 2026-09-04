@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PageShell } from "@/components/shared/page-shell";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -149,9 +150,27 @@ export default function BrandsPage() {
       actions={
         selectedBrand ? (
           <div className="flex items-center gap-2">
-            <Button 
-              size="sm" 
-              onClick={() => setIsBillingModalOpen(true)} 
+            <ExportMenu
+              title={`${selectedBrand} Products`}
+              subtitle={`${filteredBrandProducts.length} products in ${selectedBrand} catalog`}
+              data={(filteredBrandProducts as any[]).map((item) => ({
+                "Product Name": item.name || "",
+                "VP Code": item.vpCode || item.code || "",
+                SKU: item.code || "",
+                Category: item.category || "",
+                HSN: item.hsnCode || item.hsn || "",
+                "GST %": item.gstRate || 18,
+                "Purchase Rate": item.purchasePrice || 0,
+                "Showroom Price": item.sellingPrice || 0,
+                MRP: item.mrp || 0,
+                "Live Stock": item.currentStock || 0,
+                Unit: item.unit || "Pcs",
+              }))}
+              filename="brand-products"
+            />
+            <Button
+              size="sm"
+              onClick={() => setIsBillingModalOpen(true)}
               className="gap-2 bg-[#30539C] hover:bg-[#25427d] text-white font-semibold shadow-sm"
             >
               <ShoppingCart className="w-4 h-4" /> Create Bill / Invoice
@@ -161,7 +180,19 @@ export default function BrandsPage() {
               Back to All Brands
             </Button>
           </div>
-        ) : undefined
+        ) : (
+          <ExportMenu
+            title="Showroom Brands"
+            subtitle={`${filteredBrands.length} partner brands`}
+            data={(filteredBrands as any[]).map((brand) => ({
+              "Brand Name": brand.name || "",
+              Description: brand.description || "",
+              Products: brand.items || 0,
+              Status: brand.status || "active",
+            }))}
+            filename="brands"
+          />
+        )
       }
     >
       {/* ════════════════════════════════════════════════════════════ */}

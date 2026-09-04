@@ -18,6 +18,7 @@ import ValueplusInvoice from "@/app/invoice/page";
 import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/shared/date-range-filter";
 import { useSession } from "next-auth/react";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 interface EstimateItem {
   id: string;
@@ -161,9 +162,25 @@ export default function EstimatesPage() {
       subtitle="Create and manage customer price quotes"
       breadcrumbs={[{ label: "Sales" }, { label: "Estimates" }]}
       actions={
-        <Button size="sm" onClick={() => setIsFormOpen(true)}>
-          <Plus className="w-4 h-4 mr-1.5" /> New Estimate
-        </Button>
+        <div className="flex items-center gap-2">
+          <ExportMenu
+            title="Estimates & Quotations"
+            subtitle={`${filtered.length} estimates`}
+            data={(filtered as any[]).map((e) => ({
+              "Estimate #": e.estimateNumber || e.estimateNo,
+              Customer: e.customerName,
+              Salesperson: e.salesperson || e.salesExecutive || "AMIT SINGH",
+              Date: formatDate(e.date),
+              "Valid Until": formatDate(e.expiryDate),
+              Amount: e.total || e.totalAmount || 0,
+              Status: e.status,
+            }))}
+            filename="estimates"
+          />
+          <Button size="sm" onClick={() => setIsFormOpen(true)}>
+            <Plus className="w-4 h-4 mr-1.5" /> New Estimate
+          </Button>
+        </div>
       }
     >
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

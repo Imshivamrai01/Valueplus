@@ -30,6 +30,7 @@ import { formatDate, formatCurrency, cn } from "@/lib/utils";
 import { toast } from "sonner";
 import Link from "next/link";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 export default function DriverDeliveriesPage() {
   const { data: session } = useSession();
@@ -222,13 +223,29 @@ export default function DriverDeliveriesPage() {
         </div>
 
         {/* ─── SEARCH INPUT ─────────────────────────────────────────── */}
-        <div className="relative">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <Input
-            placeholder="Search customer name, phone, invoice number, or location..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-10 h-10 text-xs bg-white border-slate-200 rounded-2xl shadow-xs"
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <Input
+              placeholder="Search customer name, phone, invoice number, or location..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-10 h-10 text-xs bg-white border-slate-200 rounded-2xl shadow-xs"
+            />
+          </div>
+          <ExportMenu
+            title="Assigned Deliveries"
+            subtitle={`${filteredOrders.length} ${activeTab} deliveries`}
+            data={filteredOrders.map((inv: any) => ({
+              "Invoice No.": inv.invoiceNumber,
+              Customer: inv.customerName,
+              Phone: inv.customerPhone,
+              Address: inv.shippingAddress || inv.customerAddress || "",
+              "Amount (₹)": Number(inv.total || inv.grandTotal || 0),
+              "Payment Mode": inv.paymentMode || "Paid (Prepaid)",
+              Status: inv.deliveryStatus === "delivered" ? "Delivered" : "In-Transit",
+            }))}
+            filename="driver-deliveries"
           />
         </div>
 

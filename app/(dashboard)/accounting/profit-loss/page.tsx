@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { PageShell } from "@/components/shared/page-shell";
 import { 
   TrendingUp, TrendingDown, DollarSign, ShoppingBag, Package, 
-  Search, Filter, Download, Printer, ArrowUpRight, ArrowDownRight, 
+  Search, Filter, Printer, ArrowUpRight, ArrowDownRight,
   Layers, Award, Calendar, RefreshCw, BarChart2, ShieldAlert,
   Percent, ArrowRight, Building2, Store, CheckCircle2, AlertCircle,
   FileText, History, HelpCircle, X, Check, Eye
@@ -16,10 +16,11 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { formatCurrency, formatDate, downloadCSV, cn } from "@/lib/utils";
+import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { DateRangeFilter, resolveDateRange } from "@/components/shared/date-range-filter";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ProductLedgerModal } from "@/components/ProductLedgerModal";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 const QUICK_DATE_PILLS = [
   { label: "Today", value: "Today" },
@@ -157,26 +158,6 @@ function ProfitLossContent() {
 
   const hasActiveFilters = search !== "" || categoryFilter !== "ALL" || brandFilter !== "ALL" || healthFilter !== "ALL";
 
-  const handleExportCSV = () => {
-    const csvRows = filteredProducts.map((p, idx) => ({
-      "#": idx + 1,
-      "Product Name": p.name,
-      "VP Code": p.vpCode,
-      "Brand": p.brand,
-      "Category": p.category,
-      "Units Sold": p.qtySold,
-      "Purchase Rate (Cost)": p.purchasePrice,
-      "Avg Selling Price": p.avgSellingPrice,
-      "Total Purchase Cost (COGS)": p.totalCost,
-      "Total Sales Revenue": p.totalRevenue,
-      "Profit / Loss Amount": p.totalProfit,
-      "Profit Margin %": `${p.marginPct}%`,
-      "Margin Health": p.status.toUpperCase(),
-      "Current In-Stock": p.currentStock,
-    }));
-    downloadCSV(csvRows, `profit_loss_report_${dateRange.start}_to_${dateRange.end}.csv`);
-  };
-
   const isNetProfitable = summary.netProfit >= 0;
   const isGrossProfitable = summary.grossProfit >= 0;
 
@@ -202,14 +183,29 @@ function ProfitLossContent() {
           >
             <RefreshCw className={cn("w-3.5 h-3.5 mr-1.5", isFetching && "animate-spin")} /> Refresh
           </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={handleExportCSV}
+          <ExportMenu
+            size="sm"
             className="text-xs bg-white text-slate-700 font-semibold"
-          >
-            <Download className="w-3.5 h-3.5 mr-1.5" /> Export CSV
-          </Button>
+            title="Profit & Loss - Product Wise"
+            subtitle={`${filteredProducts.length} products · ${formatDate(dateRange.start)} to ${formatDate(dateRange.end)}`}
+            data={filteredProducts.map((p, idx) => ({
+              "#": idx + 1,
+              "Product Name": p.name,
+              "VP Code": p.vpCode,
+              "Brand": p.brand,
+              "Category": p.category,
+              "Units Sold": p.qtySold,
+              "Purchase Rate (Cost)": p.purchasePrice,
+              "Avg Selling Price": p.avgSellingPrice,
+              "Total Purchase Cost (COGS)": p.totalCost,
+              "Total Sales Revenue": p.totalRevenue,
+              "Profit / Loss Amount": p.totalProfit,
+              "Profit Margin %": `${p.marginPct}%`,
+              "Margin Health": p.status.toUpperCase(),
+              "Current In-Stock": p.currentStock,
+            }))}
+            filename={`profit_loss_report_${dateRange.start}_to_${dateRange.end}`}
+          />
           <Button 
             size="sm" 
             onClick={() => setIsPrintModalOpen(true)}

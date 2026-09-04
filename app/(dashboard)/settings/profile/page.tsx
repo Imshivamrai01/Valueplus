@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { PageShell } from "@/components/shared/page-shell";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -343,12 +344,27 @@ export default function StoreProfilePage() {
                 <p className="text-xs text-slate-500">Connected to MongoDB backend. Used for Finance Payouts and Payments.</p>
               </div>
             </div>
-            <Button
-              onClick={handleOpenAddBank}
-              className="bg-[#76C043] hover:bg-[#60a82c] text-white text-xs font-bold gap-1.5 shadow-xs"
-            >
-              <Plus className="w-4 h-4" /> + Add Bank Account
-            </Button>
+            <div className="flex items-center gap-2">
+              <ExportMenu
+                title="Bank Accounts"
+                subtitle={`${bankAccounts.length} accounts`}
+                data={(bankAccounts as any[]).map((acc) => ({
+                  "Account Name": acc.name,
+                  Bank: acc.bank,
+                  "Account Number": acc.number,
+                  "IFSC Code": acc.ifsc || "",
+                  Branch: acc.branch || "",
+                  Type: acc.type === "cash" ? "Cash" : (acc.type || "").toUpperCase(),
+                }))}
+                filename="bank-accounts"
+              />
+              <Button
+                onClick={handleOpenAddBank}
+                className="bg-[#76C043] hover:bg-[#60a82c] text-white text-xs font-bold gap-1.5 shadow-xs"
+              >
+                <Plus className="w-4 h-4" /> + Add Bank Account
+              </Button>
+            </div>
           </div>
 
           {/* BANK ACCOUNTS GRID */}

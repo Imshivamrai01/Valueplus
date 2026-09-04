@@ -4,8 +4,8 @@ import React, { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
-  AlertTriangle, ShoppingBag, Truck, Package, Plus, CheckCircle2, 
-  ArrowRight, Search, Filter, Download, Sparkles, RefreshCw, Eye, Check,
+  AlertTriangle, ShoppingBag, Truck, Package, Plus, CheckCircle2,
+  ArrowRight, Search, Filter, Sparkles, RefreshCw, Eye, Check,
   DollarSign, BarChart2, ShieldAlert, Store, Warehouse, Layers
 } from "lucide-react";
 import { PageShell } from "@/components/shared/page-shell";
@@ -15,7 +15,8 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { formatCurrency, formatDate, downloadCSV, cn } from "@/lib/utils";
+import { formatCurrency, formatDate, cn } from "@/lib/utils";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 import { PurchaseCreationModal } from "@/components/PurchaseCreationModal";
 import { useSession } from "next-auth/react";
@@ -326,29 +327,25 @@ export default function LowStockReorderPage() {
       breadcrumbs={[{ label: "Purchase", href: "/purchase/orders" }, { label: "Low Stock Alert" }]}
       actions={
         <div className="flex items-center gap-2 flex-wrap">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => downloadCSV(
-              enrichedLowStockItems.map(i => ({
-                Code: i.code,
-                VP_Code: i.vpCode || "",
-                Product_Name: i.name,
-                Category: i.category,
-                Brand: i.brand,
-                Current_Stock: i.currentStock,
-                Min_Reorder_Level: i.reorderLevel,
-                Suggested_Order_Qty: i.orderQty,
-                Unit_Purchase_Price: i.estimatedPurchasePrice,
-                Estimated_Total: i.totalWithGst,
-                Supplier: i.supplierName,
-              })),
-              "low_stock_reorder_list.csv"
-            )}
+          <ExportMenu
             className="text-xs"
-          >
-            <Download className="w-4 h-4 mr-1.5" /> Export List
-          </Button>
+            title="Low Stock & Auto Reorder"
+            subtitle={`${summaryMetrics.totalLow} products below threshold`}
+            data={enrichedLowStockItems.map((i: any) => ({
+              Code: i.code,
+              VP_Code: i.vpCode || "",
+              Product_Name: i.name,
+              Category: i.category,
+              Brand: i.brand,
+              Current_Stock: i.currentStock,
+              Min_Reorder_Level: i.reorderLevel,
+              Suggested_Order_Qty: i.orderQty,
+              Unit_Purchase_Price: i.estimatedPurchasePrice,
+              Estimated_Total: i.totalWithGst,
+              Supplier: i.supplierName,
+            }))}
+            filename="low_stock_reorder_list"
+          />
 
           {selectedCodes.length > 0 && (
             <Button

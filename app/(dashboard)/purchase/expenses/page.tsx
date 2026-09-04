@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Label } from "@/components/ui/label";
 import { 
   Plus, Search, DollarSign, Receipt, Trash2, AlertTriangle, X, Printer, 
-  TrendingDown, PieChart as PieIcon, Wallet, CreditCard, Building2, Download, ArrowUpRight, ArrowLeft
+  TrendingDown, PieChart as PieIcon, Wallet, CreditCard, Building2, ArrowUpRight, ArrowLeft
 } from "lucide-react";
 import { useState, useMemo, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -19,6 +19,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/shared/date-range-filter";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { TableShimmer, MetricCardsShimmer } from "@/components/shared/shimmer-skeleton";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 interface ExpenseItem {
   _id?: string;
@@ -271,32 +272,6 @@ function ExpensesContent() {
     createExpenseMutation.mutate(payload);
   };
 
-  const handleExportCSV = () => {
-    if (filtered.length === 0) {
-      toast.error("No expenses to export");
-      return;
-    }
-    const headers = ["Voucher No", "Date", "Category", "Description", "Payment Mode", "Amount", "Status"];
-    const rows = filtered.map((e: any) => [
-      e.expenseNo,
-      formatDate(e.date || e.createdAt),
-      `"${e.category}"`,
-      `"${e.description || ""}"`,
-      e.paymentMode,
-      e.amount,
-      e.status
-    ]);
-    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `Expenses_Report_${dateFilter.replace(/\s+/g, "_")}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success("Expenses CSV Exported!");
-  };
-
   return (
     <PageShell
       title="Showroom Operating Expenses"
@@ -309,9 +284,21 @@ function ExpensesContent() {
             <span>Showroom Cash: {formatCurrency(liveCashBalance)}</span>
           </div>
 
-          <Button variant="outline" size="sm" onClick={handleExportCSV} className="text-xs h-9">
-            <Download className="w-3.5 h-3.5 mr-1.5" /> Export CSV
-          </Button>
+          <ExportMenu
+            title="Showroom Operating Expenses"
+            subtitle={`${filtered.length} vouchers (${dateFilter})`}
+            data={filtered.map((e: any) => ({
+              "Voucher No": e.expenseNo,
+              Date: formatDate(e.date || e.createdAt),
+              Category: e.category,
+              Description: e.description || "",
+              "Payment Mode": e.paymentMode || "Cash",
+              Amount: e.amount,
+              Status: e.status || "Paid",
+            }))}
+            filename="expenses"
+          />
+
           <Button size="sm" onClick={() => setIsFormOpen(true)} className="bg-rose-600 hover:bg-rose-700 text-white font-bold h-9 shadow-sm">
             <Plus className="w-4 h-4 mr-1.5" /> Record Expense
           </Button>

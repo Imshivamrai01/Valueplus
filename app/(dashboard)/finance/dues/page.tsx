@@ -19,6 +19,7 @@ import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/s
 import { toast } from "sonner";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { TableShimmer, MetricCardsShimmer } from "@/components/shared/shimmer-skeleton";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 const FINANCE_PROVIDERS = [
   "Bajaj Finance Limited",
@@ -175,6 +176,31 @@ export default function CustomerDuesOverdueStandalonePage() {
       description="Live tracker of customers with pending or overdue EMI installments. Send instant WhatsApp payment reminders or collect payments directly."
       actions={
         <div className="flex items-center gap-2">
+          <ExportMenu
+            title="Customer Dues & Overdue Tracker"
+            subtitle={`${dueRecords.length} active due customers • Total Due: ${formatCurrency(totalOutstandingDues)}`}
+            data={dueRecords.map((rec: any) => {
+              const loanAmt = Number(rec.grossLoanAmount || rec.netLoanAmount || rec.productPrice || 0);
+              const totalPaid = Number(rec.totalPaidEmiAmount || 0);
+              const balanceDue = Number(rec.balanceDueAmount !== undefined ? rec.balanceDueAmount : Math.max(0, loanAmt - totalPaid));
+              const schedule = rec.emiSchedule || [];
+              const pendingInst = schedule.find((i: any) => i.status === "Pending" || i.status === "Overdue" || i.status === "Bounced");
+              const paidCount = schedule.filter((i: any) => i.status === "Paid").length;
+              const totalCount = schedule.length || rec.tenureMonths || 8;
+              return {
+                "Customer Name": rec.customerName || "",
+                Mobile: rec.customerMobile || "",
+                "DO ID": rec.doId || "",
+                "Finance Provider": rec.financeProvider || "",
+                Product: rec.model || rec.brand || "",
+                "Next Due Amount": Number(pendingInst?.amount || rec.monthlyEmiAmount || 0),
+                "Next Due Date": pendingInst?.dueDate || "",
+                "Total Outstanding": balanceDue,
+                "Installments Paid": `${paidCount}/${totalCount}`,
+              };
+            })}
+            filename="customer-dues"
+          />
           <Button onClick={() => window.print()} variant="outline" size="sm" className="text-xs font-bold gap-1 shadow-xs">
             <Printer className="w-3.5 h-3.5" /> Print Dues List
           </Button>

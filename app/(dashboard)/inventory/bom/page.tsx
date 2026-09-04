@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
+import { ExportMenu } from "@/components/shared/ExportMenu";
 
 export default function BOMPage() {
   const queryClient = useQueryClient();
@@ -87,6 +88,18 @@ export default function BOMPage() {
           <Input placeholder="Search BOMs..." className="pl-9" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
         </div>
         
+        <div className="flex items-center gap-2">
+        <ExportMenu
+          title="Bill of Material"
+          subtitle={`${filteredBoms.length} BOMs`}
+          data={filteredBoms.map((row: any) => ({
+            "BOM No.": row.bomNumber,
+            "Finished Good": row.finishedGoodName,
+            "Expected Qty": row.expectedQuantity,
+            "Total Cost (₹)": row.totalCost || 0,
+          }))}
+          filename="bill-of-material"
+        />
         <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
           <DialogTrigger asChild>
             <Button className="bg-[#3F63AD] hover:bg-[#3F63AD]/90"><Plus className="w-4 h-4 mr-2" /> New BOM</Button>
@@ -153,6 +166,7 @@ export default function BOMPage() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <Card className="overflow-hidden border border-slate-200">
