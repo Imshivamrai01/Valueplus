@@ -159,7 +159,7 @@ export function InvoiceCreationModal({
   const INITIAL_BILLING_FORM = {
     invoiceNo: "",
     invoiceDate: new Date().toISOString().split("T")[0],
-    dueDate: new Date(Date.now() + 15 * 86400000).toISOString().split("T")[0],
+    dueDate: new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0],
     customerId: "",
     customerName: "",
     customerPhone: "",
@@ -1141,7 +1141,7 @@ export function InvoiceCreationModal({
       salesperson: isIndividualStaff ? currentUserName : (billingForm.salesExecutive || currentUserName),
       createdBy: currentUserName,
       date: billingForm.invoiceDate,
-      dueDate: billingForm.dueDate || new Date(Date.now() + 15 * 86400000).toISOString().split("T")[0],
+      dueDate: billingForm.dueDate || new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0],
       customerName: billingForm.customerName,
       customerPhone: billingForm.customerPhone,
       customerAltPhone: billingForm.customerAltPhone || "",
@@ -2701,11 +2701,20 @@ export function InvoiceCreationModal({
                     </div>
                     <div>
                       <Label className="font-bold text-rose-950 text-rose-900">Promised Due Date (Kab tak jama karega) *</Label>
-                      <Input 
-                        type="date" 
-                        value={billingForm.dueDate || ""} 
-                        onChange={(e) => setBillingForm({ ...billingForm, dueDate: e.target.value })} 
-                        className="bg-white border-rose-300 font-bold text-rose-950 mt-1" 
+                      <Input
+                        type="date"
+                        value={billingForm.dueDate || ""}
+                        min={new Date().toISOString().split("T")[0]}
+                        max={new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0]}
+                        onChange={(e) => {
+                          const todayStr = new Date().toISOString().split("T")[0];
+                          const maxStr = new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0];
+                          let picked = e.target.value;
+                          if (picked && picked < todayStr) picked = todayStr;
+                          if (picked && picked > maxStr) picked = maxStr;
+                          setBillingForm({ ...billingForm, dueDate: picked });
+                        }}
+                        className="bg-white border-rose-300 font-bold text-rose-950 mt-1"
                       />
                     </div>
                   </div>
