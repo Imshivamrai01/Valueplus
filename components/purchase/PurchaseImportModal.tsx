@@ -103,6 +103,14 @@ export function PurchaseImportModal({
       const form = new FormData();
       form.append("file", file);
       const res = await fetch("/api/purchase-entries/import", { method: "POST", body: form });
+      const contentType = res.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        throw new Error(
+          res.status === 413
+            ? "This file is too large for the server to accept."
+            : `The server hit an unexpected error (status ${res.status}). Try again, or use a smaller/simpler file.`
+        );
+      }
       const json = await res.json();
       if (!json.success) throw new Error(json.error || "Could not read this file");
       return json.data;

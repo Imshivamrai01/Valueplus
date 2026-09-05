@@ -2,8 +2,6 @@ import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import Item from "@/models/Item";
 import { getActor } from "@/lib/requirePermission";
-import { extractRowsFromExcel } from "@/lib/purchase-import/excel";
-import { extractRowsFromPdf } from "@/lib/purchase-import/pdf";
 import { resolveRows } from "@/lib/purchase-import/resolve-rows";
 import { findMatchingItem } from "@/lib/purchase-import/match-item";
 
@@ -14,24 +12,30 @@ import { findMatchingItem } from "@/lib/purchase-import/match-item";
  * touches the database.
  */
 
+// PDF table extraction plus the full item lookup can run past Vercel's
+// default 10s function timeout on larger files — without this, a slow
+// parse gets killed mid-request and the client sees an HTML timeout page
+// instead of a JSON error.
+export const maxDuration = 60;
+
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 const EXCEL_EXTENSIONS = [".xlsx", ".xls", ".csv"];
 const PDF_EXTENSION = ".pdf";
 
 export async function POST(req: Request) {
-  const actor = await getActor();
-  if (!actor) {
-    return NextResponse.json({ success: false, error: "You must be signed in to do this." }, { status: 401 });
-  }
-  // Matches who can already create a purchase entry / add a product.
-  if (!["admin", "superadmin", "manager", "warehouse"].includes(actor.role)) {
-    return NextResponse.json(
-      { success: false, error: "Only an admin or manager can import a purchase sheet." },
-      { status: 403 }
-    );
-  }
-
   try {
+    const actor = await getActor();
+    if (!actor) {
+      return NextResponse.json({ success: false, error: "You must be signed in to do this." }, { status: 401 });
+    }
+    // Matches who can already create a purchase entry / add a product.
+    if (!["admin", "superadmin", "manager", "warehouse"].includes(actor.role)) {
+      return NextResponse.json(
+        { success: false, error: "Only an admin or manager can import a purchase sheet." },
+        { status: 403 }
+      );
+    }
+
     const form = await req.formData();
     const file = form.get("file");
 
@@ -61,9 +65,15 @@ export async function POST(req: Request) {
     let pdfHadNoText = false;
 
     if (isExcel) {
+      // Loaded lazily so a bundling/runtime failure in one parser (e.g.
+      // pdf-parse's known CJS/ESM interop issue on Vercel) can't take down
+      // the other's upload path — each only pays the import cost, and risk,
+      // for the file type actually chosen.
+      const { extractRowsFromExcel } = await import("@/lib/purchase-import/excel");
       grid = extractRowsFromExcel(buffer);
     } else {
       sourceType = "pdf";
+      const { extractRowsFromPdf } = await import("@/lib/purchase-import/pdf");
       const result = await extractRowsFromPdf(buffer);
       grid = result.grid;
       usedTableExtraction = result.usedTableExtraction;
