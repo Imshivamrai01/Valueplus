@@ -1261,16 +1261,16 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="space-y-6">
+      <div className="space-y-4">
         {/* ═══════════════════════════════════════════════════════════════════════════════
             🏆 SECTION 1: PAYMENT & BILL DISTRIBUTION + SALES & ORDER TRENDS (2 CARDS)
         ═══════════════════════════════════════════════════════════════════════════════ */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-stretch">
           {/* CARD 1 (LEFT): PAYMENT & BILL DISTRIBUTION WITH DONUT */}
-          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-4 flex flex-col justify-between hover:shadow-md transition-all">
+          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-3 flex flex-col justify-between hover:shadow-md transition-all">
             <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-blue-50 border border-blue-200/60 flex items-center justify-center text-[#3F63AD]">
+                <div className="w-7 h-7 rounded-lg bg-blue-50 border border-blue-200/60 flex items-center justify-center text-[#3F63AD]">
                   <PieChartIcon className="w-5 h-5" />
                 </div>
                 <div>
@@ -1292,7 +1292,7 @@ export default function DashboardPage() {
 
             {/* ─── TOTAL SALES SUMMARY PANEL (STACKED BAR + CHANNEL ROWS) ─── */}
             <div className="py-2">
-              <div className="bg-slate-100/70 rounded-xl p-4">
+              <div className="bg-slate-100/70 rounded-xl p-3">
                 {/* HEADLINE */}
                 <div
                   onClick={() => router.push(`/dashboard/reports?type=all&dateFilter=${encodeURIComponent(widgetFilters.pie)}`)}
@@ -1303,7 +1303,7 @@ export default function DashboardPage() {
                   <p className="text-xs text-slate-500 font-medium mt-0.5">
                     {pieRangeLabel} • {totalBilledCount} {totalBilledCount === 1 ? "order" : "orders"}
                   </p>
-                  <p className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight mt-2 leading-none">
+                  <p className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-2 leading-none">
                     ₹ {formatNumber(Math.round(totalCollectedAmount))}
                   </p>
                 </div>
@@ -1465,10 +1465,10 @@ export default function DashboardPage() {
           </div>
 
           {/* CARD 2 (RIGHT): SALES & ORDER TRENDS GRAPH */}
-          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-4 flex flex-col justify-between hover:shadow-md transition-all">
+          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-3 flex flex-col justify-between hover:shadow-md transition-all">
             <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-indigo-50 border border-indigo-200/60 flex items-center justify-center text-indigo-600">
+                <div className="w-7 h-7 rounded-lg bg-indigo-50 border border-indigo-200/60 flex items-center justify-center text-indigo-600">
                   <BarChart3 className="w-5 h-5" />
                 </div>
                 <div>
@@ -1528,12 +1528,12 @@ export default function DashboardPage() {
         {/* ═══════════════════════════════════════════════════════════════════════════════
             🛡️ SECTION 2: PAYMENT LEAKAGE & OPERATIONAL SECURITY (2 CARDS)
         ═══════════════════════════════════════════════════════════════════════════════ */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-stretch">
           {/* CARD 1 (LEFT): 6 PAYMENT LEAKAGE SORT BOXES (PETPOOJA STYLE) */}
-          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-4 flex flex-col justify-between hover:shadow-md transition-all">
+          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-3 flex flex-col justify-between hover:shadow-md transition-all">
             <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-rose-50 border border-rose-200/60 flex items-center justify-center text-rose-600">
+                <div className="w-7 h-7 rounded-lg bg-rose-50 border border-rose-200/60 flex items-center justify-center text-rose-600">
                   <ShieldAlert className="w-5 h-5" />
                 </div>
                 <div>
@@ -1741,10 +1741,10 @@ export default function DashboardPage() {
           </div>
 
           {/* CARD 2 (RIGHT): ALERT CENTER & QUICK ACTION PASTEL BUTTONS */}
-          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-4 flex flex-col justify-between hover:shadow-md transition-all">
+          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-3 flex flex-col justify-between hover:shadow-md transition-all">
             <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-amber-50 border border-amber-200/60 flex items-center justify-center text-amber-600">
+                <div className="w-7 h-7 rounded-lg bg-amber-50 border border-amber-200/60 flex items-center justify-center text-amber-600">
                   <Activity className="w-5 h-5" />
                 </div>
                 <div>
@@ -1843,7 +1843,7 @@ export default function DashboardPage() {
         <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-4 hover:shadow-md transition-all">
           <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-indigo-50 border border-indigo-200/60 flex items-center justify-center text-indigo-600">
+              <div className="w-7 h-7 rounded-lg bg-indigo-50 border border-indigo-200/60 flex items-center justify-center text-indigo-600">
                 <Building2 className="w-5 h-5" />
               </div>
               <div>
@@ -1863,7 +1863,7 @@ export default function DashboardPage() {
             </Link>
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 pt-3.5">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 pt-3.5">
             {/* VENDOR COLLECTIONS — with the mode split the counter actually used */}
             <div className="p-3 rounded-lg border border-emerald-200 bg-emerald-50/50">
               <div className="flex items-center justify-between mb-1">
@@ -1980,12 +1980,12 @@ export default function DashboardPage() {
         {/* ═══════════════════════════════════════════════════════════════════════════════
             📊 SECTION 3: KEY BUSINESS METRICS & SHOWROOM OPERATING EXPENSES (2 CARDS)
         ═══════════════════════════════════════════════════════════════════════════════ */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-stretch">
           {/* CARD 1 (LEFT): 4 BUSINESS HEALTH KPIS */}
-          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-4 flex flex-col justify-between hover:shadow-md transition-all">
+          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-3 flex flex-col justify-between hover:shadow-md transition-all">
             <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-blue-50 border border-blue-200/60 flex items-center justify-center text-[#3F63AD]">
+                <div className="w-7 h-7 rounded-lg bg-blue-50 border border-blue-200/60 flex items-center justify-center text-[#3F63AD]">
                   <CreditCard className="w-5 h-5" />
                 </div>
                 <div>
@@ -2010,7 +2010,7 @@ export default function DashboardPage() {
                   <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Gross Sales</span>
                   <IndianRupee className="w-4 h-4 text-[#76C043]" />
                 </div>
-                <p className="text-2xl font-black text-slate-900 font-mono">
+                <p className="text-lg font-black text-slate-900 font-mono">
                   {formatCurrency((kpiMetrics.cashRevenue || 0) + (kpiMetrics.onlineRevenue || 0) + (kpiMetrics.financeRevenue || 0) + (kpiMetrics.upiRevenue || 0) + (kpiMetrics.cardRevenue || 0))}
                 </p>
                 <div className="mt-2.5 pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs font-bold text-emerald-600">
@@ -2028,7 +2028,7 @@ export default function DashboardPage() {
                   <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Bills</span>
                   <Receipt className="w-4 h-4 text-blue-600" />
                 </div>
-                <p className="text-2xl font-black text-slate-900 font-mono">
+                <p className="text-lg font-black text-slate-900 font-mono">
                   {kpiMetrics.totalOrders || 0} <span className="text-sm font-normal text-slate-500">Invoices</span>
                 </p>
                 <div className="mt-2.5 pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs font-semibold text-amber-600">
@@ -2046,7 +2046,7 @@ export default function DashboardPage() {
                   <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Avg Order Value (AOV)</span>
                   <TrendingUp className="w-4 h-4 text-indigo-600" />
                 </div>
-                <p className="text-2xl font-black text-slate-900 font-mono">
+                <p className="text-lg font-black text-slate-900 font-mono">
                   {formatCurrency(kpiMetrics.totalOrders ? (((kpiMetrics.cashRevenue || 0) + (kpiMetrics.onlineRevenue || 0) + (kpiMetrics.financeRevenue || 0) + (kpiMetrics.upiRevenue || 0) + (kpiMetrics.cardRevenue || 0)) / kpiMetrics.totalOrders) : 0)}
                 </p>
                 <div className="mt-2.5 pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs font-medium text-slate-500">
@@ -2064,7 +2064,7 @@ export default function DashboardPage() {
                   <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Stocks</span>
                   <Package className="w-4 h-4 text-[#3F63AD]" />
                 </div>
-                <p className="text-2xl font-black text-slate-900 font-mono">
+                <p className="text-lg font-black text-slate-900 font-mono">
                   {stockBreakdown.totalQuantity > 0 ? stockBreakdown.totalQuantity.toLocaleString("en-IN") : (metrics.totalItems || 0)} <span className="text-sm font-normal text-slate-500">Units</span>
                 </p>
                 <div className="mt-2.5 pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs font-bold text-[#3F63AD]">
@@ -2081,7 +2081,7 @@ export default function DashboardPage() {
           </div>
 
           {/* CARD 2 (RIGHT): SHOWROOM OPERATING EXPENSES & CASH WITHDRAWAL (COMPACT & BALANCED) */}
-          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-4 flex flex-col justify-between hover:shadow-md transition-all">
+          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-3 flex flex-col justify-between hover:shadow-md transition-all">
             {/* 1. HEADER */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
@@ -2382,12 +2382,12 @@ export default function DashboardPage() {
         {/* ═══════════════════════════════════════════════════════════════════════════════
             🏷️ SECTION 4: CATEGORY STOCK & SALES STAFF LEADERBOARD (2 CARDS)
         ═══════════════════════════════════════════════════════════════════════════════ */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-stretch">
           {/* CARD 1 (LEFT): CATEGORY STOCK & WARRANTY OVERVIEW */}
-          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-4 flex flex-col justify-between hover:shadow-md transition-all">
+          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-3 flex flex-col justify-between hover:shadow-md transition-all">
             <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-purple-50 border border-purple-200/60 flex items-center justify-center text-purple-600">
+                <div className="w-7 h-7 rounded-lg bg-purple-50 border border-purple-200/60 flex items-center justify-center text-purple-600">
                   <Package className="w-5 h-5" />
                 </div>
                 <div>
@@ -2577,10 +2577,10 @@ export default function DashboardPage() {
           </div>
 
           {/* CARD 2 (RIGHT): SALES EXECUTIVE LEADERBOARD */}
-          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-4 flex flex-col justify-between hover:shadow-md transition-all">
+          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-3 flex flex-col justify-between hover:shadow-md transition-all">
             <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-indigo-50 border border-indigo-200/60 flex items-center justify-center text-indigo-600">
+                <div className="w-7 h-7 rounded-lg bg-indigo-50 border border-indigo-200/60 flex items-center justify-center text-indigo-600">
                   <Users className="w-5 h-5" />
                 </div>
                 <div>
@@ -2715,7 +2715,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-stretch">
             {/* 📱 CARD 1: TOP SELLING MOBILES (COMPACT) */}
             {(topSellingCategoryTab === "all" || topSellingCategoryTab === "mobiles") && (() => {
               const mobilesList: any[] = (widgetData.products?.topMobiles ?? data?.topMobiles ?? []).slice(0, 4);
@@ -2932,12 +2932,12 @@ export default function DashboardPage() {
         {/* ═══════════════════════════════════════════════════════════════════════════════
             📋 SECTION 5: DETAILED PAYMENT LOG & RECENT INVOICES LEDGER (2 CARDS)
         ═══════════════════════════════════════════════════════════════════════════════ */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-stretch">
           {/* CARD 1 (LEFT): DETAILED PAYMENT LOG */}
-          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-4 flex flex-col justify-between hover:shadow-md transition-all">
+          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-3 flex flex-col justify-between hover:shadow-md transition-all">
             <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-emerald-50 border border-emerald-200/60 flex items-center justify-center text-emerald-700">
+                <div className="w-7 h-7 rounded-lg bg-emerald-50 border border-emerald-200/60 flex items-center justify-center text-emerald-700">
                   <Receipt className="w-5 h-5" />
                 </div>
                 <div>
@@ -3050,10 +3050,10 @@ export default function DashboardPage() {
           </div>
 
           {/* CARD 2 (RIGHT): TODAY'S SALES REPORT / RECENT INVOICES */}
-          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-4 flex flex-col justify-between hover:shadow-md transition-all">
+          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-3 flex flex-col justify-between hover:shadow-md transition-all">
             <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-blue-50 border border-blue-200/60 flex items-center justify-center text-[#3F63AD]">
+                <div className="w-7 h-7 rounded-lg bg-blue-50 border border-blue-200/60 flex items-center justify-center text-[#3F63AD]">
                   <FileText className="w-5 h-5" />
                 </div>
                 <div>
@@ -3133,13 +3133,13 @@ export default function DashboardPage() {
         {/* ═══════════════════════════════════════════════════════════════════════════════
             🎯 SECTION 6: ADMIN & STAFF TASK DELEGATION + LEAD PIPELINE & CONVERSION FUNNEL (2 CARDS)
         ═══════════════════════════════════════════════════════════════════════════════ */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-stretch">
           {/* CARD 1 (LEFT): ADMIN & STAFF TASK DELEGATION */}
-          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-4 flex flex-col justify-between hover:shadow-md transition-all">
+          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-3 flex flex-col justify-between hover:shadow-md transition-all">
             <div>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2.5 border-b border-slate-100 gap-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-purple-50 border border-purple-200/60 flex items-center justify-center text-purple-700">
+                  <div className="w-7 h-7 rounded-lg bg-purple-50 border border-purple-200/60 flex items-center justify-center text-purple-700">
                     <CheckSquare className="w-5 h-5" />
                   </div>
                   <div>
@@ -3307,11 +3307,11 @@ export default function DashboardPage() {
           </div>
 
           {/* CARD 2 (RIGHT): LEAD PIPELINE & CONVERSION FUNNEL */}
-          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-4 flex flex-col justify-between hover:shadow-md transition-all">
+          <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-3 flex flex-col justify-between hover:shadow-md transition-all">
             <div>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2.5 border-b border-slate-100 gap-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-amber-50 border border-amber-200/60 flex items-center justify-center text-amber-700">
+                  <div className="w-7 h-7 rounded-lg bg-amber-50 border border-amber-200/60 flex items-center justify-center text-amber-700">
                     <Target className="w-5 h-5" />
                   </div>
                   <div>
@@ -3534,11 +3534,11 @@ export default function DashboardPage() {
         else displayList = pendingDues;
 
         return (
-          <div className="bg-white rounded-2xl border border-rose-100 shadow-sm p-6 space-y-4">
-            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+          <div className="bg-white rounded-xl border border-rose-100 shadow-sm p-4 space-y-3">
+            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 border-b border-slate-100 pb-3">
               {/* TITLE BLOCK */}
               <div className="flex items-start gap-3 min-w-0">
-                <div className="w-9 h-9 rounded-lg bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600 flex-shrink-0">
+                <div className="w-7 h-7 rounded-lg bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600 flex-shrink-0">
                   <Clock className="w-5 h-5" />
                 </div>
                 <div className="min-w-0">
@@ -4894,7 +4894,7 @@ export default function DashboardPage() {
         <DialogContent className="max-w-lg p-0 rounded-2xl overflow-hidden border-none shadow-2xl">
           <div className="bg-gradient-to-r from-[#1E293B] via-[#30539C] to-[#1E293B] text-white p-5">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center">
+              <div className="w-7 h-7 rounded-lg bg-white/10 flex items-center justify-center">
                 <CheckSquare className="w-5 h-5 text-purple-300" />
               </div>
               <div>
@@ -4999,7 +4999,7 @@ export default function DashboardPage() {
         <DialogContent className="max-w-lg p-0 rounded-2xl overflow-hidden border-none shadow-2xl">
           <div className="bg-gradient-to-r from-[#1B2537] via-[#10B981]/80 to-[#1B2537] text-white p-5">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center">
+              <div className="w-7 h-7 rounded-lg bg-white/10 flex items-center justify-center">
                 <Target className="w-5 h-5 text-emerald-300" />
               </div>
               <div>

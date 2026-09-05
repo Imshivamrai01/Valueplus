@@ -80,6 +80,8 @@ function SalesInvoicesContent() {
   const [activeSuggestRow, setActiveSuggestRow] = useState<number | null>(null);
   const [invoiceToDelete, setInvoiceToDelete] = useState<string | null>(null);
   const [invoiceToCancel, setInvoiceToCancel] = useState<string | null>(null);
+  const [editingInvoice, setEditingInvoice] = useState<any | null>(null);
+  const [editForm, setEditForm] = useState<any>({});
   // The PIN and reason now live inside AuthorizePinDialog; this only holds the
   // server's verdict (wrong PIN, locked out, role not allowed) so it can be shown.
   const [authError, setAuthError] = useState<string | null>(null);
@@ -242,6 +244,56 @@ function SalesInvoicesContent() {
       setAuthError(error.message || "An error occurred while cancelling");
     }
   });
+
+  // Deliberately excludes items/quantities/totals/payments — those drive stock
+  // and accounting, so changing them here would silently desync both. Only
+  // fields that don't touch stock or money are editable post-creation.
+  const editInvoiceMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      const res = await fetch("/api/invoices", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || "Failed to update invoice");
+      return json;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      toast.success("Invoice details updated");
+      setEditingInvoice(null);
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Could not update this invoice");
+    },
+  });
+
+  const openEditInvoice = (inv: any) => {
+    setEditingInvoice(inv);
+    setEditForm({
+      customerName: inv.customerName || "",
+      customerPhone: inv.customerPhone || "",
+      customerAltPhone: inv.customerAltPhone || "",
+      customerEmail: inv.customerEmail || "",
+      customerGST: inv.customerGST || "",
+      customerPAN: inv.customerPAN || "",
+      customerAddress: inv.customerAddress || "",
+      customerCity: inv.customerCity || "",
+      customerState: inv.customerState || "",
+      customerPin: inv.customerPin || "",
+      vehicleNumber: inv.vehicleNumber || "",
+      dueDate: inv.dueDate || "",
+      paymentMode: inv.paymentMode || "Cash",
+      notes: inv.notes || "",
+    });
+  };
+
+  const handleSaveEditInvoice = () => {
+    if (!editingInvoice) return;
+    editInvoiceMutation.mutate({ invoiceNumber: editingInvoice.invoiceNumber, ...editForm });
+  };
 
   // The PIN is no longer compared in the browser — it goes to the API, which
   // checks it against the user's own hashed PIN and refuses without it.
@@ -459,16 +511,35 @@ function SalesInvoicesContent() {
                         <td className="px-4 py-3 font-mono text-emerald-600">{formatCurrency(inv.paidAmount || (inv.status === "paid" ? inv.total : 0) || 0)}</td>
                         <td className="px-4 py-3 font-mono text-red-600">{formatCurrency((inv.total || 0) - (inv.paidAmount || (inv.status === "paid" ? inv.total : 0) || 0))}</td>
                         <td className="px-4 py-3">
-                          <Badge variant={STATUS_CONFIG[inv.status as keyof typeof STATUS_CONFIG]?.variant || "secondary"} className="gap-1.5 whitespace-nowrap">
-                            <StatusIcon className="w-3 h-3" />
-                            {STATUS_CONFIG[inv.status as keyof typeof STATUS_CONFIG]?.label || "Draft"}
-                          </Badge>
+                          <div className="flex flex-col items-start gap-1">
+                            <Badge variant={STATUS_CONFIG[inv.status as keyof typeof STATUS_CONFIG]?.variant || "secondary"} className="gap-1.5 whitespace-nowrap">
+                              <StatusIcon className="w-3 h-3" />
+                              {STATUS_CONFIG[inv.status as keyof typeof STATUS_CONFIG]?.label || "Draft"}
+                            </Badge>
+                            {inv.lastModifiedReason === "content-edit" && (
+                              <Badge variant="outline" className="gap-1 whitespace-nowrap text-[10px] border-blue-300 text-blue-700 bg-blue-50">
+                                <Edit className="w-2.5 h-2.5" /> Edited
+                              </Badge>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-1.5">
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 w-7 p-0 border-slate-300 text-slate-600 hover:bg-slate-600 hover:text-white"
+                              onClick={() => {
+                                setActivePrintInvoice(inv);
+                                setIsPreviewOpen(true);
+                              }}
+                              title="View Invoice Details"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
                               className="h-7 px-2 text-[11px] font-semibold border-[#3F63AD]/40 text-[#3F63AD] hover:bg-[#3F63AD] hover:text-white"
                               onClick={() => {
                                 setActivePrintInvoice(inv);
@@ -510,6 +581,14 @@ function SalesInvoicesContent() {
                                 >
                                   <Eye className="h-4 w-4" /> Full Invoice Preview
                                 </DropdownMenuItem>
+                                {inv.status !== "cancelled" && (
+                                  <DropdownMenuItem
+                                    className="gap-2 cursor-pointer text-[#3F63AD] focus:text-[#3F63AD]"
+                                    onClick={() => openEditInvoice(inv)}
+                                  >
+                                    <Edit className="h-4 w-4" /> Edit Invoice
+                                  </DropdownMenuItem>
+                                )}
                                 <DropdownMenuSeparator />
                                 {inv.status !== "cancelled" && (
                                   <DropdownMenuItem
@@ -602,11 +681,101 @@ function SalesInvoicesContent() {
       </Tabs>
 
 
-      <InvoiceCreationModal 
-        isOpen={isBillingFormOpen} 
-        onClose={() => setIsBillingFormOpen(false)} 
+      <InvoiceCreationModal
+        isOpen={isBillingFormOpen}
+        onClose={() => setIsBillingFormOpen(false)}
         onSuccess={() => setIsBillingFormOpen(false)}
       />
+
+      {/* EDIT INVOICE (safe fields only — items/totals/stock are never touched here) */}
+      <Dialog open={!!editingInvoice} onOpenChange={(open) => !open && setEditingInvoice(null)}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Edit className="w-4 h-4 text-[#3F63AD]" /> Edit Invoice {editingInvoice?.invoiceNumber}
+            </DialogTitle>
+            <DialogDescription>
+              Only customer, contact and note details can be edited here — items, quantities and
+              totals are locked once billed to keep stock and accounts accurate.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2">
+            <div>
+              <Label>Customer Name</Label>
+              <Input value={editForm.customerName || ""} onChange={(e) => setEditForm((f: any) => ({ ...f, customerName: e.target.value }))} className="mt-1" />
+            </div>
+            <div>
+              <Label>Phone</Label>
+              <Input value={editForm.customerPhone || ""} onChange={(e) => setEditForm((f: any) => ({ ...f, customerPhone: e.target.value }))} className="mt-1" />
+            </div>
+            <div>
+              <Label>Alternate Phone</Label>
+              <Input value={editForm.customerAltPhone || ""} onChange={(e) => setEditForm((f: any) => ({ ...f, customerAltPhone: e.target.value }))} className="mt-1" />
+            </div>
+            <div>
+              <Label>Email</Label>
+              <Input value={editForm.customerEmail || ""} onChange={(e) => setEditForm((f: any) => ({ ...f, customerEmail: e.target.value }))} className="mt-1" />
+            </div>
+            <div>
+              <Label>GSTIN</Label>
+              <Input value={editForm.customerGST || ""} onChange={(e) => setEditForm((f: any) => ({ ...f, customerGST: e.target.value }))} className="mt-1" />
+            </div>
+            <div>
+              <Label>PAN</Label>
+              <Input value={editForm.customerPAN || ""} onChange={(e) => setEditForm((f: any) => ({ ...f, customerPAN: e.target.value }))} className="mt-1" />
+            </div>
+            <div className="sm:col-span-2">
+              <Label>Billing Address</Label>
+              <Input value={editForm.customerAddress || ""} onChange={(e) => setEditForm((f: any) => ({ ...f, customerAddress: e.target.value }))} className="mt-1" />
+            </div>
+            <div>
+              <Label>City</Label>
+              <Input value={editForm.customerCity || ""} onChange={(e) => setEditForm((f: any) => ({ ...f, customerCity: e.target.value }))} className="mt-1" />
+            </div>
+            <div>
+              <Label>State</Label>
+              <Input value={editForm.customerState || ""} onChange={(e) => setEditForm((f: any) => ({ ...f, customerState: e.target.value }))} className="mt-1" />
+            </div>
+            <div>
+              <Label>PIN Code</Label>
+              <Input value={editForm.customerPin || ""} onChange={(e) => setEditForm((f: any) => ({ ...f, customerPin: e.target.value }))} className="mt-1" />
+            </div>
+            <div>
+              <Label>Vehicle Number</Label>
+              <Input value={editForm.vehicleNumber || ""} onChange={(e) => setEditForm((f: any) => ({ ...f, vehicleNumber: e.target.value }))} className="mt-1" />
+            </div>
+            <div>
+              <Label>Due Date</Label>
+              <Input type="date" value={editForm.dueDate || ""} onChange={(e) => setEditForm((f: any) => ({ ...f, dueDate: e.target.value }))} className="mt-1" />
+            </div>
+            <div>
+              <Label>Payment Mode</Label>
+              <Select value={editForm.paymentMode || "Cash"} onValueChange={(v) => setEditForm((f: any) => ({ ...f, paymentMode: v }))}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {["Cash", "UPI", "Online", "Card", "Credit Card", "Debit Card", "Finance", "Due / Credit", "Multiple"].map((m) => (
+                    <SelectItem key={m} value={m}>{m}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="sm:col-span-2">
+              <Label>Notes</Label>
+              <Textarea value={editForm.notes || ""} onChange={(e) => setEditForm((f: any) => ({ ...f, notes: e.target.value }))} className="mt-1" rows={3} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingInvoice(null)}>Cancel</Button>
+            <Button
+              onClick={handleSaveEditInvoice}
+              disabled={editInvoiceMutation.isPending}
+              className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white"
+            >
+              {editInvoiceMutation.isPending ? "Saving…" : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* FULL INVOICE PREVIEW MODAL */}
       <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>

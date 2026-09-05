@@ -7,6 +7,9 @@ import Item from "@/models/Item";
 import PurchaseOrder from "@/models/PurchaseOrder";
 import StockRequest from "@/models/StockRequest";
 import SerialNumber from "@/models/SerialNumber";
+import DeletedPurchaseEntry from "@/models/DeletedPurchaseEntry";
+import AuditLog from "@/models/AuditLog";
+import { authoriseDestructiveAction } from "@/lib/destructiveAction";
 
 export async function GET(req: Request) {
   try {
@@ -243,19 +246,93 @@ export async function PUT(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const billNo = searchParams.get("billNo");
-    
+
     if (!billNo) {
       return NextResponse.json({ success: false, error: "billNo is required" }, { status: 400 });
     }
 
     const body = await req.json();
     await connectToDatabase();
-    
-    const updatedEntry = await PurchaseEntry.findOneAndUpdate({ billNo }, body, { new: true });
-    
-    if (!updatedEntry) {
+
+    const entry = await PurchaseEntry.findOne({ billNo });
+    if (!entry) {
       return NextResponse.json({ success: false, error: "Entry not found" }, { status: 404 });
     }
+
+    // Soft-cancel: unlike DELETE, the bill record survives (for audit / payables tracking)
+    if (body.action === "cancel") {
+      const gate = await authoriseDestructiveAction(req, "purchase.entry.cancel", body.pin, body.reason);
+      if (!gate.ok) return gate.response;
+
+      if (entry.status === "cancelled") {
+        return NextResponse.json({ success: false, error: "Bill is already cancelled" }, { status: 400 });
+      }
+
+      // Reverse the balance impact (same logic as hard delete)
+      if (entry.supplierName && entry.balance !== 0) {
+        const balanceImpact = entry.type === "debit-note" ? entry.balance : -entry.balance;
+        await Supplier.findOneAndUpdate(
+          { name: entry.supplierName },
+          { $inc: { outstandingBalance: balanceImpact } }
+        );
+      }
+
+      // Reverse Inventory Stock (same logic as hard delete)
+      if (entry.items && Array.isArray(entry.items)) {
+        for (const item of entry.items) {
+          if (item.itemId) {
+            const qtyImpact = entry.type === "debit-note" ? item.quantity : -item.quantity;
+            if (qtyImpact !== 0) {
+              await Item.findByIdAndUpdate(item.itemId, { $inc: { currentStock: qtyImpact } });
+            }
+          }
+        }
+      }
+
+      entry.status = "cancelled";
+      entry.cancelledAt = new Date().toISOString();
+      entry.cancelledBy = gate.actor.name;
+      entry.cancelReason = gate.reason;
+      entry.lastModifiedReason = "cancel";
+      const saved = await entry.save();
+
+      try {
+        await AuditLog.create({
+          action: "purchase-entry.cancel",
+          entityType: "PurchaseEntry",
+          entityRef: entry.billNo,
+          entityId: String(entry._id),
+          partyName: entry.supplierName,
+          amount: Number(entry.total) || 0,
+          reason: gate.reason,
+          performedBy: gate.actor.name,
+          performedByUserId: gate.actor.id,
+          performedByRole: gate.actor.role,
+          pinVerified: true,
+          usedLegacyPin: gate.usedLegacyPin,
+          ip: gate.ip,
+          userAgent: gate.userAgent,
+        });
+      } catch (logErr) {
+        console.warn("Notice: audit log for purchase entry cancel:", logErr);
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: "Purchase bill cancelled successfully",
+        usedLegacyPin: gate.usedLegacyPin,
+        data: saved,
+      });
+    }
+
+    // Generic edit — items/stock are untouched here, so this must stay limited
+    // to non-stock fields (supplier contact info, due date, notes, payment)
+    // until an edit UI that reconciles stock diffs exists.
+    const updatedEntry = await PurchaseEntry.findOneAndUpdate(
+      { billNo },
+      { ...body, lastModifiedReason: "content-edit" },
+      { new: true }
+    );
 
     return NextResponse.json({ success: true, data: updatedEntry });
   } catch (error: any) {
@@ -267,17 +344,21 @@ export async function DELETE(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const billNo = searchParams.get("billNo");
-    
+
     if (!billNo) {
       return NextResponse.json({ success: false, error: "billNo is required" }, { status: 400 });
     }
 
+    const body = await req.json().catch(() => ({}));
     await connectToDatabase();
-    
+
     const entry = await PurchaseEntry.findOne({ billNo });
     if (!entry) {
       return NextResponse.json({ success: false, error: "Entry not found" }, { status: 404 });
     }
+
+    const gate = await authoriseDestructiveAction(req, "purchase.entry.delete", body.pin, body.reason);
+    if (!gate.ok) return gate.response;
 
     // Reverse the balance impact
     if (entry.supplierName && entry.balance !== 0) {
@@ -300,9 +381,54 @@ export async function DELETE(req: Request) {
       }
     }
 
+    // Archive the full record before it's gone — mirrors DeletedInvoice so a
+    // hard delete still leaves something the audit trail can show.
+    try {
+      await DeletedPurchaseEntry.create({
+        billNo: entry.billNo,
+        supplierName: entry.supplierName,
+        total: entry.total,
+        deletedAt: new Date(),
+        deletedBy: gate.actor.name,
+        deletedByRole: gate.actor.role,
+        deletedByUserId: gate.actor.id,
+        deleteReason: gate.reason,
+        pinVerified: true,
+        usedLegacyPin: gate.usedLegacyPin,
+        snapshot: entry.toObject(),
+      });
+    } catch (archiveErr) {
+      console.warn("Notice: archive for purchase entry delete:", archiveErr);
+    }
+
+    try {
+      await AuditLog.create({
+        action: "purchase-entry.delete",
+        entityType: "PurchaseEntry",
+        entityRef: entry.billNo,
+        entityId: String(entry._id),
+        partyName: entry.supplierName,
+        amount: Number(entry.total) || 0,
+        reason: gate.reason,
+        performedBy: gate.actor.name,
+        performedByUserId: gate.actor.id,
+        performedByRole: gate.actor.role,
+        pinVerified: true,
+        usedLegacyPin: gate.usedLegacyPin,
+        ip: gate.ip,
+        userAgent: gate.userAgent,
+      });
+    } catch (logErr) {
+      console.warn("Notice: audit log for purchase entry delete:", logErr);
+    }
+
     await PurchaseEntry.findOneAndDelete({ billNo });
 
-    return NextResponse.json({ success: true, message: "Entry deleted successfully" });
+    return NextResponse.json({
+      success: true,
+      message: "Purchase bill deleted and archived to the audit trail",
+      usedLegacyPin: gate.usedLegacyPin,
+    });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

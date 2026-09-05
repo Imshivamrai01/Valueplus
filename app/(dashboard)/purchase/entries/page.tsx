@@ -7,8 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { AutocompleteSearch } from "@/components/shared/autocomplete-search";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, Search, ClipboardList, Trash2, AlertTriangle, MoreHorizontal, XCircle, Printer, Download, Eye, UploadCloud } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Plus, Search, ClipboardList, Trash2, AlertTriangle, MoreHorizontal, XCircle, Printer, Download, Eye, UploadCloud, Ban, History } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { AuthorizePinDialog, PinAuthResult } from "@/components/AuthorizePinDialog";
 import { useState, useMemo, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -65,6 +66,9 @@ function PurchaseEntriesContent() {
   const [dateRange, setDateRange] = useState(() => resolveDateRange("This Month"));
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [entryToDelete, setEntryToDelete] = useState<string | null>(null);
+  const [entryToCancel, setEntryToCancel] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [isDeletedBillsOpen, setIsDeletedBillsOpen] = useState(false);
   const [billToPrint, setBillToPrint] = useState<any | null>(null);
   const [isImportOpen, setIsImportOpen] = useState(false);
   // Rows resolved by the import flow, handed to PurchaseCreationModal as
@@ -79,20 +83,69 @@ function PurchaseEntriesContent() {
   }, [actionParam, newParam]);
 
   const deleteMutation = useMutation({
-    mutationFn: async (billNo: string) => {
-      const res = await fetch(`/api/purchase-entries?billNo=${encodeURIComponent(billNo)}`, { method: "DELETE" });
+    mutationFn: async ({ billNo, pin, reason }: { billNo: string; pin: string; reason: string }) => {
+      const res = await fetch(`/api/purchase-entries?billNo=${encodeURIComponent(billNo)}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin, reason }),
+      });
       const json = await res.json();
       if (!json.success) throw new Error(json.error || "Failed to delete entry");
       return json;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["purchase-entries"] });
-      toast.success("Purchase entry deleted successfully");
+      toast.success("Purchase bill deleted and archived to the audit trail");
       setEntryToDelete(null);
+      setAuthError(null);
     },
     onError: (error: any) => {
-      toast.error(error.message || "An error occurred while deleting");
+      setAuthError(error.message || "An error occurred while deleting");
     }
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: async ({ billNo, pin, reason }: { billNo: string; pin: string; reason: string }) => {
+      const res = await fetch(`/api/purchase-entries?billNo=${encodeURIComponent(billNo)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cancel", pin, reason }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || "Failed to cancel entry");
+      return json;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["purchase-entries"] });
+      toast.success("Purchase bill cancelled successfully");
+      setEntryToCancel(null);
+      setAuthError(null);
+    },
+    onError: (error: any) => {
+      setAuthError(error.message || "An error occurred while cancelling");
+    }
+  });
+
+  const handleConfirmDelete = ({ pin, reason }: PinAuthResult) => {
+    if (!entryToDelete) return;
+    setAuthError(null);
+    deleteMutation.mutate({ billNo: entryToDelete, pin, reason });
+  };
+
+  const handleConfirmCancel = ({ pin, reason }: PinAuthResult) => {
+    if (!entryToCancel) return;
+    setAuthError(null);
+    cancelMutation.mutate({ billNo: entryToCancel, pin, reason });
+  };
+
+  const { data: deletedBills = [], isLoading: loadingDeletedBills } = useQuery({
+    queryKey: ["purchase-entries-deleted"],
+    queryFn: async () => {
+      const res = await fetch("/api/audit?view=deleted-purchase-entries");
+      const json = await res.json();
+      return json.success ? json.data.rows : [];
+    },
+    enabled: isDeletedBillsOpen,
   });
 
   const filtered = useMemo(() => {
@@ -127,6 +180,9 @@ function PurchaseEntriesContent() {
             }))}
             filename="purchase-entries"
           />
+          <Button variant="outline" size="sm" onClick={() => setIsDeletedBillsOpen(true)}>
+            <History className="w-4 h-4 mr-1.5" /> Deleted Bills
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setIsImportOpen(true)}>
             <UploadCloud className="w-4 h-4 mr-1.5" /> Upload Excel / PDF
           </Button>
@@ -229,7 +285,12 @@ function PurchaseEntriesContent() {
                     <td className="px-4 py-3 text-right text-muted-foreground">{formatCurrency(e.totalTax || e.gst)}</td>
                     <td className="px-4 py-3 text-right font-semibold">{formatCurrency((e.amount || e.subtotal) + (e.totalTax || e.gst))}</td>
                     <td className="px-4 py-3 text-center">
-                      <Badge variant={e.status === "paid" ? "success" : e.status === "partial" ? "info" : "warning"}>{e.status}</Badge>
+                      <div className="flex flex-col items-center gap-1">
+                        <Badge variant={e.status === "paid" ? "success" : e.status === "cancelled" ? "secondary" : e.status === "partial" ? "info" : "warning"}>{e.status}</Badge>
+                        {e.lastModifiedReason === "content-edit" && (
+                          <Badge variant="outline" className="gap-1 whitespace-nowrap text-[10px] border-blue-300 text-blue-700 bg-blue-50">Edited</Badge>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-center">
                       <div className="flex items-center justify-center gap-1">
@@ -249,19 +310,24 @@ function PurchaseEntriesContent() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-48">
-                            <DropdownMenuItem 
+                            <DropdownMenuItem
                               className="gap-2 cursor-pointer"
                               onClick={() => setBillToPrint(e)}
                             >
                               <Eye className="w-4 h-4 text-blue-600" /> View / Print Bill
                             </DropdownMenuItem>
-                            <DropdownMenuItem 
+                            <DropdownMenuSeparator />
+                            {e.status !== "cancelled" && (
+                              <DropdownMenuItem
+                                className="gap-2 text-amber-700 focus:bg-amber-50 focus:text-amber-700 cursor-pointer"
+                                onClick={() => setEntryToCancel(e.billNo)}
+                              >
+                                <Ban className="w-4 h-4" /> Cancel Bill
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem
                               className="gap-2 text-red-600 focus:bg-red-50 focus:text-red-700 cursor-pointer"
-                              onClick={() => {
-                                if(confirm(`Are you sure you want to delete bill ${e.billNo}?`)) {
-                                  deleteMutation.mutate(e.billNo);
-                                }
-                              }}
+                              onClick={() => setEntryToDelete(e.billNo)}
                             >
                               <XCircle className="w-4 h-4" /> Delete Entry
                             </DropdownMenuItem>
@@ -303,6 +369,88 @@ function PurchaseEntriesContent() {
         onClose={() => setBillToPrint(null)}
         billData={billToPrint}
       />
+
+      {/* Delete and Cancel both go through the one authorisation dialog: a PIN the
+          server verifies, and a reason the audit trail keeps. */}
+      <AuthorizePinDialog
+        open={!!entryToDelete}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEntryToDelete(null);
+            setAuthError(null);
+          }
+        }}
+        onConfirm={handleConfirmDelete}
+        title={`Delete Bill ${entryToDelete || ""}`}
+        description="The bill is removed from the live list, but a full copy is archived so the admin can still see what was deleted, by whom and why. Stock and supplier balance are reversed."
+        confirmLabel="Delete Bill"
+        isPending={deleteMutation.isPending}
+        errorMessage={authError}
+      />
+
+      <AuthorizePinDialog
+        open={!!entryToCancel}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEntryToCancel(null);
+            setAuthError(null);
+          }
+        }}
+        onConfirm={handleConfirmCancel}
+        title={`Cancel Bill ${entryToCancel || ""}`}
+        description="Voids the bill and reverses stock and the supplier balance. The bill stays on record, marked Cancelled."
+        confirmLabel="Confirm Cancellation"
+        destructive={false}
+        isPending={cancelMutation.isPending}
+        errorMessage={authError}
+      />
+
+      {/* Archive of hard-deleted bills — nothing here can be restored, it's a
+          read-only record of what was removed, by whom and why. */}
+      <Dialog open={isDeletedBillsOpen} onOpenChange={setIsDeletedBillsOpen}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="w-4 h-4 text-red-600" /> Deleted Purchase Bills
+            </DialogTitle>
+            <DialogDescription>
+              Bills removed from the live list. Each one keeps its full data and who/why it was deleted.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b">
+                <tr>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase">Bill #</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase">Supplier</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground uppercase">Total</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase">Deleted By</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase">Reason</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase">When</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {loadingDeletedBills ? (
+                  <tr><td colSpan={6} className="py-8 text-center text-muted-foreground">Loading…</td></tr>
+                ) : deletedBills.length === 0 ? (
+                  <tr><td colSpan={6} className="py-8 text-center text-muted-foreground">No deleted bills</td></tr>
+                ) : (
+                  deletedBills.map((d: any) => (
+                    <tr key={d._id}>
+                      <td className="px-3 py-2 font-mono font-bold">{d.billNo}</td>
+                      <td className="px-3 py-2">{d.supplierName}</td>
+                      <td className="px-3 py-2 text-right font-mono">{formatCurrency(d.total || 0)}</td>
+                      <td className="px-3 py-2">{d.deletedBy}</td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground max-w-[160px] truncate" title={d.deleteReason}>{d.deleteReason}</td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">{formatDate(d.deletedAt)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </DialogContent>
+      </Dialog>
     </PageShell>
   );
 }

@@ -22,6 +22,8 @@ export type Permission =
   | "payment.record"
   | "invoice.cancel"
   | "invoice.delete"
+  | "purchase.entry.cancel"
+  | "purchase.entry.delete"
   | "audit.view"
   | "roles.manage";
 
@@ -34,6 +36,8 @@ export const ALL_PERMISSIONS: Permission[] = [
   "payment.record",
   "invoice.cancel",
   "invoice.delete",
+  "purchase.entry.cancel",
+  "purchase.entry.delete",
   "audit.view",
   "roles.manage",
 ];
@@ -48,6 +52,8 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   "payment.record": "Record payments and receipts",
   "invoice.cancel": "Cancel an invoice (PIN required)",
   "invoice.delete": "Delete an invoice (PIN required)",
+  "purchase.entry.cancel": "Cancel a supplier purchase bill (PIN required)",
+  "purchase.entry.delete": "Delete a supplier purchase bill (PIN required)",
   "audit.view": "View void & leakage audit trail",
   "roles.manage": "Change role permissions",
 };
@@ -71,6 +77,7 @@ const DEFAULT_ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "vendor.manage",
     "payment.record",
     "invoice.cancel",
+    "purchase.entry.cancel",
     "audit.view",
   ],
   accounts: [

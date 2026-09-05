@@ -1,6 +1,25 @@
 import { PDFParse } from "pdf-parse";
 
 /**
+ * pdf-parse's underlying pdfjs-dist engine expects the browser's DOMMatrix /
+ * DOMPoint / DOMRect globals for its text-transform math ("DOMMatrix is not
+ * defined" otherwise). Node has none of these, and pdf-parse's own native
+ * canvas dependency (@napi-rs/canvas) isn't guaranteed to load its
+ * platform-specific binary in every serverless environment — but that same
+ * package ships a pure-JS geometry polyfill with no native binding, which is
+ * all pdfjs-dist actually needs here, so it's wired up on demand instead.
+ */
+async function ensurePdfjsDomPolyfills(): Promise<void> {
+  const g = globalThis as any;
+  if (typeof g.DOMMatrix !== "undefined") return;
+  // @ts-ignore -- no type declarations ship for this internal subpath
+  const geometry: any = await import("@napi-rs/canvas/geometry.js");
+  g.DOMMatrix = geometry.DOMMatrix;
+  g.DOMPoint = geometry.DOMPoint;
+  g.DOMRect = geometry.DOMRect;
+}
+
+/**
  * Break one extracted text line into cells resolveRows() can read as
  * name / quantity / rate / amount.
  *
@@ -51,6 +70,7 @@ function splitPdfTextLine(line: string): string[] {
 export async function extractRowsFromPdf(
   buffer: Buffer
 ): Promise<{ grid: string[][]; usedTableExtraction: boolean; rawText: string }> {
+  await ensurePdfjsDomPolyfills();
   const parser = new PDFParse({ data: buffer });
 
   try {

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import AuditLog from "@/models/AuditLog";
 import DeletedInvoice from "@/models/DeletedInvoice";
+import DeletedPurchaseEntry from "@/models/DeletedPurchaseEntry";
 import { requirePermission } from "@/lib/requirePermission";
 
 function escapeRegex(value: string): string {
@@ -14,7 +15,8 @@ function escapeRegex(value: string): string {
  *   ?action=invoice.delete       filter to one action
  *   &from=&to=                   date range on when it happened
  *   &q=                          match an invoice number, party or person
- *   &view=deleted-invoices       read the archive instead of the log
+ *   &view=deleted-invoices       read the invoice archive instead of the log
+ *   &view=deleted-purchase-entries  read the purchase bill archive
  */
 export async function GET(req: Request) {
   const gate = await requirePermission("audit.view");
@@ -43,6 +45,21 @@ export async function GET(req: Request) {
         filter.$or = [{ invoiceNumber: rx }, { customerName: rx }, { deletedBy: rx }];
       }
       const rows = await DeletedInvoice.find(filter).sort({ deletedAt: -1 }).limit(limit).lean();
+      const totalAmount = rows.reduce((sum, r: any) => sum + (Number(r.total) || 0), 0);
+      return NextResponse.json({
+        success: true,
+        data: { rows, count: rows.length, totalAmount },
+      });
+    }
+
+    if (view === "deleted-purchase-entries") {
+      const filter: any = {};
+      if (from || to) filter.deletedAt = range;
+      if (q) {
+        const rx = new RegExp(escapeRegex(q), "i");
+        filter.$or = [{ billNo: rx }, { supplierName: rx }, { deletedBy: rx }];
+      }
+      const rows = await DeletedPurchaseEntry.find(filter).sort({ deletedAt: -1 }).limit(limit).lean();
       const totalAmount = rows.reduce((sum, r: any) => sum + (Number(r.total) || 0), 0);
       return NextResponse.json({
         success: true,

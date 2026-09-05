@@ -23,7 +23,12 @@ export interface IPurchaseEntry extends Document {
   total: number;
   paid: number;
   balance: number;
-  status: "paid" | "partial" | "pending" | "overdue";
+  status: "paid" | "partial" | "pending" | "overdue" | "cancelled";
+  cancelledAt?: string;
+  cancelledBy?: string;
+  cancelReason?: string;
+  /** Set whenever a non-cancel PUT touches the record, so the UI can flag it as edited. */
+  lastModifiedReason?: "content-edit" | "cancel";
 }
 
 const PurchaseEntrySchema = new Schema<IPurchaseEntry>(
@@ -51,7 +56,11 @@ const PurchaseEntrySchema = new Schema<IPurchaseEntry>(
     total: { type: Number, required: true },
     paid: { type: Number, default: 0 },
     balance: { type: Number, default: 0 },
-    status: { type: String, enum: ["paid", "partial", "pending", "overdue"], default: "pending" },
+    status: { type: String, enum: ["paid", "partial", "pending", "overdue", "cancelled"], default: "pending" },
+    cancelledAt: { type: String },
+    cancelledBy: { type: String },
+    cancelReason: { type: String },
+    lastModifiedReason: { type: String, enum: ["content-edit", "cancel"] },
   },
   { timestamps: true, collection: "purchase_entries" }
 );

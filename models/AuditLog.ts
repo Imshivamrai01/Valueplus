@@ -12,6 +12,8 @@ import mongoose, { Schema, Document, Model } from "mongoose";
 export type AuditAction =
   | "invoice.cancel"
   | "invoice.delete"
+  | "purchase-entry.cancel"
+  | "purchase-entry.delete"
   | "vendor.bill.cancel"
   | "payment.delete";
 

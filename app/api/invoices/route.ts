@@ -9,65 +9,7 @@ import DeletedInvoice from "@/models/DeletedInvoice";
 import AuditLog from "@/models/AuditLog";
 import { derivePaymentModeLabel, isCollectedMode } from "@/lib/payment-modes";
 import { getActor } from "@/lib/requirePermission";
-import { requirePinAndPermission } from "@/lib/securityPin";
-import { Permission } from "@/lib/permissions";
-
-/**
- * Shared gate for the two destructive invoice actions.
- *
- * Both need three things before anything is touched: a signed-in user, a role
- * that is allowed the action, and a correct supervisor PIN. Previously the PIN
- * was checked in the browser against the literal string "1234" and this API
- * accepted the request whether or not one was sent, so the check stopped nobody.
- */
-async function authoriseDestructiveAction(
-  req: Request,
-  permission: Permission,
-  pin: string,
-  reason: string
-) {
-  const actor = await getActor();
-  if (!actor) {
-    return {
-      ok: false as const,
-      response: NextResponse.json(
-        { success: false, error: "You must be signed in to do this." },
-        { status: 401 }
-      ),
-    };
-  }
-
-  const trimmedReason = String(reason || "").trim();
-  if (trimmedReason.length < 3) {
-    return {
-      ok: false as const,
-      response: NextResponse.json(
-        { success: false, error: "A reason is required and must say what happened." },
-        { status: 400 }
-      ),
-    };
-  }
-
-  const check = await requirePinAndPermission(actor, permission, pin);
-  if (!check.ok) {
-    return {
-      ok: false as const,
-      response: NextResponse.json(
-        { success: false, error: check.error, pinFailed: true },
-        { status: 403 }
-      ),
-    };
-  }
-
-  return {
-    ok: true as const,
-    actor,
-    reason: trimmedReason,
-    usedLegacyPin: Boolean(check.usedLegacyPin),
-    ip: req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "",
-    userAgent: req.headers.get("user-agent") || "",
-  };
-}
+import { authoriseDestructiveAction } from "@/lib/destructiveAction";
 
 export async function GET(req: Request) {
   try {

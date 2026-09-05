@@ -159,15 +159,15 @@ export function SalesmanDashboardView({ session }: { session: any }) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Universal Attendance Punch Timer */}
       <AttendancePunchWidget />
 
       {/* Hero Welcome Banner */}
-      <div className="bg-gradient-to-r from-[#1A2744] via-[#2C3E5A] to-[#1A2744] rounded-3xl p-6 text-white shadow-xl relative overflow-hidden border border-slate-700/80">
+      <div className="bg-gradient-to-r from-[#1A2744] via-[#2C3E5A] to-[#1A2744] rounded-2xl p-4 text-white shadow-xl relative overflow-hidden border border-slate-700/80">
         <div className="absolute right-0 top-0 w-96 h-full bg-radial from-emerald-500/20 to-transparent blur-2xl pointer-events-none" />
-        
-        <div className="relative z-10 flex flex-col xl:flex-row xl:items-center justify-between gap-6">
+
+        <div className="relative z-10 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
           <div className="space-y-1.5">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/25 border border-emerald-400/40 text-emerald-300 font-bold text-xs">
@@ -175,7 +175,7 @@ export function SalesmanDashboardView({ session }: { session: any }) {
               </span>
               <span className="text-xs text-slate-300 font-medium">📍 {activeLocation?.name}</span>
             </div>
-            <h2 className="text-2xl font-black tracking-tight">Welcome back, {userName}! 👋</h2>
+            <h2 className="text-xl font-black tracking-tight">Welcome back, {userName}! 👋</h2>
             <p className="text-xs text-slate-300 max-w-xl leading-relaxed">
               Track your daily showroom sales targets, monitor commission incentives, and follow up customer leads.
             </p>
@@ -219,7 +219,7 @@ export function SalesmanDashboardView({ session }: { session: any }) {
 
       {/* ACTIVE SALES TARGET NOTIFICATION CARD */}
       {tasks.some((t: any) => t.taskType === "sales_target" && t.status !== "Completed") && (
-        <div className="bg-gradient-to-r from-purple-900/40 via-purple-950/20 to-transparent border-l-4 border-purple-500 p-4 rounded-2xl bg-white shadow-xs border border-purple-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="bg-gradient-to-r from-purple-900/40 via-purple-950/20 to-transparent border-l-4 border-purple-500 p-3 rounded-xl bg-white shadow-xs border border-purple-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
               <Target className="w-5 h-5 animate-pulse" />
@@ -245,7 +245,7 @@ export function SalesmanDashboardView({ session }: { session: any }) {
       )}
 
       {/* PERIOD FILTER TABS */}
-      <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3">
+      <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl flex-wrap">
           {[
             { key: "today", label: "Today" },
@@ -283,9 +283,9 @@ export function SalesmanDashboardView({ session }: { session: any }) {
       </div>
 
       {/* 3 KPI PERFORMANCE CARDS */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {/* 1. Target vs Completed Sales Card */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm relative overflow-hidden space-y-3">
+        <div className="bg-white rounded-xl p-3 border border-slate-200/80 shadow-sm relative overflow-hidden space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">{targetConfig.label}</p>
             <Trophy className="w-5 h-5 text-amber-500" />
@@ -293,7 +293,7 @@ export function SalesmanDashboardView({ session }: { session: any }) {
 
           <div className="flex items-baseline justify-between">
             <div>
-              <p className="text-2xl font-black text-slate-900">{formatCurrency(completedSalesTotal)}</p>
+              <p className="text-lg font-black text-slate-900">{formatCurrency(completedSalesTotal)}</p>
               <p className="text-[11px] text-slate-500 mt-0.5">Completed Sales ({filteredInvoices.length} Bills)</p>
             </div>
             <div className="text-right">
@@ -323,14 +323,14 @@ export function SalesmanDashboardView({ session }: { session: any }) {
         </div>
 
         {/* 2. Earned Incentive Card */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm space-y-3">
+        <div className="bg-white rounded-xl p-3 border border-slate-200/80 shadow-sm space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Earned Sales Commission</p>
             <DollarSign className="w-5 h-5 text-emerald-600" />
           </div>
           <div className="flex items-baseline justify-between">
             <div>
-              <p className="text-2xl font-black text-emerald-600">{formatCurrency(periodIncentivesEarned)}</p>
+              <p className="text-lg font-black text-emerald-600">{formatCurrency(periodIncentivesEarned)}</p>
               <p className="text-[11px] text-slate-500 mt-0.5">Calculated for {periodTab.toUpperCase()}</p>
             </div>
             <Badge variant="success" className="text-[10px] font-bold">LIVE WALLET</Badge>
@@ -346,18 +346,18 @@ export function SalesmanDashboardView({ session }: { session: any }) {
         </div>
 
         {/* 3. Active Pipeline (Leads & Estimates) */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm space-y-3">
+        <div className="bg-white rounded-xl p-3 border border-slate-200/80 shadow-sm space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Active CRM Pipeline</p>
             <Users className="w-5 h-5 text-blue-600" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-              <p className="text-2xl font-black text-slate-900">{leads.length}</p>
+              <p className="text-lg font-black text-slate-900">{leads.length}</p>
               <p className="text-[11px] text-slate-500 font-semibold">Assigned Leads</p>
             </div>
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-              <p className="text-2xl font-black text-slate-900">{estimates.length}</p>
+              <p className="text-lg font-black text-slate-900">{estimates.length}</p>
               <p className="text-[11px] text-slate-500 font-semibold">Quotes Created</p>
             </div>
           </div>
@@ -370,8 +370,8 @@ export function SalesmanDashboardView({ session }: { session: any }) {
       </div>
 
       {/* COMPLETED SALES BILLS TABLE FOR SELECTED PERIOD */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden p-5 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden p-3 space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3">
           <div>
             <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
               <Receipt className="w-4 h-4 text-[#30539C]" />
@@ -461,10 +461,10 @@ export function SalesmanDashboardView({ session }: { session: any }) {
       </div>
 
       {/* Main Grid: Leads to follow up & My Tasks */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {/* Left Column: Customer Leads to Follow-up */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
+        <div className="bg-white rounded-xl p-3 border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-amber-500" />
               <h3 className="font-bold text-sm text-slate-900">Hot Customer Leads to Follow-Up</h3>
@@ -528,8 +528,8 @@ export function SalesmanDashboardView({ session }: { session: any }) {
         </div>
 
         {/* Right Column: Daily Tasks Checklist */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
+        <div className="bg-white rounded-xl p-3 border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <CheckSquare className="w-4 h-4 text-emerald-600" />
               <h3 className="font-bold text-sm text-slate-900">My Daily Store Tasks</h3>
