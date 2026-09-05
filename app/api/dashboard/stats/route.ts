@@ -896,6 +896,9 @@ export async function GET(request: Request) {
           auditByRole: r.deletedByRole,
           auditAt: r.deletedAt,
           usedLegacyPin: r.usedLegacyPin,
+          // The archived full document — the only way to render/print a
+          // deleted bill, since it no longer exists in the Invoice collection.
+          snapshot: r.snapshot,
         })),
       };
     } catch (delErr) {

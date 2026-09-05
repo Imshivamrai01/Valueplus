@@ -2,10 +2,14 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Search, Calendar, Clock, Printer, Send, IndianRupee, CreditCard, Receipt, Wallet, Package } from "lucide-react";
+import { ArrowLeft, Search, Calendar, Clock, Printer, Send, IndianRupee, CreditCard, Receipt, Wallet, Package, Eye } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import ValueplusInvoice from "@/app/invoice/page";
 import {
   Select,
   SelectContent,
@@ -54,6 +58,30 @@ function ReportsContent() {
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<any>(null);
+  const [activePrintInvoice, setActivePrintInvoice] = useState<any | null>(null);
+
+  const { data: invoices = [] } = useQuery({
+    queryKey: ["invoices"],
+    queryFn: async () => {
+      const res = await fetch("/api/invoices");
+      const json = await res.json();
+      return json.success ? json.data : [];
+    },
+  });
+
+  // A row here can be a real invoice/order OR a standalone payment receipt
+  // (e.g. a due settled with no invoice reference) — only the former has a
+  // full bill to show, so this looks the actual invoice up rather than
+  // assuming the row's own fields are enough to print.
+  const openInvoicePreview = (tx: any) => {
+    const docNo = tx.id || tx.invoiceNumber;
+    const match = invoices.find((inv: any) => inv.invoiceNumber === docNo);
+    if (!match) {
+      toast.error("No invoice found for this entry — it may be a standalone payment receipt.");
+      return;
+    }
+    setActivePrintInvoice(match);
+  };
 
   const handleDateChange = (val: string, s?: string, e?: string) => {
     setDateFilter(val);
@@ -317,9 +345,18 @@ function ReportsContent() {
                           <Button
                             variant="outline"
                             size="icon"
+                            className="h-8 w-8 rounded-full border-slate-300 text-slate-600 hover:bg-slate-600 hover:text-white transition-all shadow-sm"
+                            title="View Invoice Details"
+                            onClick={() => openInvoicePreview(tx)}
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="icon"
                             className="h-8 w-8 rounded-full border-blue-200 text-blue-600 hover:bg-blue-600 hover:text-white transition-all shadow-sm"
                             title="Print Invoice"
-                            onClick={() => window.print()}
+                            onClick={() => openInvoicePreview(tx)}
                           >
                             <Printer className="w-4 h-4" />
                           </Button>
@@ -363,6 +400,15 @@ function ReportsContent() {
           </div>
         </div>
       </div>
+
+      {/* Full invoice preview — same read-only view used on the Invoices page,
+          opened here instead of printing whatever this reports page itself
+          currently shows. */}
+      <Dialog open={!!activePrintInvoice} onOpenChange={() => setActivePrintInvoice(null)}>
+        <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto p-2">
+          {activePrintInvoice && <ValueplusInvoice invoiceData={activePrintInvoice} onBack={() => setActivePrintInvoice(null)} />}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

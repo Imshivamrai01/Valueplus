@@ -3895,17 +3895,31 @@ export default function DashboardPage() {
                         </td>
                         <td className="p-3 text-center">
                           {inv.isDeleted ? (
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                              Archived
-                            </span>
+                            inv.snapshot ? (
+                              <div className="flex flex-col items-center gap-1">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => setActivePrintInvoice(inv.snapshot)}
+                                  className="h-7 px-2 text-[10px] font-bold text-slate-600 border-slate-300 hover:bg-slate-100"
+                                >
+                                  <Eye className="w-3 h-3 mr-1" /> View Bill
+                                </Button>
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Archived Copy</span>
+                              </div>
+                            ) : (
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                Archived
+                              </span>
+                            )
                           ) : (
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => handlePrintTrigger(inv)}
+                              onClick={() => setActivePrintInvoice(inv)}
                               className="h-7 px-2 text-[10px] font-bold text-[#3F63AD] border-[#3F63AD]/30 hover:bg-blue-50"
                             >
-                              <Printer className="w-3 h-3 mr-1" /> View Bill
+                              <Eye className="w-3 h-3 mr-1" /> View Bill
                             </Button>
                           )}
                         </td>
