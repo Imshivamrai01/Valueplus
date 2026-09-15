@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { AutocompleteSearch } from "@/components/shared/autocomplete-search";
 import { 
   Receipt, Users, CreditCard, Sparkles, ShoppingCart, Plus, Trash2, Printer,
   XCircle, Phone, UserCheck, UserPlus, X, Shield, AlertTriangle, FileText, CheckCircle2, Truck, Clock, ChevronsDownUp, Wallet
@@ -116,6 +117,19 @@ export function InvoiceCreationModal({
     }
   });
 
+  const { data: billingCompanies = [] } = useQuery({
+    queryKey: ["billing-companies"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/billing-companies");
+        const json = await res.json();
+        return json.success ? json.data : [];
+      } catch (e) {
+        return [];
+      }
+    }
+  });
+
   const { data: serialNumbers = [] } = useQuery({
     queryKey: ["serialNumbers"],
     queryFn: async () => {
@@ -170,6 +184,7 @@ export function InvoiceCreationModal({
     customerEmail: "",
     customerGstin: "",
     customerPan: "",
+    customerCompanyName: "",
     customerAddress: "",
     customerCity: "Gorakhpur",
     customerState: "Uttar Pradesh",
@@ -346,6 +361,13 @@ export function InvoiceCreationModal({
   const [pinError, setPinError] = useState(false);
 
   // Billing & GST Calculations
+  // A GSTIN entered against the bill zeroes the GST breakdown out entirely,
+  // by admin's explicit instruction — the sticker price the customer pays
+  // (grossAmount, below) doesn't depend on the GST rate either way, so
+  // treating the rate as 0% here just reclassifies the whole amount as
+  // taxable value with no tax line, without changing what's actually charged.
+  const gstinProvided = Boolean(billingForm.customerGstin && billingForm.customerGstin.trim());
+
   const billCalculations = useMemo(() => {
     let subtotal = 0;
     let totalTaxable = 0;
@@ -356,7 +378,8 @@ export function InvoiceCreationModal({
     billingForm.lineItems.forEach((item) => {
       // Rate is GST-inclusive: split it back into taxable + GST instead of adding GST on top.
       const grossAmount = ((Number(item.rate) || 0) - (Number(item.discount) || 0)) * (Number(item.qty) || 1);
-      const lineTaxable = grossAmount / (1 + ((Number(item.gstRate) || 0) / 100));
+      const effectiveGstRate = gstinProvided ? 0 : (Number(item.gstRate) || 0);
+      const lineTaxable = grossAmount / (1 + (effectiveGstRate / 100));
       const lineGst = grossAmount - lineTaxable;
       subtotal += (Number(item.rate) || 0) * (Number(item.qty) || 1);
       totalTaxable += lineTaxable;
@@ -572,6 +595,7 @@ export function InvoiceCreationModal({
       customerPhone: (est.customerPhone || prev.customerPhone || "").replace(/\D/g, ""),
       customerAddress: est.customerAddress || prev.customerAddress || "",
       customerGstin: est.customerGST || prev.customerGstin || "",
+      customerCompanyName: est.customerCompanyName || prev.customerCompanyName || "",
       notes: prev.notes ? `${prev.notes} • Linked to Estimate ${est.estimateNumber}` : `Linked to Estimate ${est.estimateNumber}`,
       linkedEstimateNumber: est.estimateNumber,
       lineItems: newItems,
@@ -659,6 +683,7 @@ export function InvoiceCreationModal({
           customerPhone: cleanPhone,
           customerAddress: activeEst.customerAddress || prev.customerAddress,
           customerGstin: activeEst.customerGST || prev.customerGstin,
+          customerCompanyName: activeEst.customerCompanyName || prev.customerCompanyName,
         }));
         setPhoneLookupStatus("existing");
       } else {
@@ -862,6 +887,7 @@ export function InvoiceCreationModal({
               customerPhone: payload.customerPhone,
               customerAddress: payload.customerAddress,
               customerGST: payload.customerGstin,
+              customerCompanyName: payload.customerCompanyName,
               salesExecutive: payload.salesExecutive,
               salesperson: payload.salesExecutive,
               createdBy: payload.createdBy,
@@ -1008,7 +1034,8 @@ export function InvoiceCreationModal({
     const formattedItems = items.map(item => {
       // Rate is GST-inclusive: split it back into taxable + GST instead of adding GST on top.
       const grossAmount = ((Number(item.rate) || 0) - (Number(item.discount) || 0)) * (Number(item.qty) || 1);
-      const lineTaxable = grossAmount / (1 + ((Number(item.gstRate) || 0) / 100));
+      const effectiveGstRate = gstinProvided ? 0 : (Number(item.gstRate) || 0);
+      const lineTaxable = grossAmount / (1 + (effectiveGstRate / 100));
       const lineGst = grossAmount - lineTaxable;
       const isIntraState = billingForm.placeOfSupply.includes("09") || billingForm.placeOfSupply.toLowerCase().includes("uttar pradesh");
       
@@ -1050,7 +1077,7 @@ export function InvoiceCreationModal({
         discount: item.discount,
         discountType: "amount",
         taxableAmount: lineTaxable,
-        gstRate: item.gstRate,
+        gstRate: effectiveGstRate,
         cgst: isIntraState ? lineGst / 2 : 0,
         sgst: isIntraState ? lineGst / 2 : 0,
         igst: isIntraState ? 0 : lineGst,
@@ -1156,6 +1183,14 @@ export function InvoiceCreationModal({
       customerName: billingForm.customerName,
       customerPhone: billingForm.customerPhone,
       customerAltPhone: billingForm.customerAltPhone || "",
+      // billingForm's own field names (customerGstin/customerPan) don't
+      // match the invoice schema's (customerGST/customerPAN) — the ...billingForm
+      // spread above carries the wrong-named keys along harmlessly, but
+      // without this explicit mapping the GSTIN/PAN/company name a biller
+      // enters was silently never saved at all.
+      customerGST: billingForm.customerGstin || "",
+      customerPAN: billingForm.customerPan || "",
+      customerCompanyName: billingForm.customerCompanyName || "",
       customerAddress: billingForm.customerAddress,
       customerCity: billingForm.customerCity,
       customerState: billingForm.customerState,
@@ -1486,13 +1521,57 @@ export function InvoiceCreationModal({
                 {/* 8. GSTIN */}
                 <div className="space-y-1.5 md:col-span-1">
                   <Label className="text-xs font-semibold text-slate-700">Customer GSTIN (Optional)</Label>
-                  <Input placeholder="09XXXXX1234X1ZX" value={billingForm.customerGstin} onChange={(e) => setBillingForm({ ...billingForm, customerGstin: e.target.value })} className="font-mono bg-slate-50 border-slate-300 text-xs uppercase" />
+                  <Input
+                    placeholder="09XXXXX1234X1ZX"
+                    value={billingForm.customerGstin}
+                    onChange={(e) => {
+                      const gstin = e.target.value;
+                      // A GSTIN already used on an earlier invoice carries its
+                      // company's name with it — typing one back in re-fills
+                      // the name instead of asking the biller to retype it.
+                      const matched = billingCompanies.find(
+                        (c: any) => c.gstin?.toUpperCase() === gstin.trim().toUpperCase()
+                      );
+                      // A GSTIN's own 3rd-12th characters ARE the PAN — no
+                      // separate PAN entry needed once 15 characters are in.
+                      const cleanGstin = gstin.trim().toUpperCase();
+                      const derivedPan = cleanGstin.length === 15 ? cleanGstin.slice(2, 12) : billingForm.customerPan;
+                      setBillingForm({
+                        ...billingForm,
+                        customerGstin: gstin,
+                        customerPan: derivedPan,
+                        customerCompanyName: matched ? matched.companyName : billingForm.customerCompanyName,
+                      });
+                    }}
+                    className="font-mono bg-slate-50 border-slate-300 text-xs uppercase"
+                  />
                 </div>
 
-                {/* 9. PAN */}
+                {/* 9. Company Name — replaces a raw PAN field: PAN is derived
+                    from the GSTIN itself, but the company's NAME is what
+                    actually needs remembering for next time, so a B2B sale
+                    can be billed under it again by picking it from here
+                    instead of retyping the whole thing. */}
                 <div className="space-y-1.5 md:col-span-1">
-                  <Label className="text-xs font-semibold text-slate-700">Customer PAN (Optional)</Label>
-                  <Input placeholder="ABCDE1234F" value={billingForm.customerPan} onChange={(e) => setBillingForm({ ...billingForm, customerPan: e.target.value })} className="font-mono bg-slate-50 border-slate-300 text-xs uppercase" />
+                  <Label className="text-xs font-semibold text-slate-700">Company Name (Optional)</Label>
+                  <AutocompleteSearch
+                    data={billingCompanies}
+                    searchKeys={["companyName", "gstin"]}
+                    displayKey="companyName"
+                    subDisplayKey="gstin"
+                    placeholder="e.g. Auroile Food & Beverages Pvt Ltd"
+                    value={billingForm.customerCompanyName}
+                    onSearchChange={(name) => {
+                      const matched = billingCompanies.find((c: any) => c.companyName === name);
+                      setBillingForm({
+                        ...billingForm,
+                        customerCompanyName: name,
+                        customerGstin: matched ? matched.gstin : billingForm.customerGstin,
+                      });
+                    }}
+                    className="w-full"
+                    inputClassName="font-mono bg-slate-50 border-slate-300 text-xs uppercase"
+                  />
                 </div>
 
                 {/* 10. FREIGHT / SHIPPING CHARGES (OPTIONAL) */}
@@ -1628,7 +1707,8 @@ export function InvoiceCreationModal({
                 {billingForm.lineItems.map((item, idx) => {
                   // Rate is GST-inclusive: split it back into taxable + GST instead of adding GST on top.
                   const grossAmount = ((Number(item.rate) || 0) - (Number(item.discount) || 0)) * (Number(item.qty) || 1);
-                  const lineTaxable = grossAmount / (1 + ((Number(item.gstRate) || 0) / 100));
+                  const rowEffectiveGstRate = gstinProvided ? 0 : (Number(item.gstRate) || 0);
+                  const lineTaxable = grossAmount / (1 + (rowEffectiveGstRate / 100));
                   const lineGst = grossAmount - lineTaxable;
                   const warrantyAmt = Number(item.extendedWarrantyAmount) || 0;
                   const lineTotal = lineTaxable + lineGst + warrantyAmt;

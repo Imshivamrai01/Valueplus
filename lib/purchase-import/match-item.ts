@@ -16,6 +16,15 @@ function normaliseName(value: string): string {
     .trim();
 }
 
+// Some suppliers quote our own VP code back to us embedded inside a longer
+// description — e.g. "VP0011286 - HFC-320DPW4- HAIER" — rather than as the
+// whole cell. Pulling that token out gives an exact-match-quality signal
+// without requiring the entire cell to equal the code.
+export function extractEmbeddedCode(text: string): string | null {
+  const match = String(text || "").match(/\bVP-?[A-Z0-9]{3,}\b/i);
+  return match ? match[0].toUpperCase() : null;
+}
+
 export function findMatchingItem(rowName: string, items: any[]): any | null {
   const normalised = normaliseName(rowName);
   if (!normalised) return null;
@@ -27,6 +36,16 @@ export function findMatchingItem(rowName: string, items: any[]): any | null {
     (it) => it.code?.toLowerCase() === raw || it.vpCode?.toLowerCase() === raw
   );
   if (byCode) return byCode;
+
+  // A VP code embedded inside a longer description is just as unambiguous as
+  // a whole-cell match — it just needs pulling out first.
+  const embedded = extractEmbeddedCode(rowName);
+  if (embedded) {
+    const byEmbeddedCode = items.find(
+      (it) => it.code?.toUpperCase() === embedded || it.vpCode?.toUpperCase() === embedded
+    );
+    if (byEmbeddedCode) return byEmbeddedCode;
+  }
 
   const byExactName = items.find((it) => normaliseName(it.name) === normalised);
   if (byExactName) return byExactName;

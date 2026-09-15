@@ -70,25 +70,27 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    title: "Delivery Boy Portal",
-    roles: ["admin", "driver", "manager", "warehouse"],
+    title: "Sales & Billing",
+    roles: ["admin", "salesman", "cashier", "accounts", "manager"],
     items: [
-      { title: "My Assigned Deliveries", href: "/driver/deliveries", icon: Truck, roles: ["admin", "driver", "manager", "warehouse"] },
-      { title: "My Salary & Advances", href: "/driver/salary", icon: DollarSign, roles: ["admin", "driver", "hr", "manager"] },
-      { title: "My Profile & Vehicle", href: "/staff/profile", icon: ShieldCheck, roles: ["admin", "driver", "hr", "manager"] },
+      { title: "Tax Invoices (POS)", href: "/sales/invoices", icon: Receipt, roles: ["admin", "cashier", "accounts", "manager"] },
+      { title: "Receive Payment (Counter)", href: "/sales/payments", icon: CreditCard, roles: ["admin", "cashier", "accounts", "manager"] },
+      { title: "Credit Notes", href: "/sales/credit-notes", icon: FileMinus, roles: ["admin", "cashier", "accounts", "manager"] },
+      { title: "Estimates / Quotes", href: "/sales/estimates", icon: FileText, roles: ["admin", "salesman", "manager"] },
+      { title: "Sales Orders", href: "/sales/orders", icon: ShoppingCart, roles: ["admin", "salesman", "manager"] },
+      { title: "Order Dispatch & Deliveries", href: "/sales/dispatch", icon: Truck, roles: ["admin", "manager", "cashier", "warehouse", "salesman", "sales"] },
+      { title: "Delivery Challan", href: "/sales/challan", icon: PackageCheck, roles: ["admin", "manager"] },
     ],
   },
   {
-    title: "Godown & Logistics Hub",
-    roles: ["admin", "warehouse"],
+    title: "Purchase & Expenses",
+    roles: ["admin", "warehouse", "accounts", "cashier", "supplier", "manager"],
     items: [
-      { title: "Godown Master Hub", href: "/warehouse", icon: Warehouse, roles: ["admin", "warehouse"] },
-      { title: "Stock Flow (In/Out)", href: "/inventory/stock-flow", icon: ArrowLeftRight, roles: ["admin", "warehouse"] },
-      { title: "Stock Transfer (Inter-Godown)", href: "/inventory/transfer", icon: ArrowLeftRight, roles: ["admin", "warehouse"] },
-      { title: "Daily Physical Audit", href: "/inventory/audit", icon: ClipboardCheck, roles: ["admin", "warehouse"] },
-      { title: "Order Dispatch & Deliveries", href: "/sales/dispatch", icon: Truck, roles: ["admin", "warehouse", "manager"] },
-      { title: "Delivery Challan", href: "/sales/challan", icon: PackageCheck, roles: ["admin", "warehouse"] },
-      { title: "E-Way Bills", href: "/sales/eway-bill", icon: Truck, roles: ["admin", "warehouse"] },
+      { title: "Low Stock (Auto Reorder)", href: "/purchase/low-stock", icon: AlertTriangle, roles: ["admin", "warehouse", "accounts", "manager"] },
+      { title: "Purchase Orders", href: "/purchase/orders", icon: ShoppingBag, roles: ["admin", "warehouse", "accounts", "supplier", "manager"] },
+      { title: "Purchase Entry (GRN)", href: "/purchase/entries", icon: ClipboardList, roles: ["admin", "warehouse", "accounts", "manager"] },
+      { title: "Debit Notes", href: "/purchase/debit-notes", icon: FileX, roles: ["admin", "accounts", "supplier", "manager"] },
+      { title: "Expenses (Petty Cash)", href: "/purchase/expenses", icon: DollarSign, roles: ["admin", "cashier", "accounts", "manager"] },
     ],
   },
   {
@@ -105,6 +107,16 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    title: "Finance & EMI Hub",
+    roles: ["admin", "cashier", "accounts", "manager"],
+    items: [
+      { title: "Customer Dues & Overdue", href: "/finance/dues", icon: AlertTriangle, roles: ["admin", "cashier", "accounts", "manager"] },
+      { title: "Monthly EMI Cycles", href: "/finance/emi-cycles", icon: Calendar, roles: ["admin", "cashier", "accounts", "manager"] },
+      { title: "Finance Ledger", href: "/finance/ledger", icon: Landmark, roles: ["admin", "accounts", "manager"] },
+      { title: "Bank NACH & Payouts", href: "/finance/disbursements", icon: ShieldCheck, roles: ["admin", "accounts", "manager"] },
+    ],
+  },
+  {
     // Vendors are trade parties who buy from us on account. They keep their own
     // section rather than sitting under Masters because the ledger, payments and
     // ageing screens are the point of the module, not the party list.
@@ -118,26 +130,25 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    title: "Sales & Billing",
-    roles: ["admin", "salesman", "cashier", "accounts", "manager"],
+    title: "Godown & Logistics Hub",
+    roles: ["admin", "warehouse"],
     items: [
-      { title: "Tax Invoices (POS)", href: "/sales/invoices", icon: Receipt, roles: ["admin", "cashier", "accounts", "manager"] },
-      { title: "Receive Payment (Counter)", href: "/sales/payments", icon: CreditCard, roles: ["admin", "cashier", "accounts", "manager"] },
-      { title: "Credit Notes", href: "/sales/credit-notes", icon: FileMinus, roles: ["admin", "cashier", "accounts", "manager"] },
-      { title: "Estimates / Quotes", href: "/sales/estimates", icon: FileText, roles: ["admin", "salesman", "manager"] },
-      { title: "Sales Orders", href: "/sales/orders", icon: ShoppingCart, roles: ["admin", "salesman", "manager"] },
-      { title: "Order Dispatch & Deliveries", href: "/sales/dispatch", icon: Truck, roles: ["admin", "manager", "cashier", "warehouse", "salesman", "sales"] },
-      { title: "Delivery Challan", href: "/sales/challan", icon: PackageCheck, roles: ["admin", "manager"] },
+      { title: "Godown Master Hub", href: "/warehouse", icon: Warehouse, roles: ["admin", "warehouse"] },
+      { title: "Stock Flow (In/Out)", href: "/inventory/stock-flow", icon: ArrowLeftRight, roles: ["admin", "warehouse"] },
+      { title: "Stock Transfer (Inter-Godown)", href: "/inventory/transfer", icon: ArrowLeftRight, roles: ["admin", "warehouse"] },
+      { title: "Daily Physical Audit", href: "/inventory/audit", icon: ClipboardCheck, roles: ["admin", "warehouse"] },
+      { title: "Order Dispatch & Deliveries", href: "/sales/dispatch", icon: Truck, roles: ["admin", "warehouse", "manager"] },
+      { title: "Delivery Challan", href: "/sales/challan", icon: PackageCheck, roles: ["admin", "warehouse"] },
+      { title: "E-Way Bills", href: "/sales/eway-bill", icon: Truck, roles: ["admin", "warehouse"] },
     ],
   },
   {
-    title: "Finance & EMI Hub",
-    roles: ["admin", "cashier", "accounts", "manager"],
+    title: "Delivery Boy Portal",
+    roles: ["admin", "driver", "manager", "warehouse"],
     items: [
-      { title: "Customer Dues & Overdue", href: "/finance/dues", icon: AlertTriangle, roles: ["admin", "cashier", "accounts", "manager"] },
-      { title: "Monthly EMI Cycles", href: "/finance/emi-cycles", icon: Calendar, roles: ["admin", "cashier", "accounts", "manager"] },
-      { title: "Finance Ledger", href: "/finance/ledger", icon: Landmark, roles: ["admin", "accounts", "manager"] },
-      { title: "Bank NACH & Payouts", href: "/finance/disbursements", icon: ShieldCheck, roles: ["admin", "accounts", "manager"] },
+      { title: "My Assigned Deliveries", href: "/driver/deliveries", icon: Truck, roles: ["admin", "driver", "manager", "warehouse"] },
+      { title: "My Salary & Advances", href: "/driver/salary", icon: DollarSign, roles: ["admin", "driver", "hr", "manager"] },
+      { title: "My Profile & Vehicle", href: "/staff/profile", icon: ShieldCheck, roles: ["admin", "driver", "hr", "manager"] },
     ],
   },
   {
@@ -158,17 +169,6 @@ export const NAV_GROUPS: NavGroup[] = [
       { title: "Staff Tasks Delegation", href: "/staff/tasks", icon: CheckSquare, roles: ["admin", "hr", "salesman", "manager"] },
       { title: "Sales Incentives", href: "/staff/incentives", icon: Award, roles: ["admin", "hr", "salesman", "manager", "cashier", "sales"] },
       { title: "Salary & Payroll", href: "/staff/salary", icon: DollarSign, roles: ["admin", "hr", "accounts", "manager"] },
-    ],
-  },
-  {
-    title: "Purchase & Expenses",
-    roles: ["admin", "warehouse", "accounts", "cashier", "supplier", "manager"],
-    items: [
-      { title: "Low Stock (Auto Reorder)", href: "/purchase/low-stock", icon: AlertTriangle, roles: ["admin", "warehouse", "accounts", "manager"] },
-      { title: "Purchase Orders", href: "/purchase/orders", icon: ShoppingBag, roles: ["admin", "warehouse", "accounts", "supplier", "manager"] },
-      { title: "Purchase Entry (GRN)", href: "/purchase/entries", icon: ClipboardList, roles: ["admin", "warehouse", "accounts", "manager"] },
-      { title: "Debit Notes", href: "/purchase/debit-notes", icon: FileX, roles: ["admin", "accounts", "supplier", "manager"] },
-      { title: "Expenses (Petty Cash)", href: "/purchase/expenses", icon: DollarSign, roles: ["admin", "cashier", "accounts", "manager"] },
     ],
   },
   {

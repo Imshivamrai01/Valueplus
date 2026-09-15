@@ -60,6 +60,9 @@ export interface IInvoice extends Document {
   customerName: string;
   customerGST?: string;
   customerPAN?: string;
+  /** The GST-registered company being billed, when this is a B2B sale —
+   *  shown on the printed invoice in place of the walk-in customer's name. */
+  customerCompanyName?: string;
   customerPhone?: string;
   customerAltPhone?: string;
   customerEmail?: string;
@@ -236,6 +239,7 @@ const InvoiceSchema = new Schema<IInvoice>(
     customerName: { type: String, required: true, index: true },
     customerGST: { type: String, default: "" },
     customerPAN: { type: String, default: "" },
+    customerCompanyName: { type: String, default: "" },
     customerPhone: { type: String, index: true },
     customerAltPhone: { type: String, default: "" },
     customerEmail: String,

@@ -152,7 +152,17 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
           noPoReason: "",
           items: itemsToLoad.map((it: any) => {
             const reorderQty = Math.max(1, (Number(it.reorderLevel || 5) * 2) - Number(it.currentStock || 0));
-            const purRate = Number(it.purchasePrice || it.rate || (it.sellingPrice ? it.sellingPrice * 0.82 : 1000));
+            // `purchasePrice`/`rate` can legitimately be 0 (an imported row
+            // resolveRows genuinely found no trustworthy price for) — `||`
+            // would silently swap that for a guessed ₹1000-ish number, which
+            // reads as a real price instead of the "unknown, please check"
+            // signal it actually is. Only a truly absent value (no field at
+            // all, e.g. a bare reorder suggestion with no purchase history)
+            // falls through to the sellingPrice-based estimate.
+            const knownRate = it.purchasePrice ?? it.rate;
+            const purRate = Number(
+              knownRate != null ? knownRate : (it.sellingPrice ? it.sellingPrice * 0.82 : 1000)
+            );
             return {
               id: Math.random().toString(),
               itemId: it.code || it.vpCode || it._id || "ITEM",
@@ -160,8 +170,11 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
               quantity: it.orderQty || reorderQty,
               rate: Math.round(purRate),
               gstRate: Number(it.gstRate || 18),
-              serialNumbers: [],
-              showSerials: false,
+              // Carry through any serials the import already found (e.g. from a
+              // supplier PDF's serial-number table) instead of discarding them —
+              // pre-expanded so they're immediately visible for review.
+              serialNumbers: Array.isArray(it.serialNumbers) ? it.serialNumbers : [],
+              showSerials: Array.isArray(it.serialNumbers) && it.serialNumbers.length > 0,
             };
           })
         });

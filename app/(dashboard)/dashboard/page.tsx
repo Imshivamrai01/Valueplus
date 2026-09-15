@@ -539,6 +539,10 @@ export default function DashboardPage() {
   const [clearDueStaff, setClearDueStaff] = useState<string>("AMIT SINGH");
   const [clearDueNotes, setClearDueNotes] = useState<string>("");
   const [isClearingDue, setIsClearingDue] = useState<boolean>(false);
+  // Blank means "collecting the full balance" — the same one-click full clear
+  // as before this field existed. Typing a smaller amount is what records a
+  // partial settlement instead, leaving the rest still due.
+  const [clearDueAmount, setClearDueAmount] = useState<string>("");
 
   const fetchDueInvoices = async () => {
     try {
@@ -555,6 +559,17 @@ export default function DashboardPage() {
   const handleConfirmClearDue = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedDueInvoice) return;
+    const fullBalance = Number(selectedDueInvoice.balanceAmount || selectedDueInvoice.total) || 0;
+    // Blank field = collect the full balance, same as before. A typed amount
+    // is clamped to (0, fullBalance] here too, so the confirm button's own
+    // label always matches what the server will actually apply.
+    const amountToCollect = clearDueAmount.trim() === ""
+      ? fullBalance
+      : Math.max(0, Math.min(fullBalance, Number(clearDueAmount) || 0));
+    if (amountToCollect <= 0) {
+      toast.error("Enter an amount greater than ₹0");
+      return;
+    }
     setIsClearingDue(true);
     try {
       const res = await fetch("/api/invoices", {
@@ -563,19 +578,25 @@ export default function DashboardPage() {
         body: JSON.stringify({
           invoiceNumber: selectedDueInvoice.invoiceNumber,
           action: "clear-due",
-          clearedAmount: selectedDueInvoice.balanceAmount || selectedDueInvoice.total,
+          clearedAmount: amountToCollect,
           dueClearedMode: clearDuePaymentMode,
           dueClearedBy: clearDueStaff,
           dueClearedTxnId: clearDueTxnId || `TXN-${Date.now()}`,
-          dueClearedNotes: clearDueNotes || `Due cleared via ${clearDuePaymentMode}`,
+          dueClearedNotes: clearDueNotes || (amountToCollect >= fullBalance ? `Due cleared via ${clearDuePaymentMode}` : `Partial payment of ₹${amountToCollect.toLocaleString("en-IN")} via ${clearDuePaymentMode}`),
         }),
       });
       const json = await res.json();
       if (json.success) {
-        toast.success(`✅ Due of ₹${Number(selectedDueInvoice.balanceAmount).toLocaleString("en-IN")} cleared successfully for ${selectedDueInvoice.customerName}!`);
+        const remaining = fullBalance - amountToCollect;
+        toast.success(
+          remaining > 0
+            ? `✅ ₹${amountToCollect.toLocaleString("en-IN")} collected for ${selectedDueInvoice.customerName} — ₹${remaining.toLocaleString("en-IN")} still due`
+            : `✅ Due of ₹${fullBalance.toLocaleString("en-IN")} cleared successfully for ${selectedDueInvoice.customerName}!`
+        );
         setSelectedDueInvoice(null);
         setClearDueTxnId("");
         setClearDueNotes("");
+        setClearDueAmount("");
         fetchDueInvoices();
         loadAllDashboardData();
       } else {
@@ -3221,13 +3242,33 @@ export default function DashboardPage() {
                 <tbody className="divide-y divide-slate-100">
                   {(() => {
                     const txns = widgetData.logs?.transactions || { cash: [], upi: [], online: [], card: [], finance: [] };
-                    const combined = [
-                      ...(txns.cash || []), 
-                      ...(txns.upi || []), 
-                      ...(txns.online || []), 
-                      ...(txns.card || []), 
+                    // A split-payment bill (₹13,000 Cash + ₹14,996 UPI) has one row per
+                    // mode in the per-mode arrays above — concatenating them straight
+                    // showed the SAME invoice number twice in this "recent" list, looking
+                    // like two separate bills were raised. Grouped back by invoice number
+                    // here so one bill is always one row, with every mode it was settled
+                    // through listed together and its amounts summed.
+                    const rows = [
+                      ...(txns.cash || []),
+                      ...(txns.upi || []),
+                      ...(txns.online || []),
+                      ...(txns.card || []),
                       ...(txns.finance || [])
-                    ]
+                    ];
+                    const grouped = new Map<string, any>();
+                    rows.forEach((t: any) => {
+                      const key = t.id || `${t.customer}-${t.time}`;
+                      const modeLabel = String(t.mode || "").split(" ")[0];
+                      const existing = grouped.get(key);
+                      if (!existing) {
+                        grouped.set(key, { ...t, amount: Number(t.amount) || 0, modeSet: new Set([modeLabel]) });
+                      } else {
+                        existing.amount += Number(t.amount) || 0;
+                        existing.modeSet.add(modeLabel);
+                      }
+                    });
+                    const combined = Array.from(grouped.values())
+                      .map((g: any) => ({ ...g, mode: Array.from(g.modeSet).join(" + ") }))
                       .sort((a, b) => new Date(b.time || 0).getTime() - new Date(a.time || 0).getTime())
                       .slice(0, 5);
 
@@ -3257,7 +3298,11 @@ export default function DashboardPage() {
                           </td>
                           <td className="px-2.5 py-2.5 text-center">
                             <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase bg-slate-100 text-slate-700">
-                              {txn.mode?.split(" ")[0] || "Cash"}
+                              {/* mode is already the clean, pre-joined label ("Cash" or
+                                  "Cash + UPI" for a split bill) from the grouping above —
+                                  re-splitting it here would cut a split bill back down to
+                                  just its first mode. */}
+                              {txn.mode || "Cash"}
                             </span>
                           </td>
                           <td className="px-2.5 py-2.5 text-right font-black text-slate-900 font-mono text-xs sm:text-sm">
@@ -4068,6 +4113,7 @@ export default function DashboardPage() {
                                   setClearDueTxnId("");
                                   setClearDueStaff(inv.salesExecutive || "AMIT SINGH");
                                   setClearDueNotes(`Due settled for ${inv.customerName}`);
+                                  setClearDueAmount("");
                                 }}
                                 className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-8 px-3 shadow-sm rounded-lg"
                               >
@@ -5469,6 +5515,23 @@ export default function DashboardPage() {
             </div>
 
             <div>
+              <Label className="text-xs font-bold text-slate-800">Amount Being Collected Now (₹)</Label>
+              <Input
+                type="number"
+                min={0}
+                max={selectedDueInvoice?.balanceAmount || 0}
+                step="0.01"
+                placeholder={`Blank = full ₹${Number(selectedDueInvoice?.balanceAmount || 0).toLocaleString("en-IN")}`}
+                value={clearDueAmount}
+                onChange={(e) => setClearDueAmount(e.target.value)}
+                className="bg-white border-slate-300 mt-1 font-bold text-slate-900"
+              />
+              <p className="text-[10px] text-slate-400 mt-0.5">
+                Leave blank to clear the whole balance. Enter a smaller amount to record a partial payment — the rest stays due.
+              </p>
+            </div>
+
+            <div>
               <Label className="text-xs font-bold text-slate-800">Payment Collection Mode *</Label>
               <Select value={clearDuePaymentMode} onValueChange={setClearDuePaymentMode}>
                 <SelectTrigger className="bg-white border-slate-300 mt-1 font-bold text-slate-900"><SelectValue /></SelectTrigger>
@@ -5519,7 +5582,14 @@ export default function DashboardPage() {
                 Cancel
               </Button>
               <Button type="submit" disabled={isClearingDue} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5">
-                {isClearingDue ? "Clearing..." : "Confirm & Clear Due (₹" + Number(selectedDueInvoice?.balanceAmount || 0).toLocaleString("en-IN") + ")"}
+                {isClearingDue
+                  ? "Collecting..."
+                  : "Confirm & Collect (₹" +
+                    (clearDueAmount.trim() === ""
+                      ? Number(selectedDueInvoice?.balanceAmount || 0)
+                      : Math.max(0, Math.min(Number(selectedDueInvoice?.balanceAmount || 0), Number(clearDueAmount) || 0))
+                    ).toLocaleString("en-IN") +
+                    ")"}
               </Button>
             </DialogFooter>
           </form>

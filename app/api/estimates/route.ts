@@ -34,6 +34,26 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     await connectToDatabase();
+
+    // Remembered here too so a company entered while quoting an estimate is
+    // already in the dropdown by the time it's converted to an invoice.
+    if (body.customerGST && body.customerCompanyName) {
+      try {
+        const BillingCompany = (await import("@/models/BillingCompany")).default;
+        const { derivePanFromGstin } = await import("@/lib/gst");
+        await BillingCompany.findOneAndUpdate(
+          { gstin: String(body.customerGST).trim().toUpperCase() },
+          {
+            $set: { companyName: body.customerCompanyName, pan: derivePanFromGstin(body.customerGST) },
+            $inc: { usageCount: 1 },
+          },
+          { upsert: true, setDefaultsOnInsert: true }
+        );
+      } catch (companyErr: any) {
+        console.error("BillingCompany upsert failed, saving estimate anyway:", companyErr?.message);
+      }
+    }
+
     const estimate = await Estimate.create(body);
 
     // Auto-create / sync corresponding CRM Lead

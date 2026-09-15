@@ -46,6 +46,7 @@ interface PreviewRow {
   gstRate: number;
   lowConfidence: boolean;
   matchedItem: any | null;
+  serialNumbers?: string[];
 }
 
 export function PurchaseImportModal({
@@ -127,6 +128,7 @@ export function PurchaseImportModal({
           gstRate: r.gstRate,
           lowConfidence: r.lowConfidence,
           matchedItem: r.matchedItem,
+          serialNumbers: r.serialNumbers,
         }))
       );
       toast.success(`Found ${data.rows.length} row(s) — review before adding`);
@@ -182,6 +184,7 @@ export function PurchaseImportModal({
             purchasePrice: row.rate,
             gstRate: row.gstRate || row.matchedItem.gstRate || 18,
             orderQty: row.quantity,
+            serialNumbers: row.serialNumbers,
           });
           continue;
         }
@@ -219,6 +222,7 @@ export function PurchaseImportModal({
           purchasePrice: row.rate,
           gstRate: row.gstRate,
           orderQty: row.quantity,
+          serialNumbers: row.serialNumbers,
         });
       }
 
@@ -422,6 +426,11 @@ export function PurchaseImportModal({
                           {row.lowConfidence && (
                             <span className="flex items-center gap-1 text-red-500 text-[10px] mt-0.5">
                               <AlertTriangle className="w-3 h-3" /> Check this row
+                            </span>
+                          )}
+                          {row.serialNumbers && row.serialNumbers.length > 0 && (
+                            <span className="flex items-center gap-1 text-[#3F63AD] text-[10px] font-bold mt-0.5">
+                              {row.serialNumbers.length} serial{row.serialNumbers.length === 1 ? "" : "s"} found
                             </span>
                           )}
                         </td>

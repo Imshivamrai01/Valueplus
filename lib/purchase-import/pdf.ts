@@ -9,6 +9,7 @@
 // for the server route can still leave CanvasFactory unable to resolve it.
 import { CanvasFactory } from "pdf-parse/worker";
 import { PDFParse } from "pdf-parse";
+import { extractEmbeddedCode } from "./match-item";
 
 /**
  * Break one extracted text line into cells resolveRows() can read as
@@ -18,6 +19,33 @@ import { PDFParse } from "pdf-parse";
  *   "LED TV 43 inch 5 20000 100000"                    -> trailing numbers
  */
 function splitPdfTextLine(line: string): string[] {
+  // pdf-parse/pdfjs itself inserts a real tab between two text runs it saw as
+  // separate columns (a wide x-gap in the PDF's own layout) — when a tab
+  // survived, it's a far more reliable column boundary than anything this
+  // function could guess from whitespace or trailing numbers, and it holds
+  // even when the PDF's column ORDER isn't left-to-right the way a normal
+  // Name-Qty-Rate-Amount sheet would read (a real supplier invoice was seen
+  // to extract its line-item row as Amount ... Qty Description S.No, right
+  // to left, because that's the order its own content stream drew them in).
+  if (line.includes("\t")) {
+    const cells: string[] = [];
+    for (const raw of line.split("\t")) {
+      const cell = raw.trim();
+      if (!cell) continue;
+      // Two columns that sit close together in the PDF (e.g. Qty right next
+      // to Taxable Value) can land in the same tab-cell separated by just a
+      // space instead of a tab — split those back into two cells so each
+      // number is still its own column.
+      const twoNumbers = cell.match(/^(-?[\d,]+\.?\d*)\s+(-?[\d,]+\.?\d*)$/);
+      if (twoNumbers) {
+        cells.push(twoNumbers[1], twoNumbers[2]);
+      } else {
+        cells.push(cell);
+      }
+    }
+    if (cells.length >= 2) return cells;
+  }
+
   const byGaps = line.split(/\s{2,}/).map((c) => c.trim()).filter(Boolean);
   if (byGaps.length >= 2) return byGaps;
 
@@ -60,7 +88,7 @@ function splitPdfTextLine(line: string): string[] {
  */
 export async function extractRowsFromPdf(
   buffer: Buffer
-): Promise<{ grid: string[][]; usedTableExtraction: boolean; rawText: string }> {
+): Promise<{ grid: string[][]; serialGrid: string[][]; usedTableExtraction: boolean; rawText: string }> {
   const parser = new PDFParse({ data: buffer, CanvasFactory });
 
   try {
@@ -69,13 +97,23 @@ export async function extractRowsFromPdf(
     // taken from the PDF's own layout instead of inferred from whitespace.
     const tableResult = await parser.getTable();
     const tables = tableResult.mergedTables || [];
-    const biggest = tables.reduce<string[][] | null>((best, t) => {
+
+    // A multi-page supplier invoice can carry a second table listing one row
+    // per physical unit's serial/IMEI number (see SERIAL NUMBER DETAILS in
+    // the sample invoice) — that table must not compete with the line-items
+    // table for "biggest", or it either wins and replaces the real line items,
+    // or loses and gets silently discarded. Pull it out by its header first.
+    const serialGrid =
+      tables.find((t) => (t[0] || []).some((cell) => /serial/i.test(String(cell || "")))) || [];
+    const lineItemTables = serialGrid.length ? tables.filter((t) => t !== serialGrid) : tables;
+
+    const biggest = lineItemTables.reduce<string[][] | null>((best, t) => {
       if (!best || t.length > best.length) return t;
       return best;
     }, null);
 
     if (biggest && biggest.length >= 2 && biggest[0].length >= 2) {
-      return { grid: biggest, usedTableExtraction: true, rawText: "" };
+      return { grid: biggest, serialGrid, usedTableExtraction: true, rawText: "" };
     }
 
     // No usable table — fall back to line-by-line text. resolveRows() still
@@ -90,9 +128,36 @@ export async function extractRowsFromPdf(
       .map((l) => l.trim())
       .filter(Boolean);
 
-    const grid = lines.map((line) => splitPdfTextLine(line));
+    // A "SERIAL NUMBER DETAILS" section (one line per physical unit, not a
+    // line item) sits after the item table on a multi-page invoice — its
+    // lines still carry the same embedded product code a real item line
+    // does, so left in with the rest they get parsed as extra, bogus line
+    // items instead of being recognised as serial data. Splitting them out
+    // here keeps them out of the line-item grid entirely.
+    const serialMarkerIdx = lines.findIndex((l) => /serial\s*number\s*details/i.test(l));
+    const itemLines = serialMarkerIdx === -1 ? lines : lines.slice(0, serialMarkerIdx);
+    const serialSectionLines = serialMarkerIdx === -1 ? [] : lines.slice(serialMarkerIdx + 1);
 
-    return { grid, usedTableExtraction: false, rawText: textResult.text || "" };
+    const grid = itemLines.map((line) => splitPdfTextLine(line));
+
+    // Column positions in this section aren't reliable as flat text (the
+    // same reversed/merged-cell issue the item table has), so each unit's
+    // serial is pulled straight off its "S/R : <value>" marker and matched
+    // to a product by the embedded code on the same line, instead of trying
+    // to align it to the section's own header cell-by-cell.
+    let textSerialGrid: string[][] = [];
+    const serialEntries = serialSectionLines
+      .map((line) => {
+        const serialMatch = line.match(/S\/?R\s*:\s*([A-Za-z0-9]+)/i);
+        const code = extractEmbeddedCode(line);
+        return serialMatch && code ? { code, serial: serialMatch[1] } : null;
+      })
+      .filter((e): e is { code: string; serial: string } => e !== null);
+    if (serialEntries.length > 0) {
+      textSerialGrid = [["Description", "Serial Number"], ...serialEntries.map((e) => [e.code, e.serial])];
+    }
+
+    return { grid, serialGrid: textSerialGrid, usedTableExtraction: false, rawText: textResult.text || "" };
   } finally {
     await parser.destroy();
   }

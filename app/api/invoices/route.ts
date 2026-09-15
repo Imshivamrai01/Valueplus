@@ -8,6 +8,7 @@ import Estimate from "@/models/Estimate";
 import DeletedInvoice from "@/models/DeletedInvoice";
 import AuditLog from "@/models/AuditLog";
 import { derivePaymentModeLabel, isCollectedMode } from "@/lib/payment-modes";
+import { derivePanFromGstin } from "@/lib/gst";
 import { getActor } from "@/lib/requirePermission";
 import { authoriseDestructiveAction } from "@/lib/destructiveAction";
 
@@ -205,6 +206,30 @@ export async function POST(req: Request) {
       body.balanceAmount = Math.max(0, invoiceTotal - collected);
       if (body.balanceAmount <= 1 && collected > 0) body.status = body.status === "draft" ? "draft" : "paid";
       else if (collected > 0) body.status = body.status === "draft" ? "draft" : "partial";
+    }
+
+    // PAN is derived from the GSTIN itself (its own 3rd-12th characters), not
+    // collected as a separate manual field — and a GST-registered company is
+    // remembered by its GSTIN so it shows up in the billing form's dropdown
+    // next time instead of being retyped. Never lets a bad company-master
+    // write fail the actual sale.
+    if (body.customerGST) {
+      body.customerPAN = body.customerPAN || derivePanFromGstin(body.customerGST);
+      if (body.customerCompanyName) {
+        try {
+          const BillingCompany = (await import("@/models/BillingCompany")).default;
+          await BillingCompany.findOneAndUpdate(
+            { gstin: String(body.customerGST).trim().toUpperCase() },
+            {
+              $set: { companyName: body.customerCompanyName, pan: body.customerPAN },
+              $inc: { usageCount: 1 },
+            },
+            { upsert: true, setDefaultsOnInsert: true }
+          );
+        } catch (companyErr: any) {
+          console.error("BillingCompany upsert failed, saving invoice anyway:", companyErr?.message);
+        }
+      }
     }
 
     const invoice = await Invoice.create(body);
@@ -653,24 +678,34 @@ export async function PUT(req: Request) {
         );
       }
 
-      const clearedAmount = existingInvoice.balanceAmount > 0 ? existingInvoice.balanceAmount : (body.clearedAmount || existingInvoice.total);
-      
-      existingInvoice.paidAmount = existingInvoice.total;
-      existingInvoice.balanceAmount = 0;
-      existingInvoice.status = "paid";
+      // Clamped so a typo or stale client value can never collect more than
+      // is actually outstanding, or go negative. Defaulting to the full
+      // balance (when nothing was specified) keeps the old "clear it all"
+      // behaviour for callers that don't pass a partial amount.
+      const requestedAmount = Number(body.clearedAmount) || existingInvoice.balanceAmount;
+      const amountToApply = Math.max(0, Math.min(requestedAmount, existingInvoice.balanceAmount));
+      const isFullyCleared = amountToApply >= existingInvoice.balanceAmount;
+
+      existingInvoice.paidAmount = (Number(existingInvoice.paidAmount) || 0) + amountToApply;
+      existingInvoice.balanceAmount = Math.max(0, existingInvoice.total - existingInvoice.paidAmount);
+      existingInvoice.status = existingInvoice.balanceAmount <= 0 ? "paid" : "partial";
       existingInvoice.dueClearedAt = new Date();
       existingInvoice.dueClearedMode = body.dueClearedMode || "Cash";
       existingInvoice.dueClearedBy = body.dueClearedBy || "Counter Staff";
-      existingInvoice.dueClearedNotes = body.dueClearedNotes || "Due fully settled and cleared";
+      existingInvoice.dueClearedNotes =
+        body.dueClearedNotes ||
+        (isFullyCleared
+          ? "Due fully settled and cleared"
+          : `Partial due payment of ₹${amountToApply.toLocaleString("en-IN")} collected — ₹${existingInvoice.balanceAmount.toLocaleString("en-IN")} still outstanding`);
       existingInvoice.dueClearedTxnId = body.dueClearedTxnId || `CLR-${Date.now()}`;
       existingInvoice.lastModifiedReason = "due-clear";
 
       const saved = await existingInvoice.save();
 
       // Deduct from customer's outstanding balance
-      if (existingInvoice.customerId && clearedAmount > 0) {
+      if (existingInvoice.customerId && amountToApply > 0) {
         await Customer.findByIdAndUpdate(existingInvoice.customerId, {
-          $inc: { outstandingBalance: -clearedAmount }
+          $inc: { outstandingBalance: -amountToApply }
         });
       }
 
@@ -682,18 +717,22 @@ export async function PUT(req: Request) {
           partyId: existingInvoice.customerId,
           partyType: "Customer",
           partyName: existingInvoice.customerName,
-          amount: clearedAmount,
+          amount: amountToApply,
           paymentMode: body.dueClearedMode || "Cash",
           date: new Date().toISOString().split("T")[0],
           referenceId: existingInvoice.invoiceNumber,
-          notes: `Due balance cleared for Invoice #${existingInvoice.invoiceNumber} via ${body.dueClearedMode || "Cash"}. Txn/Ref: ${body.dueClearedTxnId || "N/A"}`,
+          notes: `${isFullyCleared ? "Due balance cleared" : "Partial due payment collected"} for Invoice #${existingInvoice.invoiceNumber} via ${body.dueClearedMode || "Cash"}. Txn/Ref: ${body.dueClearedTxnId || "N/A"}`,
           type: "received"
         });
       } catch (txErr) {
         console.warn("Notice: PaymentTransaction log for due clearance:", txErr);
       }
 
-      return NextResponse.json({ success: true, message: "Due settled and cleared successfully", data: saved });
+      return NextResponse.json({
+        success: true,
+        message: isFullyCleared ? "Due settled and cleared successfully" : "Partial payment recorded successfully",
+        data: saved,
+      });
     }
 
     // Soft-cancel: unlike DELETE, the invoice record survives (for audit / leakage tracking)
@@ -767,6 +806,25 @@ export async function PUT(req: Request) {
         usedLegacyPin: gate.usedLegacyPin,
         data: saved,
       });
+    }
+
+    if (body.customerGST) {
+      body.customerPAN = body.customerPAN || derivePanFromGstin(body.customerGST);
+      if (body.customerCompanyName) {
+        try {
+          const BillingCompany = (await import("@/models/BillingCompany")).default;
+          await BillingCompany.findOneAndUpdate(
+            { gstin: String(body.customerGST).trim().toUpperCase() },
+            {
+              $set: { companyName: body.customerCompanyName, pan: body.customerPAN },
+              $inc: { usageCount: 1 },
+            },
+            { upsert: true, setDefaultsOnInsert: true }
+          );
+        } catch (companyErr: any) {
+          console.error("BillingCompany upsert failed, saving invoice edit anyway:", companyErr?.message);
+        }
+      }
     }
 
     const updatedInvoice = await Invoice.findOneAndUpdate(

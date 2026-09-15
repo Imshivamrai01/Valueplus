@@ -17,6 +17,7 @@ export interface IEstimate extends Document {
   customerPhone?: string;
   customerAddress?: string;
   customerGST?: string;
+  customerCompanyName?: string;
   salesExecutive?: string;
   salesperson?: string;
   status: "Draft" | "Sent" | "Accepted" | "Rejected" | "Expired" | "Converted";
@@ -45,6 +46,7 @@ const EstimateSchema = new Schema<IEstimate>(
     customerPhone: { type: String, default: "" },
     customerAddress: { type: String, default: "" },
     customerGST: { type: String, default: "" },
+    customerCompanyName: { type: String, default: "" },
     salesExecutive: { type: String, default: "AMIT SINGH" },
     salesperson: { type: String, default: "AMIT SINGH" },
     status: { type: String, enum: ["Draft", "Sent", "Accepted", "Rejected", "Expired", "Converted"], default: "Draft" },

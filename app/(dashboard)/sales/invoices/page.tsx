@@ -188,6 +188,15 @@ function SalesInvoicesContent() {
     }
   });
 
+  const { data: billingCompanies = [] } = useQuery({
+    queryKey: ["billing-companies"],
+    queryFn: async () => {
+      const res = await fetch("/api/billing-companies");
+      const json = await res.json();
+      return json.success ? json.data : [];
+    }
+  });
+
   const { data: payments = [] } = useQuery({
     queryKey: ["payments"],
     queryFn: async () => {
@@ -279,6 +288,7 @@ function SalesInvoicesContent() {
       customerEmail: inv.customerEmail || "",
       customerGST: inv.customerGST || "",
       customerPAN: inv.customerPAN || "",
+      customerCompanyName: inv.customerCompanyName || "",
       customerAddress: inv.customerAddress || "",
       customerCity: inv.customerCity || "",
       customerState: inv.customerState || "",
@@ -718,11 +728,41 @@ function SalesInvoicesContent() {
             </div>
             <div>
               <Label>GSTIN</Label>
-              <Input value={editForm.customerGST || ""} onChange={(e) => setEditForm((f: any) => ({ ...f, customerGST: e.target.value }))} className="mt-1" />
+              <Input
+                value={editForm.customerGST || ""}
+                onChange={(e) => {
+                  const gstin = e.target.value;
+                  const cleanGstin = gstin.trim().toUpperCase();
+                  const matched = billingCompanies.find((c: any) => c.gstin?.toUpperCase() === cleanGstin);
+                  setEditForm((f: any) => ({
+                    ...f,
+                    customerGST: gstin,
+                    customerPAN: cleanGstin.length === 15 ? cleanGstin.slice(2, 12) : f.customerPAN,
+                    customerCompanyName: matched ? matched.companyName : f.customerCompanyName,
+                  }));
+                }}
+                className="mt-1"
+              />
             </div>
             <div>
-              <Label>PAN</Label>
-              <Input value={editForm.customerPAN || ""} onChange={(e) => setEditForm((f: any) => ({ ...f, customerPAN: e.target.value }))} className="mt-1" />
+              <Label>Company Name</Label>
+              <AutocompleteSearch
+                data={billingCompanies}
+                searchKeys={["companyName", "gstin"]}
+                displayKey="companyName"
+                subDisplayKey="gstin"
+                placeholder="For B2B billing"
+                value={editForm.customerCompanyName || ""}
+                onSearchChange={(name) => {
+                  const matched = billingCompanies.find((c: any) => c.companyName === name);
+                  setEditForm((f: any) => ({
+                    ...f,
+                    customerCompanyName: name,
+                    customerGST: matched ? matched.gstin : f.customerGST,
+                  }));
+                }}
+                className="mt-1 w-full"
+              />
             </div>
             <div className="sm:col-span-2">
               <Label>Billing Address</Label>

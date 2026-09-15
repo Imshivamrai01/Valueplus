@@ -126,6 +126,7 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
         dueDate: invoice.dueDate || "",
         
         customerName: invoice.customerName || "Cash Customer",
+        customerCompanyName: invoice.customerCompanyName || "",
         customerPhone: invoice.customerPhone || "7985803562",
         customerAltPhone: invoice.customerAltPhone || invoice.altPhone || "",
         customerGstin: invoice.customerGST || invoice.customerGstin || "",
@@ -299,6 +300,7 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
       dueDate: "",
       
       customerName: "AJAY TIWARI",
+      customerCompanyName: "",
       customerPhone: "7985803562",
       customerAltPhone: "",
       customerGstin: "",
@@ -558,7 +560,13 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
           {/* Col 1: Bill To */}
           <div className="col-span-4 p-2 space-y-1">
             <p className="font-bold border-b pb-0.5 uppercase text-slate-800">Bill to: Customer</p>
-            <p className="font-black text-xs text-slate-900">{activeData.customerName}</p>
+            {/* A B2B sale (company name entered against the GSTIN) is billed
+                under the COMPANY's name — the walk-in contact still shows
+                just below it, not dropped, since that's who to actually call. */}
+            <p className="font-black text-xs text-slate-900 uppercase">{activeData.customerCompanyName || activeData.customerName}</p>
+            {activeData.customerCompanyName && activeData.customerName && (
+              <p className="text-slate-600 text-[9.5px] font-semibold">Attn: {activeData.customerName}</p>
+            )}
             <p className="text-slate-700 capitalize text-[9.5px] leading-tight font-medium">{activeData.customerAddress}</p>
             <p className="text-slate-700">
               Ph./Mobile No.: <span className="font-mono font-bold">{activeData.customerPhone}</span>
@@ -582,7 +590,10 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
                 <span className="text-[9px] font-mono font-bold text-amber-800 bg-amber-100 px-1.5 py-0.2 rounded border border-amber-200">🚚 Home Delivery</span>
               )}
             </div>
-            <p className="font-black text-slate-900 uppercase">{activeData.customerName}</p>
+            <p className="font-black text-slate-900 uppercase">{activeData.customerCompanyName || activeData.customerName}</p>
+            {activeData.customerCompanyName && activeData.customerName && (
+              <p className="text-slate-600 text-[9.5px] font-semibold">Attn: {activeData.customerName}</p>
+            )}
             <p className="text-slate-700 capitalize text-[9.5px] leading-tight font-medium">{activeData.shippingAddress}</p>
             <p className="text-slate-700">
               Ph:/Mobile: <span className="font-mono font-bold">{activeData.customerPhone}</span>

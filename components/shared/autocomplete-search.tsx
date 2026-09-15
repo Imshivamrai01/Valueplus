@@ -13,6 +13,7 @@ interface AutocompleteSearchProps {
   value: string;
   onSearchChange: (value: string) => void;
   className?: string;
+  inputClassName?: string;
 }
 
 export function AutocompleteSearch({
@@ -24,6 +25,7 @@ export function AutocompleteSearch({
   value,
   onSearchChange,
   className = "w-72",
+  inputClassName = "",
 }: AutocompleteSearchProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [suggestions, setSuggestions] = useState<any[]>([]);
@@ -102,7 +104,7 @@ export function AutocompleteSearch({
         onFocus={() => {
           if (suggestions.length > 0) setIsOpen(true);
         }}
-        className="pl-9 relative z-0 transition-shadow focus-visible:ring-[#3F63AD]/30 focus-visible:border-[#3F63AD]"
+        className={`pl-9 relative z-0 transition-shadow focus-visible:ring-[#3F63AD]/30 focus-visible:border-[#3F63AD] ${inputClassName}`}
       />
       
       {isOpen && (

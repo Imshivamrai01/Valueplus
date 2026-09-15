@@ -4,6 +4,7 @@ import Item from "@/models/Item";
 import { getActor } from "@/lib/requirePermission";
 import { resolveRows } from "@/lib/purchase-import/resolve-rows";
 import { findMatchingItem } from "@/lib/purchase-import/match-item";
+import { groupSerialsByProduct, findSerialsForRow } from "@/lib/purchase-import/serial-table";
 
 /**
  * Parse an uploaded Excel/CSV or PDF purchase sheet into a preview — never
@@ -60,6 +61,7 @@ export async function POST(req: Request) {
     const buffer = Buffer.from(await file.arrayBuffer());
 
     let grid: string[][];
+    let serialGrid: string[][] = [];
     let sourceType: "excel" | "pdf" = "excel";
     let usedTableExtraction = true;
     let pdfHadNoText = false;
@@ -76,6 +78,7 @@ export async function POST(req: Request) {
       const { extractRowsFromPdf } = await import("@/lib/purchase-import/pdf");
       const result = await extractRowsFromPdf(buffer);
       grid = result.grid;
+      serialGrid = result.serialGrid;
       usedTableExtraction = result.usedTableExtraction;
       pdfHadNoText = !result.rawText && !result.usedTableExtraction && grid.length === 0;
     }
@@ -88,7 +91,12 @@ export async function POST(req: Request) {
       });
     }
 
-    const parsedRows = resolveRows(grid);
+    // A PDF whose table extraction failed falls back to raw text lines with
+    // no header and no reliable column order — including invoice chrome
+    // (addresses, GSTINs, bank details) that would otherwise be misread as
+    // line items with invented rate/quantity values. Only trust a row there
+    // when it carries this shop's own embedded product code.
+    const parsedRows = resolveRows(grid, { requireEmbeddedCode: sourceType === "pdf" && !usedTableExtraction });
 
     if (parsedRows.length === 0) {
       return NextResponse.json({
@@ -103,8 +111,11 @@ export async function POST(req: Request) {
       { name: 1, code: 1, vpCode: 1, purchasePrice: 1, gstRate: 1, category: 1, brand: 1 }
     ).lean();
 
+    const serialGroups = groupSerialsByProduct(serialGrid);
+
     const rows = parsedRows.map((row) => {
       const matched = findMatchingItem(row.name, allItems);
+      const serialNumbers = findSerialsForRow(row.name, serialGroups);
       return {
         ...row,
         matchedItem: matched
@@ -118,6 +129,7 @@ export async function POST(req: Request) {
               gstRate: matched.gstRate,
             }
           : null,
+        serialNumbers: serialNumbers && serialNumbers.length > 0 ? serialNumbers : undefined,
       };
     });
 
