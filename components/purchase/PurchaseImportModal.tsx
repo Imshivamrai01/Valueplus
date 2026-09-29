@@ -47,6 +47,12 @@ interface PreviewRow {
   lowConfidence: boolean;
   matchedItem: any | null;
   serialNumbers?: string[];
+  /** Only meaningful for a "New item" row — a matched row always keeps the
+   *  catalog item's own category/brand, shown read-only. Empty string means
+   *  "use the blanket default below", so a single-category invoice still
+   *  needs just one selection while a mixed one can override per row. */
+  category?: string;
+  brand?: string;
 }
 
 export function PurchaseImportModal({
@@ -129,6 +135,8 @@ export function PurchaseImportModal({
           lowConfidence: r.lowConfidence,
           matchedItem: r.matchedItem,
           serialNumbers: r.serialNumbers,
+          category: "",
+          brand: "",
         }))
       );
       toast.success(`Found ${data.rows.length} row(s) — review before adding`);
@@ -168,8 +176,14 @@ export function PurchaseImportModal({
   const resolveMutation = useMutation({
     mutationFn: async () => {
       if (rows.length === 0) throw new Error("No rows to add");
-      if (newCount > 0 && !defaultCategory) {
-        throw new Error("Pick a category for the new products, or delete the unmatched rows");
+      // Each new row can carry its own category (for a mixed-category
+      // invoice); the blanket picker only needs to cover whichever rows
+      // didn't get one of their own.
+      const uncategorised = rows.filter((r) => !r.matchedItem && !(r.category || defaultCategory));
+      if (uncategorised.length > 0) {
+        throw new Error(
+          `Pick a category for "${uncategorised[0].name}"${uncategorised.length > 1 ? ` and ${uncategorised.length - 1} other new row(s)` : ""} — either per-row or via the default above.`
+        );
       }
 
       const resolved: any[] = [];
@@ -197,8 +211,8 @@ export function PurchaseImportModal({
           body: JSON.stringify({
             code: `ITM-${Date.now().toString().slice(-8)}-${resolved.length}`,
             name: row.name,
-            category: defaultCategory,
-            brand: defaultBrand || "Unbranded",
+            category: row.category || defaultCategory,
+            brand: row.brand || defaultBrand || "Unbranded",
             unit: "PCS",
             hsnCode: "8528",
             gstRate: row.gstRate || 18,
@@ -321,7 +335,7 @@ export function PurchaseImportModal({
                   <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mb-2" />
                   <div className="space-y-1.5">
                     <Label className="text-[11px] font-semibold text-amber-800">
-                      Category for new products *
+                      Default Category for new products
                     </Label>
                     <Select value={defaultCategory} onValueChange={setDefaultCategory}>
                       <SelectTrigger className="w-[200px] bg-white h-8 text-xs">
@@ -338,7 +352,7 @@ export function PurchaseImportModal({
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-[11px] font-semibold text-amber-800">
-                      Brand for new products
+                      Default Brand for new products
                     </Label>
                     <BrandSelect
                       value={defaultBrand}
@@ -348,8 +362,9 @@ export function PurchaseImportModal({
                     />
                   </div>
                   <p className="text-[11px] text-amber-700 max-w-xs">
-                    Applied to every row below marked "New Item". Matched rows keep their existing
-                    category and brand.
+                    Used for every "New Item" row below that doesn't have its own Category/Brand
+                    picked in the table — a single-category invoice needs just this. Matched rows
+                    always keep their existing product's category and brand.
                   </p>
                 </div>
               )}
@@ -362,6 +377,7 @@ export function PurchaseImportModal({
                       <th className="px-3 py-2.5 text-right w-20">Qty</th>
                       <th className="px-3 py-2.5 text-right w-28">Rate (₹)</th>
                       <th className="px-3 py-2.5 text-right w-20">GST %</th>
+                      <th className="px-3 py-2.5 text-left w-36">Category</th>
                       <th className="px-3 py-2.5 text-left w-40">Status</th>
                       <th className="px-3 py-2.5 w-10" />
                     </tr>
@@ -409,6 +425,37 @@ export function PurchaseImportModal({
                             }
                             className="h-8 text-xs text-right"
                           />
+                        </td>
+                        <td className="px-3 py-2">
+                          {row.matchedItem ? (
+                            // Matched to a real catalog item — its category is
+                            // whatever that item is already filed under, not
+                            // something this import can change.
+                            <span className="text-slate-500 truncate block max-w-[130px]" title={row.matchedItem.category || ""}>
+                              {row.matchedItem.category || "—"}
+                            </span>
+                          ) : (
+                            <Select
+                              value={row.category || ""}
+                              onValueChange={(v) => updateRow(row.key, { category: v })}
+                            >
+                              <SelectTrigger
+                                className={cn(
+                                  "h-8 text-xs w-full",
+                                  !(row.category || defaultCategory) && "border-red-300 bg-red-50"
+                                )}
+                              >
+                                <SelectValue placeholder={defaultCategory ? `Default: ${defaultCategory}` : "Pick one…"} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {categories.map((c: any) => (
+                                  <SelectItem key={c._id || c.name} value={c.name}>
+                                    {c.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
                         </td>
                         <td className="px-3 py-2">
                           {row.matchedItem ? (
