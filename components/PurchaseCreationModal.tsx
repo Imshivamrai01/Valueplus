@@ -101,6 +101,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
     warehouse: userAssignedBranch,
     supplierName: "",
     supplierPhone: "",
+    supplierGST: "",
     supplierId: "" as string,
     linkedPoNo: "",
     noPoReason: "",
@@ -177,6 +178,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
           // their own Supplier record even though the PO/bill kept their real
           // name. Leaving it blank forces a real number before saving.
           supplierPhone: matchedSupplier?.phone || preloadedSupplier?.phone || "",
+          supplierGST: matchedSupplier?.gstNumber || preloadedSupplier?.gstin || "",
           supplierId: matchedSupplier?._id || "auto",
           linkedPoNo: "",
           noPoReason: "",
@@ -195,7 +197,13 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
             );
             return {
               id: Math.random().toString(),
-              itemId: it.code || it.vpCode || it._id || "ITEM",
+              // The real catalog _id must win here — a human-readable code
+              // string in this field (the old priority order) can't be
+              // matched back to the Item collection by _id at all, silently
+              // breaking every _id-based lookup downstream (HSN code on the
+              // GST report, stock updates falling back to a slower/fuzzier
+              // name match instead of the direct one they're built for).
+              itemId: it._id || it.code || it.vpCode || "ITEM",
               name: it.name,
               quantity: it.orderQty || reorderQty,
               rate: Math.round(purRate),
@@ -312,6 +320,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
           supplierId: found._id,
           supplierName: found.name,
           supplierPhone: cleanPhone,
+          supplierGST: found.gstNumber || "",
           // Items only came FROM a specific PO if one was actually linked —
           // dropping them here regardless used to wipe out a PDF-imported or
           // hand-typed item list the moment the admin finished correcting
@@ -346,6 +355,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
         ...prev,
         supplierName: found.name,
         supplierPhone: found.phone || "",
+        supplierGST: found.gstNumber || "",
         supplierId: found._id,
         // Same reasoning as the phone lookup above: items only need
         // dropping if they came from a PO tied to the previous supplier.
@@ -544,18 +554,26 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
         warehouse: form.warehouse || userAssignedBranch,
         supplierName: form.supplierName,
         supplierPhone: form.supplierPhone,
+        supplierGST: form.supplierGST,
         supplierId: form.supplierId,
         billDate: form.billDate,
         linkedPoNo: form.linkedPoNo,
         noPoReason: form.linkedPoNo ? "" : form.noPoReason.trim(),
-        items: form.items.map(i => ({
-          itemId: i.itemId,
-          name: i.name,
-          quantity: Number(i.quantity),
-          rate: Number(i.rate),
-          gstRate: Number(i.gstRate),
-          serialNumbers: i.serialNumbers || [],
-        })),
+        items: form.items.map(i => {
+          // Frozen onto the purchase line at billing time, same reasoning as
+          // the invoice side — the GST purchase register needs a per-product
+          // HSN code the item form itself never collected directly.
+          const catalogItem = catalogItems.find((c: any) => c._id === i.itemId);
+          return {
+            itemId: i.itemId,
+            name: i.name,
+            quantity: Number(i.quantity),
+            rate: Number(i.rate),
+            gstRate: Number(i.gstRate),
+            hsn: catalogItem?.hsnCode || "",
+            serialNumbers: i.serialNumbers || [],
+          };
+        }),
         subtotal: totals.subtotal,
         gst: totals.gst,
         total: totals.total,
@@ -608,6 +626,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
         billDate: new Date().toISOString().split("T")[0],
         supplierName: "",
         supplierPhone: "",
+        supplierGST: "",
         supplierId: "",
         linkedPoNo: "",
         noPoReason: "",
@@ -687,6 +706,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
         const newSupPayload = {
           name: form.supplierName,
           phone: form.supplierPhone,
+          gstNumber: form.supplierGST,
           status: "active",
           address: {
             line1: "Commercial Trade Hub / Store Outlet",
@@ -922,6 +942,16 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs text-slate-600">Supplier GSTIN (Optional)</Label>
+                <Input
+                  placeholder="09XXXXX1234X1ZX"
+                  value={form.supplierGST}
+                  onChange={(e) => setForm({ ...form, supplierGST: e.target.value.toUpperCase() })}
+                  className="bg-slate-50 font-mono text-xs uppercase"
+                />
               </div>
             </div>
 

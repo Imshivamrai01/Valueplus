@@ -47,6 +47,10 @@ interface PreviewRow {
   lowConfidence: boolean;
   matchedItem: any | null;
   serialNumbers?: string[];
+  /** The HSN code resolveRows found on the invoice itself — used as the real
+   *  code for a new product instead of a generic placeholder, and carried
+   *  onto the purchase entry line even when matched to an existing item. */
+  hsn?: string;
   /** Only meaningful for a "New item" row — a matched row always keeps the
    *  catalog item's own category/brand, shown read-only. Empty string means
    *  "use the blanket default below", so a single-category invoice still
@@ -140,6 +144,7 @@ export function PurchaseImportModal({
           lowConfidence: r.lowConfidence,
           matchedItem: r.matchedItem,
           serialNumbers: r.serialNumbers,
+          hsn: r.hsn,
           category: "",
           brand: "",
         }))
@@ -219,7 +224,10 @@ export function PurchaseImportModal({
             category: row.category || defaultCategory,
             brand: row.brand || defaultBrand || "Unbranded",
             unit: "PCS",
-            hsnCode: "8528",
+            // The invoice itself already told us this product's real HSN —
+            // "8528" (a generic electronics fallback) only applies when the
+            // sheet genuinely had no HSN column to read one from.
+            hsnCode: row.hsn || "8528",
             gstRate: row.gstRate || 18,
             purchasePrice: row.rate,
             sellingPrice: Math.round(row.rate * 1.25),

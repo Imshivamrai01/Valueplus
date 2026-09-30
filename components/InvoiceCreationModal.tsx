@@ -1057,12 +1057,20 @@ export function InvoiceCreationModal({
         }
       }
 
+      // Frozen onto the invoice line at sale time — the GST Sales Register
+      // needs a per-product HSN code, which the item form never collected
+      // directly, but the catalog entry this row was picked from already has.
+      const matchedCatalog = catalogItems.find(
+        (cat: any) => cat._id === item.itemId || cat.code === item.itemCode || (item.vpCode && cat.vpCode === item.vpCode)
+      );
+
       return {
         itemId: item.itemId || `ITEM-${Date.now()}`,
         itemName: item.name,
         brand: item.brand || item.brandName || "Showroom Partner",
         itemCode: item.itemCode || "GEN",
         vpCode: item.vpCode || item.itemCode || "",
+        hsn: matchedCatalog?.hsnCode || "",
         description: item.serialNumber ? `Serial/IMEI: ${item.serialNumber}` : (item.batchNumber ? `Batch: ${item.batchNumber}` : ""),
         quantity: item.qty,
         unit: "PCS",

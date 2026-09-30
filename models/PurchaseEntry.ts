@@ -3,6 +3,10 @@ import mongoose, { Schema, Document, Model } from "mongoose";
 export interface IPurchaseEntry extends Document {
   billNo: string;
   supplierName: string;
+  /** The supplier's GSTIN as it stood at billing time — needed for GST
+   *  purchase-register reporting; not on the model previously even though
+   *  the creation form already collects a matching Supplier record. */
+  supplierGST?: string;
   warehouse?: string;
   linkedPoNo?: string;
   /** Why this entry was billed without going through a Purchase Order first — mandatory when linkedPoNo is empty. */
@@ -16,6 +20,7 @@ export interface IPurchaseEntry extends Document {
     quantity: number;
     rate: number;
     gstRate: number;
+    hsn?: string;
     serialNumbers?: string[];
   }>;
   subtotal: number;
@@ -35,6 +40,7 @@ const PurchaseEntrySchema = new Schema<IPurchaseEntry>(
   {
     billNo: { type: String, required: true },
     supplierName: { type: String, required: true },
+    supplierGST: { type: String, default: "" },
     warehouse: { type: String, default: "Ashoka Enterprises (Kunraghat Showroom)" },
     linkedPoNo: { type: String },
     noPoReason: { type: String, default: "" },
@@ -48,6 +54,7 @@ const PurchaseEntrySchema = new Schema<IPurchaseEntry>(
         quantity: { type: Number },
         rate: { type: Number },
         gstRate: { type: Number },
+        hsn: { type: String, default: "" },
         serialNumbers: [{ type: String }],
       }
     ],

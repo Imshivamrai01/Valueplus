@@ -2,44 +2,184 @@ import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import Invoice from "@/models/Invoice";
 import PurchaseEntry from "@/models/PurchaseEntry";
+import EWayBill from "@/models/EWayBill";
+import Item from "@/models/Item";
+
+/**
+ * Column set matches the admin's own Tally-exported Sales Register exactly
+ * (same header text, including its "IGST Outwad" typo) — this report exists
+ * to be dropped straight into the same filing workflow that sheet came from,
+ * not a differently-shaped summary that needs manual reformatting first.
+ *
+ * A field Tally tracks that this ERP has no equivalent for (A/C Group, IRN,
+ * Accode, Tin No, Original Bill reference) is left blank rather than guessed
+ * at — inventing a plausible-looking value in a GST filing is worse than an
+ * honestly empty cell.
+ */
+const HOME_STATE_CODE = "09"; // Uttar Pradesh — this shop's own registration
+
+function isIntraState(gstin?: string | null): boolean {
+  const clean = String(gstin || "").trim().toUpperCase();
+  const stateCode = clean.slice(0, 2);
+  // Real customer data was seen storing placeholder text in this same field
+  // — "URD", "URP (Unregistered Person)" — which isn't a GSTIN at all, and
+  // treating its first two letters as a state-code digit prefix read every
+  // one of those as inter-state. Only a genuine two-DIGIT prefix counts;
+  // anything else (blank, or placeholder text like that) defaults to
+  // intra-state — overwhelmingly the real case for this shop's local
+  // customers and vendors, and the same default the billing form itself uses.
+  if (!/^\d{2}$/.test(stateCode)) return true;
+  return stateCode === HOME_STATE_CODE;
+}
+
+function round2(n: number): number {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
 
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const type = searchParams.get("type"); // "GSTR1" or "GSTR2"
-    
+
     await connectToDatabase();
-    
+
+    // A per-product HSN column needs every catalog item's own code as a
+    // fallback for line items saved before this field existed — built once
+    // and reused for whichever report type is being requested.
+    const items = await Item.find({}, { hsnCode: 1, code: 1, vpCode: 1, name: 1 }).lean();
+    const hsnByCode = new Map<string, string>();
+    const hsnById = new Map<string, string>();
+    const hsnByName = new Map<string, string>();
+    items.forEach((it: any) => {
+      if (it.hsnCode) {
+        if (it.code) hsnByCode.set(it.code, it.hsnCode);
+        if (it.vpCode) hsnByCode.set(it.vpCode, it.hsnCode);
+        hsnById.set(String(it._id), it.hsnCode);
+        if (it.name) hsnByName.set(String(it.name).trim().toLowerCase(), it.hsnCode);
+      }
+    });
+
+    /** Every distinct HSN code across a bill's line items, comma-joined — a
+     *  line missing its own frozen `hsn` (saved before this field existed)
+     *  falls back to whatever the catalog says that product's HSN is now.
+     *  The by-name lookup exists specifically for a purchase entry saved
+     *  before its own `itemId`-must-be-the-real-_id bug was fixed — its
+     *  `itemId` there is a human-readable code, not an _id, so neither of
+     *  the other two lookups can match it; the product's own saved NAME
+     *  still can, mirroring the same fallback chain the stock-update code
+     *  already relies on for exactly this reason. */
+    const hsnListFor = (lineItems: any[], nameKey: string, codeKey: string): string => {
+      const codes = new Set<string>();
+      (lineItems || []).forEach((li: any) => {
+        const own = li.hsn && String(li.hsn).trim();
+        if (own) {
+          codes.add(own);
+          return;
+        }
+        const fallback =
+          hsnById.get(String(li[nameKey] || "")) ||
+          hsnByCode.get(String(li[codeKey] || "")) ||
+          hsnByCode.get(String(li.vpCode || "")) ||
+          hsnByName.get(String(li.name || li.itemName || "").trim().toLowerCase());
+        if (fallback) codes.add(fallback);
+      });
+      return Array.from(codes).join(", ");
+    };
+
     if (type === "GSTR1") {
       const invoices = await Invoice.find({ type: "tax-invoice" }).sort({ date: 1 }).lean();
-      const mappedGSTR1 = invoices.map((inv: any) => ({
-        reportId: inv.invoiceNumber,
-        date: inv.date,
-        partyName: inv.customerName,
-        gstin: inv.customerGST || "URD",
-        amount: inv.taxableAmount,
-        cgst: inv.cgst,
-        sgst: inv.sgst,
-        igst: inv.igst,
-        totalTax: inv.totalGST
-      }));
+
+      // E-way bills are generated separately from the invoice, but a real
+      // one on file is real data worth surfacing — joined here rather than
+      // left blank like the fields this ERP genuinely doesn't track.
+      const invoiceNumbers = invoices.map((inv: any) => inv.invoiceNumber).filter(Boolean);
+      const ewayBills = invoiceNumbers.length
+        ? await EWayBill.find(
+            { invoiceNumber: { $in: invoiceNumbers } },
+            { invoiceNumber: 1, ewayBillNo: 1, generatedDate: 1 }
+          ).lean()
+        : [];
+      const ewbByInvoice = new Map(ewayBills.map((e: any) => [e.invoiceNumber, e]));
+
+      const mappedGSTR1 = invoices.map((inv: any) => {
+        const intra = isIntraState(inv.customerGST);
+        const taxable = Number(inv.taxableAmount) || 0;
+        const cgst = Number(inv.cgst) || 0;
+        const sgst = Number(inv.sgst) || 0;
+        const igst = Number(inv.igst) || 0;
+        const ewb = ewbByInvoice.get(inv.invoiceNumber) as { ewayBillNo?: string; generatedDate?: string } | undefined;
+
+        return {
+          "Inv Date": inv.date || "",
+          "Loc.": "", // not tracked per-invoice by this ERP — see file header note
+          "Inv No.": inv.invoiceNumber,
+          "A/C Group": "",
+          "Original Bill No": "",
+          "Original Bill Date": "",
+          "EWB No": ewb?.ewayBillNo || "",
+          "EWB Date": ewb?.generatedDate || "",
+          IRNNO: "",
+          Accode: "",
+          Name: inv.customerName || "",
+          "Tin No.": "",
+          GSTIN: inv.customerGST || "URD",
+          "HSN Code": hsnListFor(inv.items, "itemId", "itemCode"),
+          Gross: round2(taxable),
+          "Net Amount": round2(Number(inv.total) || 0),
+          "IGST Outwad @18%": intra ? 0 : round2(taxable),
+          "Output CGST @9%": round2(cgst),
+          "Output IGST @18%": round2(igst),
+          "Output SGST @9%": round2(sgst),
+          "Round Off": round2(inv.roundOff),
+          "SGST Sales @18%": intra ? round2(taxable) : 0,
+        };
+      });
       return NextResponse.json({ success: true, data: mappedGSTR1 });
     } else if (type === "GSTR2") {
-      const purchases = await PurchaseEntry.find({}).sort({ date: 1 }).lean();
-      const mappedGSTR2 = purchases.map((pur: any) => ({
-        reportId: pur.billNo,
-        date: pur.billDate || pur.createdAt,
-        partyName: pur.supplierName,
-        gstin: pur.supplierGST || "URD", 
-        amount: pur.subtotal || 0,
-        cgst: (pur.gst || 0) / 2,
-        sgst: (pur.gst || 0) / 2,
-        igst: 0,
-        totalTax: pur.gst || 0
-      }));
+      const purchases = await PurchaseEntry.find({}).sort({ billDate: 1 }).lean();
+
+      const mappedGSTR2 = purchases.map((pur: any) => {
+        const intra = isIntraState(pur.supplierGST);
+        const taxable = Number(pur.subtotal) || 0;
+        const totalTax = Number(pur.gst) || 0;
+        // PurchaseEntry only stores a single flat GST figure, not a pre-split
+        // CGST/SGST/IGST breakdown the way Invoice does — split it the same
+        // way the rest of this system's purchase-side GST math already does
+        // (evenly across CGST+SGST for an intra-state bill, entirely IGST
+        // for an inter-state one).
+        const cgst = intra ? totalTax / 2 : 0;
+        const sgst = intra ? totalTax / 2 : 0;
+        const igst = intra ? 0 : totalTax;
+        const roundOff = round2((Number(pur.total) || 0) - (taxable + totalTax));
+
+        return {
+          "Bill Date": pur.billDate || "",
+          "Loc.": pur.warehouse || "",
+          "Bill No.": pur.billNo,
+          "A/C Group": "",
+          "Original Bill No": "",
+          "Original Bill Date": "",
+          "EWB No": "",
+          "EWB Date": "",
+          IRNNO: "",
+          Accode: "",
+          Name: pur.supplierName || "",
+          "Tin No.": "",
+          GSTIN: pur.supplierGST || "URD",
+          "HSN Code": hsnListFor(pur.items, "itemId", "itemId"),
+          Gross: round2(taxable),
+          "Net Amount": round2(Number(pur.total) || 0),
+          "IGST Inward @18%": intra ? 0 : round2(taxable),
+          "Input CGST @9%": round2(cgst),
+          "Input IGST @18%": round2(igst),
+          "Input SGST @9%": round2(sgst),
+          "Round Off": roundOff,
+          "SGST Purchase @18%": intra ? round2(taxable) : 0,
+        };
+      });
       return NextResponse.json({ success: true, data: mappedGSTR2 });
     }
-    
+
     return NextResponse.json({ success: true, data: [] });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

@@ -6,6 +6,11 @@ export interface ILineItem {
   itemCode: string;
   vpCode?: string;
   description?: string;
+  /** The item's HSN code as it stood at billing time — frozen here rather
+   *  than always read live off the Item master, since a GST return for a
+   *  past period must keep showing whatever HSN the sale actually declared
+   *  even if the catalog entry's code is corrected later. */
+  hsn?: string;
   quantity: number;
   unit: string;
   rate: number;
@@ -192,6 +197,7 @@ const LineItemSchema = new Schema({
   itemCode: { type: String, required: true },
   vpCode: { type: String, default: "" },
   description: String,
+  hsn: { type: String, default: "" },
   quantity: { type: Number, required: true },
   unit: { type: String, required: true, default: "Pcs" },
   rate: { type: Number, required: true },

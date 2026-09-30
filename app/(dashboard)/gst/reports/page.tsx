@@ -4,18 +4,26 @@ import { useState } from "react";
 import { PageShell } from "@/components/shared/page-shell";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { FileText, ArrowUpRight, ArrowDownRight, Calculator } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, Calculator } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { formatDate } from "@/lib/utils";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 import { ExportMenu } from "@/components/shared/ExportMenu";
 
+/**
+ * GSTR-1 (Sales) and GSTR-2 (Purchases) below use the SAME column set the
+ * admin's own Tally Sales Register export uses — same header text (including
+ * its "IGST Outwad" typo) — so a row here drops straight into whatever
+ * filing workflow that sheet already fits into, and the exported .xlsx keeps
+ * every one of those columns rather than a trimmed-down summary. An HSN
+ * Code column is added on top (not part of the original sheet) since a GST
+ * return needs it per product and this ERP already knows each item's code.
+ */
+
+const money = (n: unknown) => `₹${(Number(n) || 0).toLocaleString("en-IN")}`;
+
 export default function GSTReportsPage() {
   const [period, setPeriod] = useState("August 2026");
-
-  const safeFormatDate = (dateStr: any) => {
-    return formatDate(dateStr, "dd MMM, yyyy");
-  };
+  const [activeTab, setActiveTab] = useState<"gstr3b" | "gstr1" | "gstr2">("gstr3b");
 
   const { data: gstr1 = [], isLoading: loadingGstr1 } = useQuery({
     queryKey: ["gstr-reports", "GSTR1"],
@@ -43,24 +51,40 @@ export default function GSTReportsPage() {
 
   const selectedFilter = parsePeriod(period);
 
-  const filterByPeriod = (data: any[]) => {
+  const filterByPeriod = (data: any[], dateKey: string) => {
     return data.filter((row: any) => {
-      const d = new Date(row.date || row.createdAt);
+      const d = new Date(row[dateKey]);
+      if (isNaN(d.getTime())) return false;
       return d.getMonth() === selectedFilter.month && d.getFullYear() === selectedFilter.year;
     });
   };
 
-  const filteredGstr1 = filterByPeriod(gstr1);
-  const filteredGstr2 = filterByPeriod(gstr2);
+  const filteredGstr1 = filterByPeriod(gstr1, "Inv Date");
+  const filteredGstr2 = filterByPeriod(gstr2, "Bill Date");
 
-  // Calculations for GSTR-3B
-  const totalSalesAmount = filteredGstr1.reduce((acc: any, curr: any) => acc + (curr.amount || 0), 0);
-  const totalOutputTax = filteredGstr1.reduce((acc: any, curr: any) => acc + (curr.totalTax || 0), 0);
-  
-  const totalPurchaseAmount = filteredGstr2.reduce((acc: any, curr: any) => acc + (curr.amount || 0), 0);
-  const totalInputTax = filteredGstr2.reduce((acc: any, curr: any) => acc + (curr.totalTax || 0), 0);
+  // Calculations for GSTR-3B — each row's own CGST/SGST/IGST columns summed,
+  // there's no longer a single pre-combined "totalTax" field on the row.
+  const totalSalesAmount = filteredGstr1.reduce((acc: number, r: any) => acc + (Number(r.Gross) || 0), 0);
+  const gstr1Cgst = filteredGstr1.reduce((a: number, r: any) => a + (Number(r["Output CGST @9%"]) || 0), 0);
+  const gstr1Sgst = filteredGstr1.reduce((a: number, r: any) => a + (Number(r["Output SGST @9%"]) || 0), 0);
+  const gstr1Igst = filteredGstr1.reduce((a: number, r: any) => a + (Number(r["Output IGST @18%"]) || 0), 0);
+  const totalOutputTax = gstr1Cgst + gstr1Sgst + gstr1Igst;
+
+  const totalPurchaseAmount = filteredGstr2.reduce((acc: number, r: any) => acc + (Number(r.Gross) || 0), 0);
+  const gstr2Cgst = filteredGstr2.reduce((a: number, r: any) => a + (Number(r["Input CGST @9%"]) || 0), 0);
+  const gstr2Sgst = filteredGstr2.reduce((a: number, r: any) => a + (Number(r["Input SGST @9%"]) || 0), 0);
+  const gstr2Igst = filteredGstr2.reduce((a: number, r: any) => a + (Number(r["Input IGST @18%"]) || 0), 0);
+  const totalInputTax = gstr2Cgst + gstr2Sgst + gstr2Igst;
 
   const netGstPayable = totalOutputTax - totalInputTax;
+
+  // Export always reflects whichever tab is open, never a merged blob of
+  // two differently-shaped registers — Sales and Purchases keep their own
+  // column sets exactly as the reference sheet does.
+  const exportConfig =
+    activeTab === "gstr2"
+      ? { data: filteredGstr2, filename: "gst_purchase_register", title: "GST Purchase Register (GSTR-2)" }
+      : { data: filteredGstr1, filename: "gst_sales_register", title: "GST Sales Register (GSTR-1)" };
 
   return (
     <PageShell
@@ -69,8 +93,8 @@ export default function GSTReportsPage() {
       breadcrumbs={[{ label: "GST" }, { label: "Reports" }]}
       actions={
         <div className="flex items-center gap-3">
-          <select 
-            value={period} 
+          <select
+            value={period}
             onChange={(e) => setPeriod(e.target.value)}
             className="h-9 px-3 py-1 rounded-lg border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#3F63AD]"
           >
@@ -80,15 +104,15 @@ export default function GSTReportsPage() {
           </select>
           <ExportMenu
             size="sm"
-            title="GST Reports"
-            subtitle={`${period} · ${gstr1.length + gstr2.length} records`}
-            data={gstr1.concat(gstr2).map((i: any) => ({ ...i }))}
-            filename="gst_report"
+            title={exportConfig.title}
+            subtitle={`${period} · ${exportConfig.data.length} records`}
+            data={exportConfig.data}
+            filename={exportConfig.filename}
           />
         </div>
       }
     >
-      <Tabs defaultValue="gstr3b" className="w-full">
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="w-full">
         <TabsList className="grid w-full max-w-md grid-cols-3 mb-6 bg-slate-100 p-1">
           <TabsTrigger value="gstr3b" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">GSTR-3B (Summary)</TabsTrigger>
           <TabsTrigger value="gstr1" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">GSTR-1 (Sales)</TabsTrigger>
@@ -103,7 +127,7 @@ export default function GSTReportsPage() {
                   <ArrowUpRight className="w-5 h-5" />
                 </div>
                 <p className="text-sm font-medium text-muted-foreground">Output Tax (GSTR-1)</p>
-                <h3 className="text-3xl font-bold mt-1">₹{totalOutputTax.toLocaleString('en-IN')}</h3>
+                <h3 className="text-3xl font-bold mt-1">{money(totalOutputTax)}</h3>
               </div>
               <p className="text-xs text-muted-foreground mt-4 border-t pt-4">Total Tax Collected from Customers</p>
             </div>
@@ -114,7 +138,7 @@ export default function GSTReportsPage() {
                   <ArrowDownRight className="w-5 h-5" />
                 </div>
                 <p className="text-sm font-medium text-muted-foreground">Input Tax Credit (GSTR-2)</p>
-                <h3 className="text-3xl font-bold mt-1">₹{totalInputTax.toLocaleString('en-IN')}</h3>
+                <h3 className="text-3xl font-bold mt-1">{money(totalInputTax)}</h3>
               </div>
               <p className="text-xs text-muted-foreground mt-4 border-t pt-4">Total Tax Paid to Suppliers (ITC)</p>
             </div>
@@ -125,7 +149,7 @@ export default function GSTReportsPage() {
                   <Calculator className="w-5 h-5 text-white" />
                 </div>
                 <p className="text-sm font-medium text-white/80">Net GST Payable</p>
-                <h3 className="text-3xl font-bold mt-1">₹{Math.abs(netGstPayable).toLocaleString('en-IN')}</h3>
+                <h3 className="text-3xl font-bold mt-1">{money(Math.abs(netGstPayable))}</h3>
               </div>
               <p className="text-xs text-white/70 mt-4 border-t border-white/20 pt-4">
                 {netGstPayable > 0 ? "Amount to be paid to Government" : "Excess ITC to be carried forward"}
@@ -149,19 +173,19 @@ export default function GSTReportsPage() {
               </div>
               <div className="flex justify-between p-4 hover:bg-slate-50 transition-colors">
                 <span className="font-medium">3.1 Outward supplies (GSTR-1)</span>
-                <span>₹{totalSalesAmount.toLocaleString('en-IN')}</span>
-                <span>₹{filteredGstr1.reduce((a: any, c: any) => a + (c.igst || 0), 0).toLocaleString('en-IN')}</span>
-                <span>₹{filteredGstr1.reduce((a: any, c: any) => a + (c.cgst || 0), 0).toLocaleString('en-IN')}</span>
-                <span>₹{filteredGstr1.reduce((a: any, c: any) => a + (c.sgst || 0), 0).toLocaleString('en-IN')}</span>
-                <span className="font-semibold">₹{totalOutputTax.toLocaleString('en-IN')}</span>
+                <span>{money(totalSalesAmount)}</span>
+                <span>{money(gstr1Igst)}</span>
+                <span>{money(gstr1Cgst)}</span>
+                <span>{money(gstr1Sgst)}</span>
+                <span className="font-semibold">{money(totalOutputTax)}</span>
               </div>
               <div className="flex justify-between p-4 hover:bg-slate-50 transition-colors">
                 <span className="font-medium">4. Eligible ITC (GSTR-2)</span>
-                <span>₹{totalPurchaseAmount.toLocaleString('en-IN')}</span>
-                <span>₹{filteredGstr2.reduce((a: any, c: any) => a + (c.igst || 0), 0).toLocaleString('en-IN')}</span>
-                <span>₹{filteredGstr2.reduce((a: any, c: any) => a + (c.cgst || 0), 0).toLocaleString('en-IN')}</span>
-                <span>₹{filteredGstr2.reduce((a: any, c: any) => a + (c.sgst || 0), 0).toLocaleString('en-IN')}</span>
-                <span className="font-semibold text-emerald-600">₹{totalInputTax.toLocaleString('en-IN')}</span>
+                <span>{money(totalPurchaseAmount)}</span>
+                <span>{money(gstr2Igst)}</span>
+                <span>{money(gstr2Cgst)}</span>
+                <span>{money(gstr2Sgst)}</span>
+                <span className="font-semibold text-emerald-600">{money(totalInputTax)}</span>
               </div>
               <div className="flex justify-between p-5 bg-slate-100/50 font-semibold text-base">
                 <span>Net Tax Payable</span>
@@ -170,7 +194,7 @@ export default function GSTReportsPage() {
                 <span>-</span>
                 <span>-</span>
                 <span className={netGstPayable > 0 ? "text-red-600" : "text-emerald-600"}>
-                  {netGstPayable > 0 ? `Payable: ₹${netGstPayable.toLocaleString('en-IN')}` : `Refund/Carry: ₹${Math.abs(netGstPayable).toLocaleString('en-IN')}`}
+                  {netGstPayable > 0 ? `Payable: ${money(netGstPayable)}` : `Refund/Carry: ${money(Math.abs(netGstPayable))}`}
                 </span>
               </div>
             </div>
@@ -180,92 +204,120 @@ export default function GSTReportsPage() {
         <TabsContent value="gstr1">
           <div className="bg-white border rounded-2xl overflow-hidden">
             <div className="p-4 border-b">
-              <h3 className="font-semibold">GSTR-1 (Sales / Output Tax)</h3>
-              <p className="text-xs text-muted-foreground mt-1">Tax collected from customers on outward supplies.</p>
+              <h3 className="font-semibold">GSTR-1 — Sales Register (Output Tax)</h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                Same columns as the reference Sales Register export, plus an HSN Code column per product.
+              </p>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left">
-                <thead className="text-xs text-muted-foreground bg-slate-50 border-b uppercase">
+              <table className="w-full text-xs text-left whitespace-nowrap">
+                <thead className="text-[10px] text-muted-foreground bg-slate-50 border-b uppercase">
                   <tr>
-                    <th className="px-4 py-3">Invoice No</th>
-                    <th className="px-4 py-3">Date</th>
-                    <th className="px-4 py-3">Customer</th>
-                    <th className="px-4 py-3">GSTIN</th>
-                    <th className="px-4 py-3 text-right">Taxable Amt</th>
-                    <th className="px-4 py-3 text-right">CGST</th>
-                    <th className="px-4 py-3 text-right">SGST</th>
-                    <th className="px-4 py-3 text-right">IGST</th>
-                    <th className="px-4 py-3 text-right">Total Tax</th>
+                    <th className="px-3 py-2.5">Inv Date</th>
+                    <th className="px-3 py-2.5">Inv No.</th>
+                    <th className="px-3 py-2.5">Name</th>
+                    <th className="px-3 py-2.5">GSTIN</th>
+                    <th className="px-3 py-2.5">HSN Code</th>
+                    <th className="px-3 py-2.5 text-right">Gross</th>
+                    <th className="px-3 py-2.5 text-right">Net Amount</th>
+                    <th className="px-3 py-2.5 text-right">Output CGST @9%</th>
+                    <th className="px-3 py-2.5 text-right">Output SGST @9%</th>
+                    <th className="px-3 py-2.5 text-right">Output IGST @18%</th>
+                    <th className="px-3 py-2.5 text-right">Round Off</th>
+                    <th className="px-3 py-2.5">EWB No</th>
+                    <th className="px-3 py-2.5">EWB Date</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
                   {loadingGstr1 ? (
-                    <tr><td colSpan={9} className="p-0"><TableShimmer rows={6} cols={9} /></td></tr>
+                    <tr><td colSpan={13} className="p-0"><TableShimmer rows={6} cols={13} /></td></tr>
                   ) : filteredGstr1.length === 0 ? (
-                    <tr><td colSpan={9} className="text-center p-8 text-muted-foreground">No GSTR-1 records found</td></tr>
+                    <tr><td colSpan={13} className="text-center p-8 text-muted-foreground">No GSTR-1 records found for this period</td></tr>
                   ) : (
-                    filteredGstr1.map((row: any) => (
-                    <tr key={row._id || row.id || row.reportId} className="hover:bg-slate-50/50">
-                      <td className="px-4 py-3 font-medium text-blue-600">{row.reportId}</td>
-                      <td className="px-4 py-3">{safeFormatDate(row.date || row.createdAt)}</td>
-                      <td className="px-4 py-3">{row.partyName}</td>
-                      <td className="px-4 py-3 text-xs">{row.gstin || "URD"}</td>
-                      <td className="px-4 py-3 text-right font-medium">₹{row.amount?.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right">₹{row.cgst?.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right">₹{row.sgst?.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right">₹{row.igst?.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right font-semibold">₹{row.totalTax?.toLocaleString()}</td>
-                    </tr>
-                  )))}
+                    filteredGstr1.map((row: any, i: number) => (
+                      <tr key={row["Inv No."] || i} className="hover:bg-slate-50/50">
+                        <td className="px-3 py-2.5">{row["Inv Date"]}</td>
+                        <td className="px-3 py-2.5 font-medium text-blue-600">{row["Inv No."]}</td>
+                        <td className="px-3 py-2.5">{row.Name}</td>
+                        <td className="px-3 py-2.5 font-mono">{row.GSTIN}</td>
+                        <td className="px-3 py-2.5 font-mono">{row["HSN Code"] || "—"}</td>
+                        <td className="px-3 py-2.5 text-right font-medium">{money(row.Gross)}</td>
+                        <td className="px-3 py-2.5 text-right">{money(row["Net Amount"])}</td>
+                        <td className="px-3 py-2.5 text-right">{money(row["Output CGST @9%"])}</td>
+                        <td className="px-3 py-2.5 text-right">{money(row["Output SGST @9%"])}</td>
+                        <td className="px-3 py-2.5 text-right">{money(row["Output IGST @18%"])}</td>
+                        <td className="px-3 py-2.5 text-right">{row["Round Off"]}</td>
+                        <td className="px-3 py-2.5">{row["EWB No"] || "—"}</td>
+                        <td className="px-3 py-2.5">{row["EWB Date"] || "—"}</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
+            <p className="text-[10px] text-muted-foreground p-3 border-t bg-slate-50/50">
+              Export (top right) includes every column from the reference sheet — A/C Group, Original Bill No/Date,
+              IRN No, Accode, Tin No are left blank where this ERP doesn't track them, rather than guessed at.
+            </p>
           </div>
         </TabsContent>
 
         <TabsContent value="gstr2">
           <div className="bg-white border rounded-2xl overflow-hidden">
             <div className="p-4 border-b">
-              <h3 className="font-semibold">GSTR-2 (Purchases / Input Tax Credit)</h3>
-              <p className="text-xs text-muted-foreground mt-1">Tax paid to suppliers on inward supplies (Eligible ITC).</p>
+              <h3 className="font-semibold">GSTR-2 — Purchase Register (Input Tax Credit)</h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                Same column style as the Sales Register, mirrored for inward supplies, plus HSN Code per product.
+              </p>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left">
-                <thead className="text-xs text-muted-foreground bg-slate-50 border-b uppercase">
+              <table className="w-full text-xs text-left whitespace-nowrap">
+                <thead className="text-[10px] text-muted-foreground bg-slate-50 border-b uppercase">
                   <tr>
-                    <th className="px-4 py-3">Bill No</th>
-                    <th className="px-4 py-3">Date</th>
-                    <th className="px-4 py-3">Supplier</th>
-                    <th className="px-4 py-3">GSTIN</th>
-                    <th className="px-4 py-3 text-right">Taxable Amt</th>
-                    <th className="px-4 py-3 text-right">CGST</th>
-                    <th className="px-4 py-3 text-right">SGST</th>
-                    <th className="px-4 py-3 text-right">IGST</th>
-                    <th className="px-4 py-3 text-right text-emerald-600">ITC Claimed</th>
+                    <th className="px-3 py-2.5">Bill Date</th>
+                    <th className="px-3 py-2.5">Bill No.</th>
+                    <th className="px-3 py-2.5">Loc.</th>
+                    <th className="px-3 py-2.5">Name</th>
+                    <th className="px-3 py-2.5">GSTIN</th>
+                    <th className="px-3 py-2.5">HSN Code</th>
+                    <th className="px-3 py-2.5 text-right">Gross</th>
+                    <th className="px-3 py-2.5 text-right">Net Amount</th>
+                    <th className="px-3 py-2.5 text-right">Input CGST @9%</th>
+                    <th className="px-3 py-2.5 text-right">Input SGST @9%</th>
+                    <th className="px-3 py-2.5 text-right">Input IGST @18%</th>
+                    <th className="px-3 py-2.5 text-right text-emerald-600">Round Off</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
                   {loadingGstr2 ? (
-                    <tr><td colSpan={9} className="p-0"><TableShimmer rows={6} cols={9} /></td></tr>
+                    <tr><td colSpan={12} className="p-0"><TableShimmer rows={6} cols={12} /></td></tr>
                   ) : filteredGstr2.length === 0 ? (
-                    <tr><td colSpan={9} className="text-center p-8 text-muted-foreground">No GSTR-2 records found</td></tr>
+                    <tr><td colSpan={12} className="text-center p-8 text-muted-foreground">No GSTR-2 records found for this period</td></tr>
                   ) : (
-                    filteredGstr2.map((row: any) => (
-                    <tr key={row._id || row.id || row.reportId} className="hover:bg-slate-50/50">
-                      <td className="px-4 py-3 font-medium">{row.reportId}</td>
-                      <td className="px-4 py-3">{safeFormatDate(row.date || row.createdAt)}</td>
-                      <td className="px-4 py-3">{row.partyName}</td>
-                      <td className="px-4 py-3 text-xs">{row.gstin}</td>
-                      <td className="px-4 py-3 text-right font-medium">₹{row.amount?.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right">₹{row.cgst?.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right">₹{row.sgst?.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right">₹{row.igst?.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-emerald-600">₹{row.totalTax?.toLocaleString()}</td>
-                    </tr>
-                  )))}
+                    filteredGstr2.map((row: any, i: number) => (
+                      <tr key={row["Bill No."] || i} className="hover:bg-slate-50/50">
+                        <td className="px-3 py-2.5">{row["Bill Date"]}</td>
+                        <td className="px-3 py-2.5 font-medium">{row["Bill No."]}</td>
+                        <td className="px-3 py-2.5">{row["Loc."] || "—"}</td>
+                        <td className="px-3 py-2.5">{row.Name}</td>
+                        <td className="px-3 py-2.5 font-mono">{row.GSTIN}</td>
+                        <td className="px-3 py-2.5 font-mono">{row["HSN Code"] || "—"}</td>
+                        <td className="px-3 py-2.5 text-right font-medium">{money(row.Gross)}</td>
+                        <td className="px-3 py-2.5 text-right">{money(row["Net Amount"])}</td>
+                        <td className="px-3 py-2.5 text-right">{money(row["Input CGST @9%"])}</td>
+                        <td className="px-3 py-2.5 text-right">{money(row["Input SGST @9%"])}</td>
+                        <td className="px-3 py-2.5 text-right">{money(row["Input IGST @18%"])}</td>
+                        <td className="px-3 py-2.5 text-right font-semibold text-emerald-600">{row["Round Off"]}</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
+            <p className="text-[10px] text-muted-foreground p-3 border-t bg-slate-50/50">
+              Export (top right) includes every column from the reference sheet — A/C Group, EWB No/Date, IRN No,
+              Accode, Tin No, Original Bill No/Date are left blank where this ERP doesn't track them for purchases.
+            </p>
           </div>
         </TabsContent>
       </Tabs>
