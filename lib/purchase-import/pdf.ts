@@ -75,6 +75,50 @@ function splitPdfTextLine(line: string): string[] {
   return name ? [name, ...trailing] : [line];
 }
 
+export interface ExtractedSupplier {
+  name?: string;
+  phone?: string;
+  gstin?: string;
+}
+
+/**
+ * Pull the SELLING party's name/phone/GSTIN off a GST tax invoice's own
+ * letterhead — never the buyer's. On every real invoice seen from this kind
+ * of billing software, the buyer's "Contact No"/"GSTIN/PAN" appear as bare
+ * label words with no value glued to them on the same line (the value sits
+ * elsewhere in the reversed/reflowed text), while the SUPPLIER's own contact
+ * line is always "Contact No : <10 digits>" and "GSTIN/PAN: <15 chars>" with
+ * the value right there after a colon — that colon-attached shape is what
+ * tells the two apart. The company name itself carries no label at all, so
+ * it's found by scanning forward from the GSTIN/PAN line for the next line
+ * that looks like a business name (a common legal-entity suffix) rather than
+ * an address/bank-details line.
+ */
+function extractSupplierInfo(text: string): ExtractedSupplier {
+  const phoneMatch = text.match(/Contact No\s*:\s*(\d{10})/i);
+  const gstinMatch = text.match(/GSTIN\s*\/\s*PAN\s*:\s*([0-9A-Z]{15})/i);
+
+  const lines = text.split("\n").map((l) => l.trim());
+  const anchorIdx = lines.findIndex((l) => /GSTIN\s*\/\s*PAN\s*:/i.test(l));
+  const nameSuffix =
+    /(PRIVATE LIMITED|PVT\.?\s*LTD|LLP|ENTERPRISES|DISTRIBUTORS?|TRADERS?|ELECTRONICS|RETAIL(ERS)?|AGENC(Y|IES)|CORPORATION|INDUSTR(Y|IES)|ASSOCIATES|COMPANY|STORES?)\b/i;
+  let name: string | undefined;
+  if (anchorIdx !== -1) {
+    for (let i = anchorIdx; i < Math.min(anchorIdx + 8, lines.length); i++) {
+      if (nameSuffix.test(lines[i])) {
+        name = lines[i];
+        break;
+      }
+    }
+  }
+
+  return {
+    name,
+    phone: phoneMatch ? phoneMatch[1] : undefined,
+    gstin: gstinMatch ? gstinMatch[1].toUpperCase() : undefined,
+  };
+}
+
 /**
  * Read a PDF into the same kind of raw grid extractRowsFromExcel() produces,
  * so both feed the identical resolveRows() logic.
@@ -88,10 +132,24 @@ function splitPdfTextLine(line: string): string[] {
  */
 export async function extractRowsFromPdf(
   buffer: Buffer
-): Promise<{ grid: string[][]; serialGrid: string[][]; usedTableExtraction: boolean; rawText: string }> {
+): Promise<{
+  grid: string[][];
+  serialGrid: string[][];
+  usedTableExtraction: boolean;
+  rawText: string;
+  supplier: ExtractedSupplier;
+}> {
   const parser = new PDFParse({ data: buffer, CanvasFactory });
 
   try {
+    // Fetched up front and unconditionally — the supplier's letterhead only
+    // lives in the plain text layer, never in the extracted table, so it has
+    // to be read here even on the happy path where a table WAS found for the
+    // line items below.
+    const textResult = await parser.getText();
+    const rawText = textResult.text || "";
+    const supplier = extractSupplierInfo(rawText);
+
     // A real table structure, when pdf-parse can find one, is far more
     // reliable than guessing columns from flat text — column boundaries are
     // taken from the PDF's own layout instead of inferred from whitespace.
@@ -113,7 +171,7 @@ export async function extractRowsFromPdf(
     }, null);
 
     if (biggest && biggest.length >= 2 && biggest[0].length >= 2) {
-      return { grid: biggest, serialGrid, usedTableExtraction: true, rawText: "" };
+      return { grid: biggest, serialGrid, usedTableExtraction: true, rawText: "", supplier };
     }
 
     // No usable table — fall back to line-by-line text. resolveRows() still
@@ -122,8 +180,7 @@ export async function extractRowsFromPdf(
     // the PDF's own multi-space column gaps survived extraction, and where a
     // line came through as one unbroken run of text, by peeling the trailing
     // numeric tokens (qty / rate / amount) off the end of it instead.
-    const textResult = await parser.getText();
-    const lines = (textResult.text || "")
+    const lines = rawText
       .split("\n")
       .map((l) => l.trim())
       .filter(Boolean);
@@ -145,19 +202,29 @@ export async function extractRowsFromPdf(
     // serial is pulled straight off its "S/R : <value>" marker and matched
     // to a product by the embedded code on the same line, instead of trying
     // to align it to the section's own header cell-by-cell.
+    //
+    // A qty-2+ line lists every unit's serial on that SAME line, slash-
+    // separated ("S/R : ABC123 / DEF456"), not one line per unit — capturing
+    // only the text up to the first non-alphanumeric character (the old
+    // regex) silently dropped every serial after the first, so a 2-unit line
+    // always came back "1/2 Recorded" no matter how the admin filled it in.
     let textSerialGrid: string[][] = [];
-    const serialEntries = serialSectionLines
-      .map((line) => {
-        const serialMatch = line.match(/S\/?R\s*:\s*([A-Za-z0-9]+)/i);
-        const code = extractEmbeddedCode(line);
-        return serialMatch && code ? { code, serial: serialMatch[1] } : null;
-      })
-      .filter((e): e is { code: string; serial: string } => e !== null);
+    const serialEntries: { code: string; serial: string }[] = [];
+    serialSectionLines.forEach((line) => {
+      const srBlockMatch = line.match(/S\/?R\s*:\s*([^\t]+?)(?:\t|$)/i);
+      const code = extractEmbeddedCode(line);
+      if (!srBlockMatch || !code) return;
+      srBlockMatch[1]
+        .split("/")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .forEach((serial) => serialEntries.push({ code, serial }));
+    });
     if (serialEntries.length > 0) {
       textSerialGrid = [["Description", "Serial Number"], ...serialEntries.map((e) => [e.code, e.serial])];
     }
 
-    return { grid, serialGrid: textSerialGrid, usedTableExtraction: false, rawText: textResult.text || "" };
+    return { grid, serialGrid: textSerialGrid, usedTableExtraction: false, rawText, supplier };
   } finally {
     await parser.destroy();
   }

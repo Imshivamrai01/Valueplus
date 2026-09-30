@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useState, useMemo, useEffect, useRef, Suspense } from "react";
-import { 
-  Printer, Download, Send, MessageSquare, Edit3, Plus, Trash2, CheckCircle2, 
+import {
+  Printer, Download, Send, MessageSquare, MessageCircle, Edit3, Plus, Trash2, CheckCircle2,
   ArrowLeft, FileText, Building2, User, CreditCard, Layers, Sparkles, Share2, Phone
 } from "lucide-react";
 import { toast } from "sonner";
@@ -399,19 +399,70 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
     }
   };
 
-  const handleWhatsApp = () => {
+  const handleWhatsApp = async () => {
     const phone = (activeData.customerPhone || "").replace(/\D/g, "");
     if (!phone) {
       toast.error("Customer phone number not available for WhatsApp");
       return;
     }
     const cleanPhone = phone.length === 10 ? `91${phone}` : phone;
-    const msg = encodeURIComponent(
-      activeData.isEstimate
-        ? `*VALUE PLUS / ASHOKA ENTERPRISES*\nCommercial Price Estimate #${activeData.docNo}\nDate: ${activeData.dated}\nCustomer: ${activeData.customerName}\nSalesperson: ${activeData.salesExec}\nTotal Estimated Amount: ₹${activeData.netAmount.toLocaleString("en-IN")}\nValidity: 15 Days\n\nThank you for choosing Value Plus! For queries call 9140860604.`
-        : `*VALUE PLUS / ASHOKA ENTERPRISES*\nTax Invoice #${activeData.docNo}\nDate: ${activeData.dated}\nCustomer: ${activeData.customerName}\nSalesperson: ${activeData.salesExec}\nTotal Amount: ₹${activeData.netAmount.toLocaleString("en-IN")}\nStatus: Paid\n\nThank you for choosing Value Plus! For assistance call 9140860604.`
-    );
-    window.open(`https://wa.me/${cleanPhone}?text=${msg}`, "_blank");
+
+    const itemLines = (activeData.items || [])
+      .map((it: any) => `• ${it.name || "Item"} x${it.qty || 1} — ₹${Number(it.total ?? it.amount ?? 0).toLocaleString("en-IN")}`)
+      .join("\n");
+
+    const docTitle = activeData.isEstimate ? "Commercial Price Estimate" : "Tax Invoice";
+    const plainMsg = activeData.isEstimate
+      ? `*VALUE PLUS / ASHOKA ENTERPRISES*\nCommercial Price Estimate #${activeData.docNo}\nDate: ${activeData.dated}\nCustomer: ${activeData.customerName}\n\n${itemLines}\n\nTotal Estimated Amount: ₹${activeData.netAmount.toLocaleString("en-IN")}\nValidity: 15 Days\n\nThank you for choosing Value Plus! For queries call 9140860604.`
+      : `*VALUE PLUS / ASHOKA ENTERPRISES*\nTax Invoice #${activeData.docNo}\nDate: ${activeData.dated}\nCustomer: ${activeData.customerName}\n\n${itemLines}\n\nTotal Amount: ₹${activeData.netAmount.toLocaleString("en-IN")}\nStatus: Paid\n\nThank you for choosing Value Plus! For assistance call 9140860604.`;
+
+    // wa.me only pre-fills TEXT — it has no parameter for a file, by
+    // WhatsApp's own design (a website silently attaching a document to an
+    // arbitrary number would be a spam vector). The Web Share API is the
+    // one path that can hand WhatsApp an actual file: it opens the OS share
+    // sheet with the PDF + caption already attached, so picking WhatsApp
+    // there needs only the recipient tapped and Send pressed. Support is
+    // real but inconsistent (solid on Android Chrome and iOS Safari 15+,
+    // spotty-to-absent on most desktop browsers) — a dummy File is what
+    // canShare actually needs to answer honestly, so the same file this
+    // makes is reused for the real share instead of probing twice.
+    const canTryFileShare =
+      typeof navigator !== "undefined" &&
+      "share" in navigator &&
+      "canShare" in navigator;
+
+    if (canTryFileShare && invoicePrintRef.current) {
+      const loadingToast = toast.loading("Preparing the PDF to attach…");
+      try {
+        const { domToPdfBlob } = await import("@/lib/export/domToPdfBlob");
+        const blob = await domToPdfBlob(invoicePrintRef.current);
+        const file = new File([blob], `${docTitle.replace(/\s+/g, "_")}_${activeData.docNo || "ValuePlus"}.pdf`, {
+          type: "application/pdf",
+        });
+
+        if ((navigator as any).canShare({ files: [file] })) {
+          toast.dismiss(loadingToast);
+          await (navigator as any).share({
+            files: [file],
+            text: plainMsg,
+            title: `${docTitle} #${activeData.docNo}`,
+          });
+          return; // Shared (or the user picked an app and it's in their hands now) — done.
+        }
+      } catch (err: any) {
+        toast.dismiss(loadingToast);
+        // AbortError = the user closed the share sheet themselves, not a
+        // failure — say nothing and let them try again if they meant to.
+        if (err?.name === "AbortError") return;
+        console.warn("PDF share failed, falling back to WhatsApp text-only:", err);
+      }
+    }
+
+    // Fallback: no file-sharing support, or the share attempt itself failed —
+    // still get the order details in front of the customer via plain wa.me,
+    // same as before this feature existed.
+    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(plainMsg)}`, "_blank");
+    toast.info("Chat opened with the order details. Tap “Download PDF” and attach it in the same chat to also send the invoice file.", { duration: 6000 });
   };
 
   const handleEmail = () => {
@@ -475,6 +526,13 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleWhatsApp}
+            className="px-3 py-1.5 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center gap-1.5 shadow-sm"
+            title={activeData.customerPhone ? `Send order details to ${activeData.customerPhone} on WhatsApp` : "Customer phone number not available"}
+          >
+            <MessageCircle className="w-3.5 h-3.5" /> Share on WhatsApp
+          </button>
           <button onClick={handleDownload} className="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-800 text-xs font-bold flex items-center gap-1.5 shadow-sm">
             <Download className="w-3.5 h-3.5" /> Download PDF
           </button>

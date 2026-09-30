@@ -1313,8 +1313,14 @@ export function InvoiceCreationModal({
                     value={billingForm.customerName} 
                     onChange={(e) => {
                       const cleanLetters = e.target.value.replace(/[^a-zA-Z\s]/g, '');
-                      setBillingForm({ ...billingForm, customerName: cleanLetters });
-                    }} 
+                      // Every word starts capitalised regardless of how it was
+                      // typed (Caps Lock on/off, mixed case) — the rest of each
+                      // word is left exactly as typed, only the first letter of
+                      // each word (start of string, or right after a space) is
+                      // forced uppercase.
+                      const capitalized = cleanLetters.replace(/(^|\s)([a-z])/g, (_, sep, ch) => sep + ch.toUpperCase());
+                      setBillingForm({ ...billingForm, customerName: capitalized });
+                    }}
                     className="bg-slate-50 border-slate-300 font-bold text-slate-900"
                     autoFocus
                   />
@@ -2276,8 +2282,15 @@ export function InvoiceCreationModal({
                           onClick={() => setBillingForm({ ...billingForm, paymentMode: modeKey })}
                           className={cn(
                             "px-3 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-1",
-                            billingForm.paymentMode === modeKey 
-                              ? (modeKey === "Due / Credit" 
+                            // While Split Payment is on, this single-mode row is
+                            // disabled (see the opacity/pointer-events wrapper
+                            // above) and no longer the source of truth — leaving
+                            // a leftover mode highlighted here (e.g. "Credit
+                            // Card" from before Split was turned on) reads as
+                            // if that's still the active mode, when the real
+                            // breakdown is whatever's in the split rows below.
+                            !isSplitPayment && billingForm.paymentMode === modeKey
+                              ? (modeKey === "Due / Credit"
                                   ? "bg-rose-600 text-white shadow-sm" 
                                   : modeKey === "Credit Card" 
                                   ? "bg-amber-600 text-white shadow-sm" 
@@ -2844,14 +2857,24 @@ export function InvoiceCreationModal({
                     <span>-{formatCurrency(effectiveAdvanceAdjusted)}</span>
                   </p>
                 )}
-                {(billingForm.paymentMode === "Credit Card" || billingForm.paymentMode === "Debit Card") && (
+                {/* billCalculations.cardMdrAmount assumes the WHOLE bill was
+                    paid by card, which is only true for the single-mode flow
+                    — a split bill's card MDR (if any row is a card) isn't
+                    tracked here at all, so this line must not show during a
+                    split rather than quote a wrong deduction. */}
+                {!isSplitPayment && (billingForm.paymentMode === "Credit Card" || billingForm.paymentMode === "Debit Card") && (
                   <p className="text-amber-300">MDR Deducted: <span className="font-bold text-amber-200">-{formatCurrency(billCalculations.cardMdrAmount)}</span></p>
                 )}
                 <p className="text-slate-300">Round Off: <span className="font-bold text-white">{billCalculations.roundOff > 0 ? `+₹${billCalculations.roundOff}` : `₹${billCalculations.roundOff}`}</span></p>
                 <p className="text-slate-300">
                   Payment Mode: <span className="font-bold uppercase text-[#76C043]">
-                    {mode === "estimate" 
-                      ? (estimateIncludesAdvance ? `Token (${preBookingPaymentMode})` : "Quotation Only") 
+                    {mode === "estimate"
+                      ? (estimateIncludesAdvance ? `Token (${preBookingPaymentMode})` : "Quotation Only")
+                      : isSplitPayment
+                      // billingForm.paymentMode is a leftover from before Split
+                      // Payment was turned on and no longer means anything —
+                      // the split rows themselves are the actual modes in use.
+                      ? `Split (${splitRows.filter((r) => (Number(r.amount) || 0) > 0).map((r) => r.mode).join(" + ") || "…"})`
                       : billingForm.paymentMode}
                   </span>
                 </p>
@@ -2894,14 +2917,22 @@ export function InvoiceCreationModal({
                         Bill Total: {formatCurrency(billCalculations.grandTotal)} • Less Advance: -{formatCurrency(effectiveAdvanceAdjusted)}
                       </p>
                     )}
-                    {billingForm.paymentMode === "Finance" && (
+                    {!isSplitPayment && billingForm.paymentMode === "Finance" && (
                       <p className="text-xs text-orange-300 font-bold mt-1">
                         Down Pay: {formatCurrency(billingForm.financeDownPayment)} • Loan: {formatCurrency(Math.max(0, netAmountPayableAfterAdvance - Number(billingForm.financeDownPayment)))}
                       </p>
                     )}
-                    {billingForm.paymentMode === "Due / Credit" && (
+                    {!isSplitPayment && billingForm.paymentMode === "Due / Credit" && (
                       <p className="text-xs text-rose-300 font-bold mt-1">
                         Paid: {formatCurrency(billingForm.advanceAmount || 0)} • Due: {formatCurrency(Math.max(0, netAmountPayableAfterAdvance - Number(billingForm.advanceAmount || 0)))}
+                      </p>
+                    )}
+                    {isSplitPayment && (
+                      <p className="text-xs text-[#76C043] font-bold mt-1">
+                        {splitRows
+                          .filter((r) => (Number(r.amount) || 0) > 0)
+                          .map((r) => `${r.mode}: ${formatCurrency(Number(r.amount) || 0)}`)
+                          .join(" • ") || "Add amounts to the split rows above"}
                       </p>
                     )}
                   </>

@@ -62,8 +62,10 @@ export function PurchaseImportModal({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Items ready for PurchaseCreationModal's `preloadedItems` prop. */
-  onResolved: (items: any[]) => void;
+  /** Items ready for PurchaseCreationModal's `preloadedItems` prop, plus
+   *  whatever supplier name/phone/GSTIN was read off the invoice's own
+   *  letterhead (PDF only — undefined for an Excel/CSV upload). */
+  onResolved: (items: any[], supplier?: { name?: string; phone?: string; gstin?: string }) => void;
 }) {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -74,6 +76,7 @@ export function PurchaseImportModal({
   } | null>(null);
   const [defaultCategory, setDefaultCategory] = useState("");
   const [defaultBrand, setDefaultBrand] = useState("");
+  const [supplier, setSupplier] = useState<{ name?: string; phone?: string; gstin?: string } | undefined>(undefined);
 
   const { data: categories = [] } = useQuery({
     queryKey: ["categories"],
@@ -101,6 +104,7 @@ export function PurchaseImportModal({
       setMeta(null);
       setDefaultCategory("");
       setDefaultBrand("");
+      setSupplier(undefined);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }, [open]);
@@ -124,6 +128,7 @@ export function PurchaseImportModal({
     },
     onSuccess: (data) => {
       setMeta(data.meta);
+      setSupplier(data.supplier);
       setRows(
         data.rows.map((r: any, i: number) => ({
           key: `${r.sourceRow}-${i}`,
@@ -245,7 +250,7 @@ export function PurchaseImportModal({
     onSuccess: (resolved) => {
       queryClient.invalidateQueries({ queryKey: ["items"] });
       toast.success(`${resolved.length} row(s) ready — opening the purchase entry`);
-      onResolved(resolved);
+      onResolved(resolved, supplier);
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -316,6 +321,17 @@ export function PurchaseImportModal({
                 <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-xs">
                   {newCount} will be created new
                 </Badge>
+                {meta?.sourceType === "pdf" && (
+                  supplier?.name || supplier?.phone ? (
+                    <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
+                      Supplier: {supplier.name || "Name not found"}{supplier.phone ? ` • ${supplier.phone}` : ""}
+                    </Badge>
+                  ) : (
+                    <Badge variant="warning" className="text-[10px]">
+                      Supplier not detected on this invoice — enter it in the next step
+                    </Badge>
+                  )
+                )}
                 <div className="flex-1" />
                 <Button
                   variant="outline"

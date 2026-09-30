@@ -36,9 +36,13 @@ interface PurchaseCreationModalProps {
   mode?: "entry" | "debit-note" | "order";
   preloadedItem?: any;
   preloadedItems?: any[];
+  /** Supplier name/phone/GSTIN read off an imported PDF's own letterhead —
+   *  matched against Suppliers by phone first, then used to auto-fill the
+   *  form so the admin doesn't have to retype what the invoice already says. */
+  preloadedSupplier?: { name?: string; phone?: string; gstin?: string };
 }
 
-export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preloadedItem, preloadedItems }: PurchaseCreationModalProps) {
+export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preloadedItem, preloadedItems, preloadedSupplier }: PurchaseCreationModalProps) {
   const queryClient = useQueryClient();
   const { data: session } = useSession();
   const { activeLocation, locations } = useBranch();
@@ -125,13 +129,39 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
       if (preloadedItem || (preloadedItems && preloadedItems.length > 0)) {
         const itemsToLoad = preloadedItems && preloadedItems.length > 0 ? preloadedItems : [preloadedItem];
         const firstItem = itemsToLoad[0];
-        
-        let matchedSupplier = suppliers.find((s: any) => 
-          s.name?.toLowerCase().includes(firstItem.brand?.toLowerCase()) ||
-          (firstItem.supplier && s.name?.toLowerCase().includes(firstItem.supplier?.toLowerCase()))
-        );
 
-        const supplierName = matchedSupplier?.name || (firstItem.brand ? `${firstItem.brand} India Distribution` : "Authorized Electronics Distributor");
+        // A PDF's own letterhead (name/phone/GSTIN read straight off the
+        // invoice) is real, admin-verifiable data — matched against the
+        // Supplier master by phone first (the one field guaranteed unique
+        // per supplier), then GSTIN, then name, so a supplier already on
+        // file is reused instead of risking a near-duplicate record.
+        let matchedSupplier = preloadedSupplier?.phone
+          ? suppliers.find((s: any) => s.phone === preloadedSupplier.phone)
+          : undefined;
+        if (!matchedSupplier && preloadedSupplier?.gstin) {
+          matchedSupplier = suppliers.find(
+            (s: any) => s.gstNumber?.toUpperCase() === preloadedSupplier.gstin?.toUpperCase()
+          );
+        }
+        if (!matchedSupplier && preloadedSupplier?.name) {
+          matchedSupplier = suppliers.find(
+            (s: any) => s.name?.trim().toLowerCase() === preloadedSupplier.name?.trim().toLowerCase()
+          );
+        }
+        // No letterhead was read at all (Excel upload, or a PDF this
+        // couldn't extract from) — fall back to the old brand-name guess
+        // rather than leaving the field completely empty.
+        if (!matchedSupplier && !preloadedSupplier) {
+          matchedSupplier = suppliers.find((s: any) =>
+            s.name?.toLowerCase().includes(firstItem.brand?.toLowerCase()) ||
+            (firstItem.supplier && s.name?.toLowerCase().includes(firstItem.supplier?.toLowerCase()))
+          );
+        }
+
+        const supplierName =
+          matchedSupplier?.name ||
+          preloadedSupplier?.name ||
+          (firstItem.brand ? `${firstItem.brand} India Distribution` : "");
 
         setForm({
           billNo: "",
@@ -146,7 +176,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
           // resolved to whichever brand got created first, and never became
           // their own Supplier record even though the PO/bill kept their real
           // name. Leaving it blank forces a real number before saving.
-          supplierPhone: matchedSupplier?.phone || "",
+          supplierPhone: matchedSupplier?.phone || preloadedSupplier?.phone || "",
           supplierId: matchedSupplier?._id || "auto",
           linkedPoNo: "",
           noPoReason: "",
@@ -282,8 +312,12 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
           supplierId: found._id,
           supplierName: found.name,
           supplierPhone: cleanPhone,
-          linkedPoNo: "",
-          items: [],
+          // Items only came FROM a specific PO if one was actually linked —
+          // dropping them here regardless used to wipe out a PDF-imported or
+          // hand-typed item list the moment the admin finished correcting
+          // the phone number, which has nothing to do with a PO at all.
+          linkedPoNo: prev.linkedPoNo ? "" : prev.linkedPoNo,
+          items: prev.linkedPoNo ? [] : prev.items,
         }));
         setSupplierLookupStatus("existing");
         toast.success(`Supplier found: ${found.name}`);
@@ -291,10 +325,14 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
         setForm((prev) => ({
           ...prev,
           supplierId: "new",
-          supplierName: "",
+          // A supplier name already typed by hand, or auto-filled from an
+          // imported invoice, must survive a phone edit that simply doesn't
+          // match anyone yet — blanking it here threw away exactly what the
+          // admin had just filled in.
+          supplierName: prev.supplierName,
           supplierPhone: cleanPhone,
-          linkedPoNo: "",
-          items: [],
+          linkedPoNo: prev.linkedPoNo ? "" : prev.linkedPoNo,
+          items: prev.linkedPoNo ? [] : prev.items,
         }));
         setSupplierLookupStatus("new");
       }
@@ -309,8 +347,10 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
         supplierName: found.name,
         supplierPhone: found.phone || "",
         supplierId: found._id,
-        linkedPoNo: "",
-        items: [],
+        // Same reasoning as the phone lookup above: items only need
+        // dropping if they came from a PO tied to the previous supplier.
+        linkedPoNo: prev.linkedPoNo ? "" : prev.linkedPoNo,
+        items: prev.linkedPoNo ? [] : prev.items,
       }));
       setSupplierLookupStatus("existing");
     }

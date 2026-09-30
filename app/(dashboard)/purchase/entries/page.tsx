@@ -75,6 +75,9 @@ function PurchaseEntriesContent() {
   // preloadedItems. Cleared whenever the creation modal closes, so a later
   // plain "New Purchase Entry" click doesn't reopen with stale import data.
   const [importedItems, setImportedItems] = useState<any[] | null>(null);
+  // Whatever supplier name/phone/GSTIN the import flow read off the PDF's
+  // own letterhead — cleared alongside importedItems for the same reason.
+  const [importedSupplier, setImportedSupplier] = useState<{ name?: string; phone?: string; gstin?: string } | null>(null);
 
   useEffect(() => {
     if (actionParam === "create" || newParam === "true" || actionParam === "new") {
@@ -348,16 +351,19 @@ function PurchaseEntriesContent() {
         onClose={() => {
           setIsFormOpen(false);
           setImportedItems(null);
+          setImportedSupplier(null);
         }}
         mode="entry"
         preloadedItems={importedItems || undefined}
+        preloadedSupplier={importedSupplier || undefined}
       />
 
       <PurchaseImportModal
         open={isImportOpen}
         onOpenChange={setIsImportOpen}
-        onResolved={(items) => {
+        onResolved={(items, supplier) => {
           setImportedItems(items);
+          setImportedSupplier(supplier || null);
           setIsImportOpen(false);
           setIsFormOpen(true);
         }}

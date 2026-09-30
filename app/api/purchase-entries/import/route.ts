@@ -65,6 +65,10 @@ export async function POST(req: Request) {
     let sourceType: "excel" | "pdf" = "excel";
     let usedTableExtraction = true;
     let pdfHadNoText = false;
+    // Only a PDF's own letterhead text carries this — an Excel sheet has no
+    // equivalent, so it's left undefined there and the admin's own supplier
+    // picker in Purchase Entry is unaffected either way.
+    let supplier: { name?: string; phone?: string; gstin?: string } | undefined;
 
     if (isExcel) {
       // Loaded lazily so a bundling/runtime failure in one parser (e.g.
@@ -81,6 +85,7 @@ export async function POST(req: Request) {
       serialGrid = result.serialGrid;
       usedTableExtraction = result.usedTableExtraction;
       pdfHadNoText = !result.rawText && !result.usedTableExtraction && grid.length === 0;
+      supplier = result.supplier;
     }
 
     if (pdfHadNoText) {
@@ -139,6 +144,7 @@ export async function POST(req: Request) {
       success: true,
       data: {
         rows,
+        supplier,
         meta: {
           sourceType,
           usedTableExtraction,
