@@ -206,7 +206,12 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
               itemId: it._id || it.code || it.vpCode || "ITEM",
               name: it.name,
               quantity: it.orderQty || reorderQty,
-              rate: Math.round(purRate),
+              // Rounded to the nearest whole rupee here used to silently
+              // drop a supplier invoice's own paise — ₹23,864.41 became
+              // ₹23,864 the moment it reached this form, even though the
+              // exact figure was already sitting in `it.purchasePrice`.
+              // Currency only ever needs 2 decimal places, not zero.
+              rate: Math.round(purRate * 100) / 100,
               gstRate: Number(it.gstRate || 18),
               // Carry through any serials the import already found (e.g. from a
               // supplier PDF's serial-number table) instead of discarding them —

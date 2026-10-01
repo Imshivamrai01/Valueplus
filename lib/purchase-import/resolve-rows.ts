@@ -151,6 +151,18 @@ function looksLikeHsn(raw: string): boolean {
   return /^\d{4,8}$/.test(raw.trim());
 }
 
+// Every GST slab actually in force, plus the half-rate each splits into on
+// an intra-state invoice's CGST/SGST columns (e.g. 18% becomes two 9% cells).
+// A cell is only trusted as a percentage if its value is actually ONE of
+// these — not just "any smallish decimal" — because an unusually low-priced
+// line item (a near-free bundled accessory, ₹1.70 taxable on a gift item)
+// has rupee figures that fall in the very same 0–100, one-or-two-decimal
+// shape a GST% cell has, and were getting swept up as extra "tax rate"
+// points, inflating the derived GST rate well past what the invoice says.
+const VALID_GST_RATES = new Set([
+  0, 0.05, 0.1, 0.125, 0.25, 0.75, 1.5, 2.5, 3, 3.75, 4.5, 5, 6, 7, 7.5, 9, 12, 14, 18, 28,
+]);
+
 /**
  * Does this look like a GST percentage cell — "9.0", "18.00", "0.0"?
  *
@@ -162,7 +174,8 @@ function looksLikeHsn(raw: string): boolean {
  * percentage point and inflating the derived rate.
  */
 function looksLikePercent(raw: string, value: number): boolean {
-  return value >= 0 && value <= 100 && /^\d{1,3}\.\d+$/.test(raw.trim());
+  if (!/^\d{1,3}\.\d+$/.test(raw.trim())) return false;
+  return Array.from(VALID_GST_RATES).some((r) => Math.abs(r - value) < 0.01);
 }
 
 /**
@@ -216,8 +229,15 @@ function resolveEmbeddedCodeRow(
   // The line's tax-inclusive total is its single biggest rupee figure; the
   // quantity is the smallest whole number among the rest (a unit count is
   // never a fraction, and is essentially always far smaller than a price).
+  // Excluding BY VALUE here ("!== amount") dropped the real quantity too
+  // whenever it happened to equal the amount in rupees — a genuine qty-2
+  // line priced at exactly ₹2 (a near-free bundled accessory) always came
+  // back as qty 1, since both cells read "2" and the filter couldn't tell
+  // them apart. Excluding the one INDEX the max came from, instead, leaves
+  // every other cell — even ones sharing that same value — still eligible.
   const amount = Math.max(...currencyOrQty);
-  const wholeNumberCandidates = currencyOrQty.filter((n) => n !== amount && Number.isInteger(n));
+  const amountIdx = currencyOrQty.indexOf(amount);
+  const wholeNumberCandidates = currencyOrQty.filter((n, i) => i !== amountIdx && Number.isInteger(n));
   const quantity = wholeNumberCandidates.length > 0 ? Math.min(...wholeNumberCandidates) : 1;
 
   const gstRate = percents.length > 0 ? percents.reduce((a, b) => a + b, 0) || defaultGst : defaultGst;
