@@ -46,6 +46,18 @@ interface LedgerRow {
   balance: number;
 }
 
+interface LedgerBillRow {
+  billNo: string;
+  date: string;
+  dueDate?: string;
+  type?: string;
+  itemCount: number;
+  total: number;
+  paid: number;
+  balance: number;
+  status: "paid" | "partial" | "pending" | "overdue" | "debit-note";
+}
+
 interface LedgerPayload {
   party: {
     _id: string;
@@ -74,7 +86,19 @@ interface LedgerPayload {
     byBucket: Record<string, number>;
   };
   rows: LedgerRow[];
+  // Only present for a single-party detail fetch (?id=…) — a bill-by-bill
+  // breakdown with its own payment-allocation status, on top of the running
+  // ledger above.
+  bills?: LedgerBillRow[];
 }
+
+const BILL_STATUS_STYLE: Record<string, string> = {
+  paid: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  partial: "bg-amber-50 text-amber-700 border-amber-200",
+  pending: "bg-slate-100 text-slate-600 border-slate-200",
+  overdue: "bg-red-50 text-red-700 border-red-200",
+  "debit-note": "bg-purple-50 text-purple-700 border-purple-200",
+};
 
 const BUCKET_LABELS: Record<string, string> = {
   cash: "Cash",
@@ -298,6 +322,61 @@ export function PartyLedgerPanel({
             )}
           </div>
         </div>
+
+        {/* Bill-by-bill breakdown — which specific bills are still open */}
+        {data?.bills && data.bills.length > 0 && (
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-200">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                Bills
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">
+                    <th className="px-4 py-2.5 text-left">Bill #</th>
+                    <th className="px-4 py-2.5 text-left">Date</th>
+                    <th className="px-4 py-2.5 text-right">Total</th>
+                    <th className="px-4 py-2.5 text-right">Paid</th>
+                    <th className="px-4 py-2.5 text-right">Balance</th>
+                    <th className="px-4 py-2.5 text-left">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {data.bills.map((b) => (
+                    <tr key={b.billNo} className="hover:bg-slate-50/70">
+                      <td className="px-4 py-2.5 font-mono font-semibold text-slate-700">{b.billNo}</td>
+                      <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap">
+                        {b.date ? formatDate(b.date) : "—"}
+                        {b.dueDate && (
+                          <p className="text-[10px] text-slate-400">Due {formatDate(b.dueDate)}</p>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-right tabular-nums font-medium text-slate-800">
+                        {formatCurrency(b.total)}
+                      </td>
+                      <td className="px-4 py-2.5 text-right tabular-nums text-emerald-600">
+                        {b.paid ? formatCurrency(b.paid) : "—"}
+                      </td>
+                      <td className="px-4 py-2.5 text-right tabular-nums font-bold text-slate-900">
+                        {b.balance ? formatCurrency(b.balance) : "—"}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <Badge
+                          variant="outline"
+                          className={cn("text-[10px] font-semibold capitalize", BILL_STATUS_STYLE[b.status])}
+                        >
+                          {b.status.replace("-", " ")}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* Ledger table */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">

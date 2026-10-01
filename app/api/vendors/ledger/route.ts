@@ -258,6 +258,9 @@ export async function GET(req: Request) {
     // ── Load every party plus the documents that make up their ledgers ──────────
     let parties: any[];
     const entriesByParty = new Map<string, LedgerEntryInput[]>();
+    // Kept alongside entriesByParty so the single-party detail branch below can
+    // build a bill-by-bill breakdown without re-querying or re-matching.
+    const rawByParty = new Map<string, { bills: any[]; pays: any[] }>();
 
     if (party === "supplier") {
       const [suppliers, purchases, payments] = await Promise.all([
@@ -288,6 +291,7 @@ export async function GET(req: Request) {
         });
 
         entriesByParty.set(sid, supplierEntries(bills, pays));
+        rawByParty.set(sid, { bills, pays });
       }
     } else if (party === "customer") {
       const [customers, invoices, payments] = await Promise.all([
@@ -473,6 +477,95 @@ export async function GET(req: Request) {
             againstBillNo: p.againstBillNo || "",
             receivedBy: p.receivedBy || p.createdBy || "",
             createdBy: p.createdBy || "",
+            notes: p.notes || "",
+            type: p.type,
+          }))
+          .reverse();
+        detail.unallocated = Math.max(0, onAccount);
+      } else if (party === "supplier") {
+        const { bills, pays } = rawByParty.get(id) || { bills: [], pays: [] };
+
+        // Same allocation rule as supplierEntries(): a payment tagged with a
+        // bill number pays that bill first; a purchase entry's own `paid`
+        // field only counts when no PaymentTransaction already references it
+        // (otherwise the same rupees would show as paid twice).
+        const referencedBillNos = new Set(
+          (pays as any[]).map((p) => p.referenceId).filter(Boolean)
+        );
+        const paidPerBill = new Map<string, number>();
+        let onAccount = 0;
+
+        for (const p of pays as any[]) {
+          const amount = (p.type === "received" ? -1 : 1) * (Number(p.amount) || 0);
+          if (p.referenceId) {
+            paidPerBill.set(p.referenceId, (paidPerBill.get(p.referenceId) || 0) + amount);
+          } else {
+            onAccount += amount;
+          }
+        }
+
+        const openBills = (bills as any[]).filter((b) => b.status !== "cancelled");
+        const billRows = openBills.map((b: any) => {
+          const total = Number(b.total) || 0;
+          const isDebitNote = b.type === "debit-note";
+          let paid = referencedBillNos.has(b.billNo)
+            ? Math.min(paidPerBill.get(b.billNo) || 0, total)
+            : Math.min(Number(b.paid) || 0, total);
+          if (!isDebitNote && paid < total && onAccount > 0) {
+            const extra = Math.min(onAccount, total - paid);
+            paid += extra;
+            onAccount -= extra;
+          }
+          const balance = isDebitNote ? 0 : Math.max(0, total - paid);
+          const overdue = balance > 0 && b.dueDate ? new Date(b.dueDate) < new Date() : false;
+
+          return {
+            billNo: b.billNo,
+            date: b.billDate,
+            dueDate: b.dueDate,
+            type: b.type,
+            items: b.items || [],
+            itemCount: (b.items || []).length,
+            subtotal: Number(b.subtotal) || 0,
+            gstAmount: Number(b.gst) || 0,
+            total,
+            paid,
+            balance,
+            warehouse: b.warehouse || "",
+            status: isDebitNote
+              ? "debit-note"
+              : balance <= 0
+              ? "paid"
+              : paid > 0
+              ? "partial"
+              : overdue
+              ? "overdue"
+              : "pending",
+          };
+        });
+
+        detail.bills = billRows.reverse();
+        detail.cancelledBills = (bills as any[])
+          .filter((b) => b.status === "cancelled")
+          .map((b: any) => ({
+            billNo: b.billNo,
+            date: b.billDate,
+            total: Number(b.total) || 0,
+            cancelReason: b.cancelReason || "",
+            cancelledBy: b.cancelledBy || "",
+            cancelledAt: b.cancelledAt || "",
+          }));
+        detail.payments = (pays as any[])
+          .map((p: any) => ({
+            paymentId: p.transactionId,
+            date: p.date,
+            amount: Number(p.amount) || 0,
+            mode: p.paymentMode,
+            bucket: classifyPaymentMode(p.paymentMode),
+            refNo: p.referenceId || "",
+            againstBillNo: p.referenceId || "",
+            receivedBy: "",
+            createdBy: "",
             notes: p.notes || "",
             type: p.type,
           }))

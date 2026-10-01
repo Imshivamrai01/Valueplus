@@ -99,10 +99,15 @@ export async function POST(req: Request) {
       }
     }
 
-    const payload = {
+    const payload: any = {
       ...body,
       billNo: newBillNo,
     };
+    // The creation form sends placeholder values ("auto"/"new") here until a
+    // real Supplier record exists — only a real ObjectId is safe to store.
+    if (!payload.supplierId || !mongoose.isValidObjectId(payload.supplierId)) {
+      delete payload.supplierId;
+    }
 
     const entry = await PurchaseEntry.create(payload);
 
@@ -124,7 +129,7 @@ export async function POST(req: Request) {
         if (!existingSupplier) {
           const count = await Supplier.countDocuments();
           const suppCode = `SUPP-${String(count + 1).padStart(3, "0")}`;
-          await Supplier.create({
+          existingSupplier = await Supplier.create({
             code: suppCode,
             name: supName,
             phone: supPhone || "0000000000",
@@ -147,6 +152,14 @@ export async function POST(req: Request) {
             existingSupplier._id,
             { $inc: { outstandingBalance: balanceImpact } }
           );
+        }
+
+        // Backfills the link whenever the client couldn't send a real id yet
+        // (a brand-new supplier, or an older client) — the payable ledger
+        // matches by id first and only falls back to name where this is unset.
+        if (existingSupplier && !entry.supplierId) {
+          entry.supplierId = existingSupplier._id;
+          await entry.save();
         }
       } catch (supErr) {
         console.warn("Supplier reconciliation note:", supErr);

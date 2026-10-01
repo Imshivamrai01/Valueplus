@@ -22,6 +22,7 @@ import { ExportMenu } from "@/components/shared/ExportMenu";
 import { RoleGuard, usePermissions, AccessDenied } from "@/components/shared/role-guard";
 import { PartyLedgerPanel, LedgerParty } from "@/components/PartyLedgerPanel";
 import { VendorPaymentModal } from "@/components/vendor/VendorPaymentModal";
+import { PaymentModal } from "@/components/PaymentModal";
 
 /**
  * Every party's ledger position on one screen — the "sabka data ek jagah" view.
@@ -52,6 +53,7 @@ function AllLedgersInner() {
   const [range, setRange] = useState<{ start?: string; end?: string }>({});
   const [drawerParty, setDrawerParty] = useState<any | null>(null);
   const [paymentVendorId, setPaymentVendorId] = useState<string | null>(null);
+  const [paymentSupplierId, setPaymentSupplierId] = useState<string | null>(null);
 
   const canSeeSuppliers = can("ledger.supplier.view");
 
@@ -387,14 +389,11 @@ function AllLedgersInner() {
             <PartyLedgerPanel
               party={party}
               partyId={drawerParty._id}
-              onRecordPayment={
-                party === "vendor"
-                  ? () => {
-                      setPaymentVendorId(drawerParty._id);
-                      setDrawerParty(null);
-                    }
-                  : undefined
-              }
+              onRecordPayment={() => {
+                if (party === "vendor") setPaymentVendorId(drawerParty._id);
+                else setPaymentSupplierId(drawerParty._id);
+                setDrawerParty(null);
+              }}
             />
           )}
         </DialogContent>
@@ -405,6 +404,14 @@ function AllLedgersInner() {
         onOpenChange={(o) => !o && setPaymentVendorId(null)}
         vendorId={paymentVendorId || undefined}
         vendors={vendors}
+      />
+
+      <PaymentModal
+        isOpen={Boolean(paymentSupplierId)}
+        onClose={() => setPaymentSupplierId(null)}
+        onSuccess={() => refetch()}
+        defaultPartyType="Supplier"
+        initialPartyId={paymentSupplierId || undefined}
       />
     </PageShell>
   );

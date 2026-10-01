@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils";
 import { INDIA_STATES, INDIA_STATES_AND_DISTRICTS, normalizeStateName, normalizeCityName } from "@/lib/data/locations";
 import { PartyLedgerPanel } from "@/components/PartyLedgerPanel";
+import { PaymentModal } from "@/components/PaymentModal";
 import { usePermissions } from "@/components/shared/role-guard";
 
 export default function SuppliersPage() {
@@ -29,6 +30,7 @@ export default function SuppliersPage() {
   const [editingSupplier, setEditingSupplier] = useState<any | null>(null);
   const [deletingCode, setDeletingCode] = useState<string | null>(null);
   const [selectedSupplierForLedger, setSelectedSupplierForLedger] = useState<any | null>(null);
+  const [paymentSupplierId, setPaymentSupplierId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     code: "",
     name: "",
@@ -473,10 +475,25 @@ export default function SuppliersPage() {
       <Dialog open={isLedgerOpen} onOpenChange={setIsLedgerOpen}>
         <DialogContent className="max-w-5xl p-0 overflow-hidden rounded-2xl border-none shadow-2xl">
           {selectedSupplierForLedger && (
-            <PartyLedgerPanel party="supplier" partyId={selectedSupplierForLedger._id} />
+            <PartyLedgerPanel
+              party="supplier"
+              partyId={selectedSupplierForLedger._id}
+              onRecordPayment={() => {
+                setPaymentSupplierId(selectedSupplierForLedger._id);
+                setIsLedgerOpen(false);
+              }}
+            />
           )}
         </DialogContent>
       </Dialog>
+
+      <PaymentModal
+        isOpen={Boolean(paymentSupplierId)}
+        onClose={() => setPaymentSupplierId(null)}
+        onSuccess={() => queryClient.invalidateQueries({ queryKey: ["supplier-ledger-all"] })}
+        defaultPartyType="Supplier"
+        initialPartyId={paymentSupplierId || undefined}
+      />
     </PageShell>
   );
 }

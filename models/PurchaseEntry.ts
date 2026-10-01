@@ -7,6 +7,10 @@ export interface IPurchaseEntry extends Document {
    *  purchase-register reporting; not on the model previously even though
    *  the creation form already collects a matching Supplier record. */
   supplierGST?: string;
+  /** Links this bill to its Supplier record so the payable ledger can match
+   *  by id instead of a fragile exact-name lookup. Older entries predate this
+   *  field and keep resolving via supplierName. */
+  supplierId?: mongoose.Types.ObjectId;
   warehouse?: string;
   linkedPoNo?: string;
   /** Why this entry was billed without going through a Purchase Order first — mandatory when linkedPoNo is empty. */
@@ -41,6 +45,7 @@ const PurchaseEntrySchema = new Schema<IPurchaseEntry>(
     billNo: { type: String, required: true },
     supplierName: { type: String, required: true },
     supplierGST: { type: String, default: "" },
+    supplierId: { type: Schema.Types.ObjectId, ref: "Supplier" },
     warehouse: { type: String, default: "Ashoka Enterprises (Kunraghat Showroom)" },
     linkedPoNo: { type: String },
     noPoReason: { type: String, default: "" },

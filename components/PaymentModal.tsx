@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
 
-export function PaymentModal({ isOpen, onClose, onSuccess, defaultPartyType = "Customer" }: { isOpen: boolean; onClose: () => void; onSuccess?: () => void; defaultPartyType?: "Customer" | "Supplier" }) {
+export function PaymentModal({ isOpen, onClose, onSuccess, defaultPartyType = "Customer", initialPartyId }: { isOpen: boolean; onClose: () => void; onSuccess?: () => void; defaultPartyType?: "Customer" | "Supplier"; initialPartyId?: string }) {
   const queryClient = useQueryClient();
 
   const { data: customers = [] } = useQuery({
@@ -60,6 +60,15 @@ export function PaymentModal({ isOpen, onClose, onSuccess, defaultPartyType = "C
   }, [isOpen, defaultPartyType]);
 
   const parties = defaultPartyType === "Supplier" ? suppliers : customers;
+
+  // Opened from a specific party's ledger — skip the picker and go straight
+  // to their current balance, the same way choosing them manually would.
+  useEffect(() => {
+    if (isOpen && initialPartyId && parties.length > 0) {
+      handleSelectParty(initialPartyId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, initialPartyId, parties.length]);
 
   const handleSelectParty = (partyId: string) => {
     const found = parties.find((p: any) => p._id === partyId);
