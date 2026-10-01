@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  Plus, Search, Filter, Upload, Printer, MoreHorizontal,
+  Plus, Search, Filter, Upload, UploadCloud, Printer, MoreHorizontal,
   Edit, Trash2, Eye, Package, TrendingUp, AlertTriangle, CheckCircle,
   X, Sparkles, ShoppingBag, Store, Warehouse, Building2, Layers, RefreshCw,
   Barcode, Hash, PlusCircle, Check, Trash, Gift, ChevronDown, ChevronUp
@@ -37,6 +37,7 @@ import { BrandLogo } from "@/components/shared/brand-logo";
 import { useBranch } from "@/context/BranchContext";
 import { Switch } from "@/components/ui/switch";
 import { BulkIncentiveModal } from "@/components/items/BulkIncentiveModal";
+import { ProductReferenceImportModal } from "@/components/masters/ProductReferenceImportModal";
 import { BrandSelect } from "@/components/shared/brand-select";
 import { useSession } from "next-auth/react";
 
@@ -137,6 +138,7 @@ function ItemsPageContent() {
   // short; opened automatically when editing an item that already has one.
   const [incentiveOpen, setIncentiveOpen] = useState(false);
   const [bulkIncentiveOpen, setBulkIncentiveOpen] = useState(false);
+  const [productReferenceOpen, setProductReferenceOpen] = useState(false);
   const [formSerials, setFormSerials] = useState<FormSerialItem[]>([]);
   const [newSerialInput, setNewSerialInput] = useState("");
   const [batchNoInput, setBatchNoInput] = useState("");
@@ -613,6 +615,15 @@ function ItemsPageContent() {
               className="text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50"
             >
               <Gift className="w-3.5 h-3.5 mr-1.5" /> Bulk Apply Incentive
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setProductReferenceOpen(true)}
+              className="text-xs border-[#3F63AD]/40 text-[#3F63AD] hover:bg-[#3F63AD]/5"
+              title="Upload a stock/accounting sheet so PDF purchase import can auto-fill Category/Brand for new products by VP code"
+            >
+              <UploadCloud className="w-3.5 h-3.5 mr-1.5" /> Import Stock Reference
             </Button>
             <Button
               size="sm"
@@ -2039,6 +2050,11 @@ function ItemsPageContent() {
         onOpenChange={setBulkIncentiveOpen}
         categories={categories}
         brands={brands}
+      />
+
+      <ProductReferenceImportModal
+        open={productReferenceOpen}
+        onOpenChange={setProductReferenceOpen}
       />
     </PageShell>
   );

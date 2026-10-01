@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import Item from "@/models/Item";
+import ProductCatalogReference from "@/models/ProductCatalogReference";
 import { getActor } from "@/lib/requirePermission";
 import { resolveRows } from "@/lib/purchase-import/resolve-rows";
-import { findMatchingItem } from "@/lib/purchase-import/match-item";
+import { findMatchingItem, extractEmbeddedCode } from "@/lib/purchase-import/match-item";
 import { groupSerialsByProduct, findSerialsForRow } from "@/lib/purchase-import/serial-table";
 
 /**
@@ -118,9 +119,27 @@ export async function POST(req: Request) {
 
     const serialGroups = groupSerialsByProduct(serialGrid);
 
+    // Only looked up for rows that don't already match a catalog Item — an
+    // existing item keeps its own real category/brand, this is purely for
+    // filling in a brand-new product the admin would otherwise have to pick
+    // Category/Brand for by hand.
+    const referenceByVpCode = new Map<string, { category: string; brand: string }>();
+    const unmatchedCodesPresent = parsedRows.some((row) => extractEmbeddedCode(row.name));
+    if (unmatchedCodesPresent) {
+      const references = await ProductCatalogReference.find(
+        { category: { $ne: "" } },
+        { vpCode: 1, category: 1, brand: 1 }
+      ).lean();
+      references.forEach((r: any) => {
+        referenceByVpCode.set(r.vpCode, { category: r.category || "", brand: r.brand || "" });
+      });
+    }
+
     const rows = parsedRows.map((row) => {
       const matched = findMatchingItem(row.name, allItems);
       const serialNumbers = findSerialsForRow(row.name, serialGroups);
+      const embeddedCode = !matched ? extractEmbeddedCode(row.name) : null;
+      const referenceMatch = embeddedCode ? referenceByVpCode.get(embeddedCode) || null : null;
       return {
         ...row,
         matchedItem: matched
@@ -135,6 +154,7 @@ export async function POST(req: Request) {
             }
           : null,
         serialNumbers: serialNumbers && serialNumbers.length > 0 ? serialNumbers : undefined,
+        referenceMatch,
       };
     });
 

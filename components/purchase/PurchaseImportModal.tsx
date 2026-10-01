@@ -57,6 +57,10 @@ interface PreviewRow {
    *  needs just one selection while a mixed one can override per row. */
   category?: string;
   brand?: string;
+  /** True when category/brand above came from the Stock Reference table
+   *  (Masters > Items > Import Stock Reference) by VP code, not a guess —
+   *  shown so the admin knows it's vetted data, still fully editable. */
+  fromReference?: boolean;
 }
 
 export function PurchaseImportModal({
@@ -145,11 +149,16 @@ export function PurchaseImportModal({
           matchedItem: r.matchedItem,
           serialNumbers: r.serialNumbers,
           hsn: r.hsn,
-          category: "",
-          brand: "",
+          category: r.referenceMatch?.category || "",
+          brand: r.referenceMatch?.brand || "",
+          fromReference: Boolean(r.referenceMatch),
         }))
       );
-      toast.success(`Found ${data.rows.length} row(s) — review before adding`);
+      const referenceCount = data.rows.filter((r: any) => r.referenceMatch).length;
+      toast.success(
+        `Found ${data.rows.length} row(s) — review before adding` +
+          (referenceCount > 0 ? ` (${referenceCount} auto-filled from stock reference)` : "")
+      );
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -402,6 +411,7 @@ export function PurchaseImportModal({
                       <th className="px-3 py-2.5 text-right w-28">Rate (₹)</th>
                       <th className="px-3 py-2.5 text-right w-20">GST %</th>
                       <th className="px-3 py-2.5 text-left w-36">Category</th>
+                      <th className="px-3 py-2.5 text-left w-32">Brand</th>
                       <th className="px-3 py-2.5 text-left w-40">Status</th>
                       <th className="px-3 py-2.5 w-10" />
                     </tr>
@@ -459,26 +469,47 @@ export function PurchaseImportModal({
                               {row.matchedItem.category || "—"}
                             </span>
                           ) : (
-                            <Select
-                              value={row.category || ""}
-                              onValueChange={(v) => updateRow(row.key, { category: v })}
-                            >
-                              <SelectTrigger
-                                className={cn(
-                                  "h-8 text-xs w-full",
-                                  !(row.category || defaultCategory) && "border-red-300 bg-red-50"
-                                )}
+                            <div className="space-y-0.5">
+                              {row.fromReference && (
+                                <span className="flex items-center gap-1 text-[9px] font-bold text-emerald-600">
+                                  <CheckCircle2 className="w-2.5 h-2.5" /> Stock reference
+                                </span>
+                              )}
+                              <Select
+                                value={row.category || ""}
+                                onValueChange={(v) => updateRow(row.key, { category: v, fromReference: false })}
                               >
-                                <SelectValue placeholder={defaultCategory ? `Default: ${defaultCategory}` : "Pick one…"} />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {categories.map((c: any) => (
-                                  <SelectItem key={c._id || c.name} value={c.name}>
-                                    {c.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                                <SelectTrigger
+                                  className={cn(
+                                    "h-8 text-xs w-full",
+                                    !(row.category || defaultCategory) && "border-red-300 bg-red-50"
+                                  )}
+                                >
+                                  <SelectValue placeholder={defaultCategory ? `Default: ${defaultCategory}` : "Pick one…"} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {categories.map((c: any) => (
+                                    <SelectItem key={c._id || c.name} value={c.name}>
+                                      {c.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          {row.matchedItem ? (
+                            <span className="text-slate-500 truncate block max-w-[110px]" title={row.matchedItem.brand || ""}>
+                              {row.matchedItem.brand || "—"}
+                            </span>
+                          ) : (
+                            <BrandSelect
+                              value={row.brand || ""}
+                              onValueChange={(v) => updateRow(row.key, { brand: v, fromReference: false })}
+                              placeholder={defaultBrand || "Optional"}
+                              className="h-8 text-xs w-full"
+                            />
                           )}
                         </td>
                         <td className="px-3 py-2">
