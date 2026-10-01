@@ -3,6 +3,7 @@ import connectToDatabase from "@/lib/db";
 import Invoice from "@/models/Invoice";
 import Item from "@/models/Item";
 import Expense from "@/models/Expense";
+import PurchaseEntry from "@/models/PurchaseEntry";
 
 export async function GET(req: Request) {
   try {
@@ -39,11 +40,26 @@ export async function GET(req: Request) {
       expenseQuery.date = { $lte: endDate };
     }
 
+    // Build Purchase Entry filter — the actual stock-in bills raised this
+    // period, not the same thing as COGS below (which is the purchase cost
+    // of whatever got SOLD this period, drawn from the Item master's current
+    // rate). A cancelled entry never happened as far as the books are
+    // concerned, so it's excluded the same way a cancelled/draft invoice is.
+    const purchaseQuery: any = { status: { $ne: "cancelled" } };
+    if (startDate && endDate) {
+      purchaseQuery.billDate = { $gte: startDate, $lte: endDate };
+    } else if (startDate) {
+      purchaseQuery.billDate = { $gte: startDate };
+    } else if (endDate) {
+      purchaseQuery.billDate = { $lte: endDate };
+    }
+
     // Fetch data in parallel
-    const [invoices, catalogItems, expenses] = await Promise.all([
+    const [invoices, catalogItems, expenses, purchaseEntries] = await Promise.all([
       Invoice.find(invoiceQuery).lean(),
       Item.find({}).lean(),
       Expense.find(expenseQuery).lean(),
+      PurchaseEntry.find(purchaseQuery).lean(),
     ]);
 
     // Create fast lookup maps for catalog items
@@ -187,6 +203,31 @@ export async function GET(req: Request) {
       dailyMap.get(expDate)!.expense += expAmt;
     }
 
+    // Process Purchase Entries — actual stock-in bills raised this period.
+    // A debit-note is a return TO the supplier (stock going back out), so it
+    // subtracts from the period's net purchase value rather than adding to
+    // it, the same way it already reverses inventory on save.
+    let totalPurchases = 0;
+    const supplierPurchaseMap = new Map<string, { name: string; amount: number; bills: number }>();
+
+    for (const pur of purchaseEntries) {
+      const amt = Number(pur.total) || 0;
+      const signedAmt = pur.type === "debit-note" ? -amt : amt;
+      totalPurchases += signedAmt;
+
+      const supplier = pur.supplierName || "Unknown Supplier";
+      if (!supplierPurchaseMap.has(supplier)) {
+        supplierPurchaseMap.set(supplier, { name: supplier, amount: 0, bills: 0 });
+      }
+      const sData = supplierPurchaseMap.get(supplier)!;
+      sData.amount += signedAmt;
+      sData.bills += 1;
+    }
+
+    const purchaseBreakdown = Array.from(supplierPurchaseMap.values())
+      .map((s) => ({ ...s, amount: Math.round(s.amount) }))
+      .sort((a, b) => b.amount - a.amount);
+
     // Finalize Product Array with Margins and Status
     const productBreakdown = Array.from(productMap.values()).map((p) => {
       const avgSellingPrice = p.qtySold > 0 ? Math.round(p.totalRevenue / p.qtySold) : 0;
@@ -254,11 +295,14 @@ export async function GET(req: Request) {
           totalInvoices: invoices.length,
           totalTaxCollected: Math.round(totalTaxCollected),
           totalDiscountGiven: Math.round(totalDiscountGiven),
+          totalPurchases: Math.round(totalPurchases),
+          totalPurchaseBills: purchaseEntries.length,
         },
         productBreakdown,
         categoryBreakdown,
         brandBreakdown,
         expenseBreakdown,
+        purchaseBreakdown,
         timeline,
       },
     });

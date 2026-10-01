@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { PageShell } from "@/components/shared/page-shell";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,15 @@ import { ArrowUpRight, ArrowDownRight, Calculator } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 import { ExportMenu } from "@/components/shared/ExportMenu";
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+function monthLabel(date: Date): string {
+  return `${MONTH_NAMES[date.getMonth()]} ${date.getFullYear()}`;
+}
 
 /**
  * GSTR-1 (Sales) and GSTR-2 (Purchases) below use the SAME column set the
@@ -22,7 +31,11 @@ import { ExportMenu } from "@/components/shared/ExportMenu";
 const money = (n: unknown) => `₹${(Number(n) || 0).toLocaleString("en-IN")}`;
 
 export default function GSTReportsPage() {
-  const [period, setPeriod] = useState("August 2026");
+  // Today's own month — always a valid, immediately-useful starting point
+  // (the old hardcoded "August 2026" stayed stuck there forever, so every
+  // invoice/bill raised in a later month never showed up until the admin
+  // happened to notice the dropdown was out of date).
+  const [period, setPeriod] = useState(() => monthLabel(new Date()));
   const [activeTab, setActiveTab] = useState<"gstr3b" | "gstr1" | "gstr2">("gstr3b");
 
   const { data: gstr1 = [], isLoading: loadingGstr1 } = useQuery({
@@ -42,6 +55,26 @@ export default function GSTReportsPage() {
       return json.success ? json.data : [];
     }
   });
+
+  // Every month that actually has a Sales or Purchase record, newest first —
+  // replaces the old fixed Aug/Jul/Jun list, which silently hid any period
+  // outside those three (including whichever month it actually is today).
+  // The current month is always present even with zero records yet, so
+  // there's never a dropdown with nothing selectable.
+  const availablePeriods = useMemo(() => {
+    const months = new Set<string>([monthLabel(new Date())]);
+    const addDate = (raw: string) => {
+      const d = new Date(raw);
+      if (!isNaN(d.getTime())) months.add(monthLabel(d));
+    };
+    gstr1.forEach((r: any) => r["Inv Date"] && addDate(r["Inv Date"]));
+    gstr2.forEach((r: any) => r["Bill Date"] && addDate(r["Bill Date"]));
+    return Array.from(months).sort((a, b) => {
+      const da = new Date(`1 ${a}`).getTime();
+      const db = new Date(`1 ${b}`).getTime();
+      return db - da;
+    });
+  }, [gstr1, gstr2]);
 
   const parsePeriod = (p: string) => {
     const [month, year] = p.split(" ");
@@ -98,9 +131,9 @@ export default function GSTReportsPage() {
             onChange={(e) => setPeriod(e.target.value)}
             className="h-9 px-3 py-1 rounded-lg border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#3F63AD]"
           >
-            <option>August 2026</option>
-            <option>July 2026</option>
-            <option>June 2026</option>
+            {availablePeriods.map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
           </select>
           <ExportMenu
             size="sm"

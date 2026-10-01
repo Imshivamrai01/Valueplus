@@ -72,12 +72,15 @@ function ProfitLossContent() {
     netMarginPct: 0,
     totalUnitsSold: 0,
     totalInvoices: 0,
+    totalPurchases: 0,
+    totalPurchaseBills: 0,
   };
 
   const productBreakdown: any[] = reportData?.productBreakdown || [];
   const categoryBreakdown: any[] = reportData?.categoryBreakdown || [];
   const brandBreakdown: any[] = reportData?.brandBreakdown || [];
   const expenseBreakdown: any[] = reportData?.expenseBreakdown || [];
+  const purchaseBreakdown: any[] = reportData?.purchaseBreakdown || [];
 
   // Extract unique categories & brands for filter dropdowns
   const uniqueCategories = useMemo(() => {
@@ -249,7 +252,7 @@ function ProfitLossContent() {
         </div>
 
         {/* TOP EXECUTIVE METRIC CARDS */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
           {/* Total Sales Revenue */}
           <Card className="border border-slate-200/80 shadow-xs bg-white overflow-hidden relative">
             <div className="absolute top-0 left-0 w-full h-1 bg-blue-500" />
@@ -284,6 +287,28 @@ function ProfitLossContent() {
               </div>
               <p className="text-[11px] text-slate-500 mt-1 font-medium">
                 Total Purchase Cost of Sold Units
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Total Purchases — actual stock-in bills raised this period, not
+              the same number as COGS above (that's the cost of what was SOLD
+              this period; this is what was actually BOUGHT, whether sold yet
+              or not — the two only match if nothing's left on the shelf). */}
+          <Card className="border border-slate-200/80 shadow-xs bg-white overflow-hidden relative">
+            <div className="absolute top-0 left-0 w-full h-1 bg-orange-500" />
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold tracking-wider uppercase text-slate-500">Purchase Entries</span>
+                <div className="p-2 rounded-lg bg-orange-50 text-orange-600">
+                  <Building2 className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-2 flex items-baseline gap-2">
+                <span className="text-xl font-black text-slate-900">{formatCurrency(summary.totalPurchases)}</span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1 font-medium">
+                {summary.totalPurchaseBills} bill{summary.totalPurchaseBills === 1 ? "" : "s"} raised this period
               </p>
             </CardContent>
           </Card>
@@ -783,6 +808,44 @@ function ProfitLossContent() {
                 </CardContent>
               </Card>
             </div>
+
+            {/* Supplier-wise Purchases — what was actually BOUGHT this
+                period (bills raised), not a profit/margin figure like the
+                two panels above. */}
+            <Card className="border border-slate-200 shadow-xs bg-white">
+              <CardHeader className="pb-3 border-b border-slate-100">
+                <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-[#3F63AD]" /> Purchase Entries by Supplier
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4">
+                {purchaseBreakdown.length === 0 ? (
+                  <p className="text-xs text-slate-400 text-center py-6">No purchase entries recorded for this period</p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {purchaseBreakdown.map((s, idx) => (
+                      <div key={s.name || idx} className="p-3 rounded-lg bg-slate-50/80 border border-slate-100 hover:border-slate-300 transition-colors">
+                        <div className="flex items-center justify-between text-xs mb-1">
+                          <span className="font-bold text-slate-900 truncate">{s.name}</span>
+                          <Badge variant="outline" className="text-[10px] bg-white text-slate-600 font-mono shrink-0 ml-1.5">
+                            {s.bills} bill{s.bills === 1 ? "" : "s"}
+                          </Badge>
+                        </div>
+                        <span className={cn(
+                          "font-mono font-black text-sm",
+                          s.amount < 0 ? "text-rose-700" : "text-orange-700"
+                        )}>
+                          {formatCurrency(s.amount)}
+                        </span>
+                        {s.amount < 0 && (
+                          <span className="text-[10px] text-rose-600 font-semibold ml-1.5">(net debit notes)</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* TAB 3: TRADITIONAL FINANCIAL STATEMENT VIEW */}
@@ -814,6 +877,11 @@ function ProfitLossContent() {
                     </div>
 
                     <div className="space-y-2.5">
+                      <div className="flex items-center justify-between text-slate-600 text-[11px] pl-3 border-l-2 border-slate-200">
+                        <span>Purchases (Stock-In Bills Raised This Period)</span>
+                        <span className="font-mono font-semibold">{formatCurrency(summary.totalPurchases)}</span>
+                      </div>
+
                       <div className="flex items-center justify-between font-semibold text-slate-700">
                         <span>To Cost of Goods Sold (COGS - Purchase Cost)</span>
                         <span className="font-mono text-slate-900 font-bold">{formatCurrency(summary.totalCOGS)}</span>
