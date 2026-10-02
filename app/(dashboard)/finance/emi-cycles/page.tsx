@@ -392,6 +392,7 @@ export default function MonthlyEmiCyclesStandalonePage() {
                       </div>
 
                       <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+                        <div className="overflow-x-auto">
                         <table className="w-full text-xs text-left">
                           <thead className="bg-slate-100/80 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10.5px]">
                             <tr>
@@ -500,6 +501,7 @@ export default function MonthlyEmiCyclesStandalonePage() {
                             })}
                           </tbody>
                         </table>
+                        </div>
                       </div>
                     </div>
                   )}

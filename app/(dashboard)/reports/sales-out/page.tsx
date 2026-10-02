@@ -217,6 +217,7 @@ function SalesOutReportContent() {
 
         {/* PRIMARY SALES OUT TABLE */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full text-xs text-left">
             <thead className="bg-slate-50 border-b text-slate-700 uppercase font-bold">
               <tr>
@@ -315,6 +316,7 @@ function SalesOutReportContent() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
     </PageShell>

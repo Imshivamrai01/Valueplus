@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import StockJournal from "@/models/StockJournal";
-import Item from "@/models/Item";
+import { applyStockMovement } from "@/lib/stock";
 
 export async function GET() {
   try {
@@ -24,18 +24,12 @@ export async function POST(req: Request) {
     }
     
     const journal = await StockJournal.create(body);
-    
-    // Auto-update stock
+
+    // Auto-update stock, scoped to each line's own warehouse where given.
     for (const line of body.items) {
-      const item = await Item.findById(line.itemId);
-      if (item) {
-        if (line.type === "in") {
-          item.currentStock = (item.currentStock || 0) + Number(line.quantity);
-        } else if (line.type === "out") {
-          item.currentStock = (item.currentStock || 0) - Number(line.quantity);
-        }
-        await item.save();
-      }
+      if (!line.itemId || !line.quantity) continue;
+      const delta = line.type === "in" ? Number(line.quantity) : -Number(line.quantity);
+      await applyStockMovement(line.itemId, line.warehouseId || null, delta);
     }
 
     return NextResponse.json({ success: true, data: journal });

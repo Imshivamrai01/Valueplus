@@ -86,6 +86,115 @@ export async function GET(req: Request) {
       return Array.from(codes).join(", ");
     };
 
+    // Real GSTR-1 B2B/B2C shape — unlike the Tally-register export above,
+    // these mirror the official return's own tables: Table 4 (B2B, invoice-wise
+    // per recipient GSTIN) and Table 7 (B2C Small, consolidated by place of
+    // supply + rate). A GSTIN is only treated as real (B2B) when it looks like
+    // one — 15 chars — matching the same "URD"/placeholder-text problem the
+    // Tally export already had to guard against above.
+    if (type === "GSTR1_B2B" || type === "GSTR1_B2C") {
+      const monthParam = searchParams.get("month"); // 0-11
+      const yearParam = searchParams.get("year");
+
+      let allInvoices = await Invoice.find({ type: "tax-invoice", status: { $ne: "cancelled" } })
+        .sort({ date: 1 })
+        .lean();
+
+      if (monthParam !== null && yearParam !== null) {
+        const month = parseInt(monthParam, 10);
+        const year = parseInt(yearParam, 10);
+        allInvoices = allInvoices.filter((inv: any) => {
+          const d = new Date(inv.date);
+          if (isNaN(d.getTime())) return false;
+          return d.getMonth() === month && d.getFullYear() === year;
+        });
+      }
+
+      const invoices = allInvoices;
+
+      const isRealGstin = (gstin?: string | null) => /^[0-9A-Z]{15}$/.test(String(gstin || "").trim().toUpperCase());
+
+      if (type === "GSTR1_B2B") {
+        const b2bInvoices = invoices.filter((inv: any) => isRealGstin(inv.customerGST));
+        const rows = b2bInvoices.map((inv: any) => {
+          const taxable = Number(inv.taxableAmount) || 0;
+          const cgst = Number(inv.cgst) || 0;
+          const sgst = Number(inv.sgst) || 0;
+          const igst = Number(inv.igst) || 0;
+          const rate = taxable > 0 ? round2(((cgst + sgst + igst) / taxable) * 100) : 0;
+
+          return {
+            "GSTIN/UIN of Recipient": String(inv.customerGST).trim().toUpperCase(),
+            "Receiver Name": inv.customerCompanyName || inv.customerName || "",
+            "Invoice Number": inv.invoiceNumber,
+            "Invoice Date": inv.date || "",
+            "Invoice Value": round2(Number(inv.total) || 0),
+            "Place of Supply": inv.placeOfSupply || "Uttar Pradesh(09)",
+            "Reverse Charge": "N",
+            "Invoice Type": "Regular",
+            "Rate (%)": rate,
+            "Taxable Value": round2(taxable),
+            "IGST Amount": round2(igst),
+            "CGST Amount": round2(cgst),
+            "SGST Amount": round2(sgst),
+          };
+        });
+        return NextResponse.json({ success: true, data: rows });
+      }
+
+      // B2C — everything that isn't a real GSTIN, consolidated by (place of
+      // supply, rate) exactly as Table 7 (B2C Small) expects, rather than
+      // listed invoice-by-invoice.
+      const b2cInvoices = invoices.filter((inv: any) => !isRealGstin(inv.customerGST));
+      const groups = new Map<string, any>();
+      let b2clCandidates = 0;
+
+      b2cInvoices.forEach((inv: any) => {
+        const taxable = Number(inv.taxableAmount) || 0;
+        const cgst = Number(inv.cgst) || 0;
+        const sgst = Number(inv.sgst) || 0;
+        const igst = Number(inv.igst) || 0;
+        const intra = isIntraState(inv.customerGST);
+        const rate = taxable > 0 ? round2(((cgst + sgst + igst) / taxable) * 100) : 0;
+        const placeOfSupply = inv.placeOfSupply || "Uttar Pradesh(09)";
+
+        // Official GSTR-1 splits out B2C Large (inter-state, >₹2.5L) into its
+        // own table — flagged here rather than silently folded into the Small
+        // consolidated row below, since that would misstate both tables.
+        if (!intra && Number(inv.total) > 250000) {
+          b2clCandidates += 1;
+          return;
+        }
+
+        const key = `${placeOfSupply}__${rate}`;
+        const existing = groups.get(key) || {
+          "Place of Supply": placeOfSupply,
+          "Rate (%)": rate,
+          "Taxable Value": 0,
+          "IGST Amount": 0,
+          "CGST Amount": 0,
+          "SGST Amount": 0,
+          "Invoice Count": 0,
+        };
+        existing["Taxable Value"] += taxable;
+        existing["IGST Amount"] += igst;
+        existing["CGST Amount"] += cgst;
+        existing["SGST Amount"] += sgst;
+        existing["Invoice Count"] += 1;
+        groups.set(key, existing);
+      });
+
+      const rows = Array.from(groups.values()).map((g: any) => ({
+        ...g,
+        "Taxable Value": round2(g["Taxable Value"]),
+        "IGST Amount": round2(g["IGST Amount"]),
+        "CGST Amount": round2(g["CGST Amount"]),
+        "SGST Amount": round2(g["SGST Amount"]),
+      }));
+
+      return NextResponse.json({ success: true, data: rows, meta: { b2clCandidates } });
+    }
+
     if (type === "GSTR1") {
       const invoices = await Invoice.find({ type: "tax-invoice" }).sort({ date: 1 }).lean();
 

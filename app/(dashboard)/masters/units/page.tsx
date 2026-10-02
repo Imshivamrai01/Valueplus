@@ -100,6 +100,7 @@ export default function UnitsPage() {
         </div>
       }>
       <div className="data-table-container">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 border-b">
             <tr>{["Unit Name","Abbreviation","Type","Status","Actions"].map(h => <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">{h}</th>)}</tr>
@@ -122,6 +123,7 @@ export default function UnitsPage() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>

@@ -27,11 +27,24 @@ export interface IItem extends Document {
   incentiveValue?: number;
   mrp: number;
   openingStock: number;
+  /** currentStock/showroomStock/godownStock are derived aggregates, recomputed
+   *  from stockByWarehouse by lib/stock.ts on every stock movement — never write
+   *  them directly outside that helper, or they will drift from the real source
+   *  of truth below. */
   currentStock: number;
   showroomStock?: number;
   godownStock?: number;
+  /** The real source of truth: how much of this item sits at each specific
+   *  warehouse. Replaces the old showroom/godown binary, which silently merged
+   *  multiple real warehouses of the same type into one shared number. */
+  stockByWarehouse?: Array<{ warehouseId: mongoose.Types.ObjectId; qty: number }>;
   reorderLevel: number;
   warehouse: string;
+  /** Set only on an item that was folded into another during the per-warehouse
+   *  stock migration (a historical duplicate created by stock-transfer's old
+   *  "new Item per destination warehouse" workaround) — excluded from normal
+   *  pickers/search going forward via `status: "inactive"`. */
+  mergedIntoItemId?: mongoose.Types.ObjectId;
   status: "active" | "inactive";
   imageUrl?: string;
   isSerialized?: boolean;
@@ -71,8 +84,15 @@ const ItemSchema = new Schema<IItem>(
     currentStock: { type: Number, default: 0 },
     showroomStock: { type: Number, default: 0 },
     godownStock: { type: Number, default: 0 },
+    stockByWarehouse: [
+      {
+        warehouseId: { type: Schema.Types.ObjectId, ref: "Warehouse", required: true },
+        qty: { type: Number, default: 0 },
+      },
+    ],
     reorderLevel: { type: Number, default: 5 },
     warehouse: { type: String, default: "" },
+    mergedIntoItemId: { type: Schema.Types.ObjectId, ref: "Item" },
     status: { type: String, enum: ["active", "inactive"], default: "active" },
     imageUrl: { type: String },
     isSerialized: { type: Boolean, default: false },

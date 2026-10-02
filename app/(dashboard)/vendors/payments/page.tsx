@@ -16,23 +16,22 @@ import {
 } from "@/components/ui/dialog";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 import { DateRangeFilter, resolveDateRange } from "@/components/shared/date-range-filter";
-import { Plus, Search, Trash2, WalletCards, ArrowDownLeft, ArrowUpRight, Printer } from "lucide-react";
+import { Plus, Search, Trash2, WalletCards, ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { RoleGuard, usePermissions } from "@/components/shared/role-guard";
-import { VendorPaymentModal } from "@/components/vendor/VendorPaymentModal";
-import { VendorPaymentReceiptModal } from "@/components/vendor/VendorPaymentReceiptModal";
+import { PaymentModal } from "@/components/PaymentModal";
 import { ExportMenu } from "@/components/shared/ExportMenu";
 
-export default function VendorPaymentsPage() {
+export default function SupplierPaymentsPage() {
   return (
-    <RoleGuard permission="ledger.vendor.view">
-      <VendorPaymentsInner />
+    <RoleGuard permission="ledger.supplier.view">
+      <SupplierPaymentsInner />
     </RoleGuard>
   );
 }
 
-function VendorPaymentsInner() {
+function SupplierPaymentsInner() {
   const queryClient = useQueryClient();
   const { can } = usePermissions();
   const [search, setSearch] = useState("");
@@ -40,42 +39,32 @@ function VendorPaymentsInner() {
   const [range, setRange] = useState<{ start?: string; end?: string }>({});
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
-  const [paymentToPrint, setPaymentToPrint] = useState<any | null>(null);
 
   const { data: payments = [], isLoading } = useQuery({
-    queryKey: ["vendor-payments", range.start, range.end],
+    queryKey: ["supplier-payments", range.start, range.end],
     queryFn: async () => {
-      const qs = new URLSearchParams();
-      if (range.start) qs.set("from", range.start);
-      if (range.end) qs.set("to", range.end);
-      const res = await fetch(`/api/vendors/payments?${qs.toString()}`);
+      const res = await fetch("/api/payments?partyType=Supplier");
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
-      return json.data;
-    },
-  });
-
-  const { data: vendors = [] } = useQuery({
-    queryKey: ["vendors"],
-    queryFn: async () => {
-      const res = await fetch("/api/vendors");
-      const json = await res.json();
-      return json.success ? json.data : [];
+      let list = json.data as any[];
+      if (range.start) list = list.filter((p) => p.date >= range.start!);
+      if (range.end) list = list.filter((p) => p.date <= range.end!);
+      return list;
     },
   });
 
   const removeMutation = useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/vendors/payments?id=${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/payments?id=${id}`, { method: "DELETE" });
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
       return json;
     },
     onSuccess: () => {
       toast.success("Payment removed");
-      queryClient.invalidateQueries({ queryKey: ["vendor-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["supplier-payments"] });
       queryClient.invalidateQueries({ queryKey: ["all-ledgers"] });
-      queryClient.invalidateQueries({ queryKey: ["vendor-ledger-all"] });
+      queryClient.invalidateQueries({ queryKey: ["supplier-ledger-all"] });
       setDeleteTarget(null);
     },
     onError: (e: any) => {
@@ -89,21 +78,20 @@ function VendorPaymentsInner() {
     if (!q) return payments;
     return (payments as any[]).filter(
       (p) =>
-        p.vendorName?.toLowerCase().includes(q) ||
-        p.paymentId?.toLowerCase().includes(q) ||
-        p.refNo?.toLowerCase().includes(q) ||
-        p.againstBillNo?.toLowerCase().includes(q)
+        p.partyName?.toLowerCase().includes(q) ||
+        p.transactionId?.toLowerCase().includes(q) ||
+        p.referenceId?.toLowerCase().includes(q)
     );
   }, [payments, search]);
 
   const stats = useMemo(() => {
-    let received = 0;
+    let paidOut = 0;
     let refunded = 0;
     for (const p of filtered as any[]) {
-      if (p.type === "paid") refunded += Number(p.amount) || 0;
-      else received += Number(p.amount) || 0;
+      if (p.type === "paid") paidOut += Number(p.amount) || 0;
+      else refunded += Number(p.amount) || 0;
     }
-    return { received, refunded, net: received - refunded, count: filtered.length };
+    return { paidOut, refunded, net: paidOut - refunded, count: filtered.length };
   }, [filtered]);
 
   const handleDateChange = (value: string, start?: string, end?: string) => {
@@ -118,9 +106,9 @@ function VendorPaymentsInner() {
 
   return (
     <PageShell
-      title="Vendor Payments"
+      title="Supplier Payments"
       subtitle={`${stats.count} payment entries`}
-      breadcrumbs={[{ label: "Vendors & Ledger" }, { label: "Payments" }]}
+      breadcrumbs={[{ label: "Suppliers & Ledger" }, { label: "Payments" }]}
       actions={
         <div className="flex items-center gap-2">
           <DateRangeFilter value={dateFilter} onChange={handleDateChange} className="w-[150px]" />
@@ -135,19 +123,18 @@ function VendorPaymentsInner() {
           {can("ledger.export") && (
             <ExportMenu
               className="h-9"
-              title="Vendor Payments"
+              title="Supplier Payments"
               subtitle={`${stats.count} payment entries`}
               data={(filtered as any[]).map((p) => ({
                 Date: formatDate(p.date),
-                Vendor: p.vendorName,
+                Supplier: p.partyName,
                 Amount: p.amount,
-                Mode: p.mode,
+                Mode: p.paymentMode,
                 Direction: p.type,
-                Ref: p.refNo || "",
-                "Against Bill": p.againstBillNo || "",
-                "Recorded By": p.createdBy || "",
+                Ref: p.referenceId || "",
+                Notes: p.notes || "",
               }))}
-              filename="vendor-payments"
+              filename="supplier-payments"
             />
           )}
           {can("payment.record") && (
@@ -159,9 +146,9 @@ function VendorPaymentsInner() {
       }
     >
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Metric label="Received In" value={formatCurrency(stats.received)} tone="emerald" />
-        <Metric label="Refunded Out" value={formatCurrency(stats.refunded)} tone="red" />
-        <Metric label="Net Collected" value={formatCurrency(stats.net)} />
+        <Metric label="Paid Out" value={formatCurrency(stats.paidOut)} tone="red" />
+        <Metric label="Refunded In" value={formatCurrency(stats.refunded)} tone="emerald" />
+        <Metric label="Net Paid" value={formatCurrency(stats.net)} />
         <Metric label="Entries" value={String(stats.count)} />
       </div>
 
@@ -170,7 +157,7 @@ function VendorPaymentsInner() {
           <div className="relative flex-1 max-w-sm">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <Input
-              placeholder="Search by vendor, reference or bill…"
+              placeholder="Search by supplier or reference…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9"
@@ -182,60 +169,48 @@ function VendorPaymentsInner() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b">
               <tr>
-                {["Date", "Vendor", "Mode / Ref", "Against Bill", "Recorded By", "Amount", ""].map(
-                  (h, i) => (
-                    <th
-                      key={i}
-                      className={cn(
-                        "px-4 py-3 text-xs font-semibold text-muted-foreground uppercase",
-                        h === "Amount" ? "text-right" : "text-left"
-                      )}
-                    >
-                      {h}
-                    </th>
-                  )
-                )}
+                {["Date", "Supplier", "Mode / Ref", "Notes", "Amount", ""].map((h, i) => (
+                  <th
+                    key={i}
+                    className={cn(
+                      "px-4 py-3 text-xs font-semibold text-muted-foreground uppercase",
+                      h === "Amount" ? "text-right" : "text-left"
+                    )}
+                  >
+                    {h}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y">
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="p-0">
-                    <TableShimmer rows={6} cols={7} />
+                  <td colSpan={6} className="p-0">
+                    <TableShimmer rows={6} cols={6} />
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center p-10 text-muted-foreground">
+                  <td colSpan={6} className="text-center p-10 text-muted-foreground">
                     <WalletCards className="w-8 h-8 mx-auto mb-2 text-slate-300" />
-                    No vendor payments recorded yet.
+                    No supplier payments recorded yet.
                   </td>
                 </tr>
               ) : (
                 (filtered as any[]).map((p) => (
                   <tr key={p._id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
-                      {formatDate(p.date)}
-                    </td>
+                    <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{formatDate(p.date)}</td>
                     <td className="px-4 py-3">
-                      <p className="font-semibold text-foreground">{p.vendorName}</p>
-                      <p className="text-[10px] font-mono text-slate-400">{p.paymentId}</p>
+                      <p className="font-semibold text-foreground">{p.partyName}</p>
+                      <p className="text-[10px] font-mono text-slate-400">{p.transactionId}</p>
                     </td>
                     <td className="px-4 py-3">
                       <Badge variant="secondary" className="text-[10px] font-semibold">
-                        {p.mode}
+                        {p.paymentMode}
                       </Badge>
-                      {p.refNo && <p className="text-[10px] text-slate-400 mt-0.5">{p.refNo}</p>}
+                      {p.referenceId && <p className="text-[10px] text-slate-400 mt-0.5">{p.referenceId}</p>}
                     </td>
-                    <td className="px-4 py-3 font-mono text-xs text-slate-600">
-                      {p.againstBillNo || "On account"}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">
-                      {p.createdBy || "—"}
-                      {p.createdByRole && (
-                        <p className="text-[10px] text-slate-400 capitalize">{p.createdByRole}</p>
-                      )}
-                    </td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">{p.notes || "—"}</td>
                     <td className="px-4 py-3 text-right">
                       <span
                         className={cn(
@@ -252,27 +227,16 @@ function VendorPaymentsInner() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1">
+                      {can("payment.record") && (
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-slate-500 hover:text-[#3F63AD] hover:bg-blue-50"
-                          title="Print / Share receipt"
-                          onClick={() => setPaymentToPrint(p)}
+                          className="h-8 w-8 text-red-500 hover:bg-red-50"
+                          onClick={() => setDeleteTarget(p)}
                         >
-                          <Printer className="w-4 h-4" />
+                          <Trash2 className="w-4 h-4" />
                         </Button>
-                        {can("payment.record") && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-red-500 hover:bg-red-50"
-                            onClick={() => setDeleteTarget(p)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        )}
-                      </div>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -282,13 +246,11 @@ function VendorPaymentsInner() {
         </div>
       </div>
 
-      <VendorPaymentModal open={isFormOpen} onOpenChange={setIsFormOpen} vendors={vendors} />
-
-      <VendorPaymentReceiptModal
-        isOpen={!!paymentToPrint}
-        onClose={() => setPaymentToPrint(null)}
-        payment={paymentToPrint}
-        vendor={vendors.find((v: any) => v._id === paymentToPrint?.vendorId) || null}
+      <PaymentModal
+        isOpen={isFormOpen}
+        onClose={() => setIsFormOpen(false)}
+        onSuccess={() => queryClient.invalidateQueries({ queryKey: ["supplier-payments"] })}
+        defaultPartyType="Supplier"
       />
 
       <Dialog open={Boolean(deleteTarget)} onOpenChange={(o) => !o && setDeleteTarget(null)}>
@@ -298,9 +260,8 @@ function VendorPaymentsInner() {
             <DialogDescription>
               {deleteTarget && (
                 <>
-                  {formatCurrency(deleteTarget.amount)} from {deleteTarget.vendorName} on{" "}
-                  {formatDate(deleteTarget.date)} will be removed, and their pending balance will go
-                  back up by that amount.
+                  {formatCurrency(deleteTarget.amount)} for {deleteTarget.partyName} on{" "}
+                  {formatDate(deleteTarget.date)} will be removed, and their pending balance will be reversed.
                 </>
               )}
             </DialogDescription>

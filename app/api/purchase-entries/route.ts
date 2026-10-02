@@ -4,6 +4,8 @@ import connectToDatabase from "@/lib/db";
 import PurchaseEntry from "@/models/PurchaseEntry";
 import Supplier from "@/models/Supplier";
 import Item from "@/models/Item";
+import Warehouse from "@/models/Warehouse";
+import { applyStockMovement } from "@/lib/stock";
 import PurchaseOrder from "@/models/PurchaseOrder";
 import StockRequest from "@/models/StockRequest";
 import SerialNumber from "@/models/SerialNumber";
@@ -109,6 +111,26 @@ export async function POST(req: Request) {
       delete payload.supplierId;
     }
 
+    // Resolve the real warehouse this bill's stock is going into — prefer an
+    // id sent by the client, fall back to matching the free-text name for
+    // older clients so this doesn't hard-break mid-rollout.
+    let targetWarehouseId: string | null = null;
+    if (payload.warehouseId && mongoose.isValidObjectId(payload.warehouseId)) {
+      targetWarehouseId = payload.warehouseId;
+    } else {
+      delete payload.warehouseId;
+    }
+    if (!targetWarehouseId && body.warehouse) {
+      const escaped = String(body.warehouse).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const matchedWarehouse = await Warehouse.findOne({
+        name: { $regex: new RegExp(`^${escaped}$`, "i") },
+      }).lean();
+      if (matchedWarehouse) {
+        targetWarehouseId = String((matchedWarehouse as any)._id);
+        payload.warehouseId = targetWarehouseId;
+      }
+    }
+
     const entry = await PurchaseEntry.create(payload);
 
     // Update Supplier Balance and Auto-create if missing
@@ -187,22 +209,12 @@ export async function POST(req: Request) {
           }
 
           const targetWarehouse = body.warehouse || "Ashoka Enterprises (Kunraghat Showroom)";
-          const isGodownTarget = targetWarehouse.toLowerCase().includes("godown") || targetWarehouse.toLowerCase().includes("warehouse") || targetWarehouse.toLowerCase().includes("gida") || targetWarehouse.toLowerCase().includes("logistics");
 
           if (existingItem) {
-            // Update existing product stock & purchase rate based on Showroom vs Godown target
-            const incPayload: any = {};
-            if (isGodownTarget) {
-              incPayload.godownStock = qtyImpact;
-            } else {
-              incPayload.showroomStock = qtyImpact;
-              incPayload.currentStock = qtyImpact;
-            }
-
             await Item.findByIdAndUpdate(existingItem._id, {
-              $inc: incPayload,
-              $set: { purchasePrice: rate > 0 ? rate : existingItem.purchasePrice }
+              $set: { purchasePrice: rate > 0 ? rate : existingItem.purchasePrice },
             });
+            await applyStockMovement(String(existingItem._id), targetWarehouseId, qtyImpact);
           } else if (item.name && qtyImpact > 0) {
             // Auto-create new Item in Master
             const count = await Item.countDocuments();
@@ -210,7 +222,7 @@ export async function POST(req: Request) {
             const sellPrice = rate > 0 ? Math.round(rate * 1.25) : 1000;
             const mrpVal = rate > 0 ? Math.round(rate * 1.30) : 1200;
 
-            await Item.create({
+            const newItem = await Item.create({
               code: itemCode,
               name: item.name.trim(),
               category: "Electronics",
@@ -222,13 +234,11 @@ export async function POST(req: Request) {
               sellingPrice: sellPrice,
               mrp: mrpVal,
               openingStock: 0,
-              showroomStock: isGodownTarget ? 0 : qtyImpact,
-              godownStock: isGodownTarget ? qtyImpact : 0,
-              currentStock: isGodownTarget ? 0 : qtyImpact,
               warehouse: targetWarehouse,
               reorderLevel: 5,
               status: "active"
             });
+            await applyStockMovement(String(newItem._id), targetWarehouseId, qtyImpact);
           }
 
           // Auto-register and sync individual unit Serial Numbers (IMEI / Serial IDs)
@@ -340,13 +350,16 @@ export async function PUT(req: Request) {
         );
       }
 
-      // Reverse Inventory Stock (same logic as hard delete)
+      // Reverse Inventory Stock (same logic as hard delete) — against the same
+      // real warehouse the bill's stock landed in, so a cancelled godown bill
+      // doesn't leave godownStock permanently overstated.
       if (entry.items && Array.isArray(entry.items)) {
+        const reversalWarehouseId = entry.warehouseId ? String(entry.warehouseId) : null;
         for (const item of entry.items) {
           if (item.itemId) {
             const qtyImpact = entry.type === "debit-note" ? item.quantity : -item.quantity;
             if (qtyImpact !== 0) {
-              await Item.findByIdAndUpdate(item.itemId, { $inc: { currentStock: qtyImpact } });
+              await applyStockMovement(String(item.itemId), reversalWarehouseId, qtyImpact);
             }
           }
         }
@@ -432,13 +445,14 @@ export async function DELETE(req: Request) {
       );
     }
 
-    // Reverse Inventory Stock
+    // Reverse Inventory Stock — same real-warehouse-aware reversal as cancel.
     if (entry.items && Array.isArray(entry.items)) {
+      const reversalWarehouseId = entry.warehouseId ? String(entry.warehouseId) : null;
       for (const item of entry.items) {
         if (item.itemId) {
           const qtyImpact = entry.type === "debit-note" ? item.quantity : -item.quantity;
           if (qtyImpact !== 0) {
-            await Item.findByIdAndUpdate(item.itemId, { $inc: { currentStock: qtyImpact } });
+            await applyStockMovement(String(item.itemId), reversalWarehouseId, qtyImpact);
           }
         }
       }

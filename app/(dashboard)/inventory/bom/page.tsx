@@ -129,6 +129,7 @@ export default function BOMPage() {
               
               <div>
                 <h4 className="font-medium text-sm mb-2">Raw Material Components</h4>
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm border">
                   <thead className="bg-slate-50 border-b">
                     <tr>
@@ -156,6 +157,7 @@ export default function BOMPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
                 <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => setNewBom({...newBom, components: [...newBom.components, { itemId: "", itemName: "", quantity: 1, cost: 0 }]})}>+ Add Component</Button>
               </div>
               
@@ -170,6 +172,7 @@ export default function BOMPage() {
       </div>
 
       <Card className="overflow-hidden border border-slate-200">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
             <tr>
@@ -190,6 +193,7 @@ export default function BOMPage() {
             ))}
           </tbody>
         </table>
+        </div>
       </Card>
     </PageShell>
   );

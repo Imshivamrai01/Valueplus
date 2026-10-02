@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import mongoose from "mongoose";
 import connectToDatabase from "@/lib/db";
 import Item from "@/models/Item";
 
@@ -19,26 +20,46 @@ export async function GET(req: Request) {
       filter.category = { $regex: new RegExp(`^${category.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, "i") };
     }
 
+    // A real warehouse id (the normal case now) matches the actual
+    // stockByWarehouse entry. Anything else falls back to the old
+    // keyword/name matching against the free-text `warehouse` field, for
+    // callers that predate this and still send "godown"/"showroom"/a name.
     if (warehouse && warehouse !== "all") {
-      const lowerWh = warehouse.toLowerCase().trim();
-      if (lowerWh === "godown" || lowerWh === "warehouse") {
-        filter.warehouse = { $regex: /godown/i };
-      } else if (lowerWh === "showroom" || lowerWh.includes("ashoka") || lowerWh.includes("kunraghat") || lowerWh === "vp-kun") {
-        filter.$or = [
-          { warehouse: { $exists: false } },
-          { warehouse: "" },
-          { warehouse: null },
-          { warehouse: { $regex: /showroom|ashoka|kunraghat|vp-kun|main\s*store/i } },
-          { warehouse: { $not: /godown/i } }
-        ];
+      if (mongoose.isValidObjectId(warehouse)) {
+        filter["stockByWarehouse.warehouseId"] = warehouse;
       } else {
-        const cleanWh = warehouse.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        filter.warehouse = { $regex: new RegExp(cleanWh, "i") };
+        const lowerWh = warehouse.toLowerCase().trim();
+        if (lowerWh === "godown" || lowerWh === "warehouse") {
+          filter.warehouse = { $regex: /godown/i };
+        } else if (lowerWh === "showroom" || lowerWh.includes("ashoka") || lowerWh.includes("kunraghat") || lowerWh === "vp-kun") {
+          filter.$or = [
+            { warehouse: { $exists: false } },
+            { warehouse: "" },
+            { warehouse: null },
+            { warehouse: { $regex: /showroom|ashoka|kunraghat|vp-kun|main\s*store/i } },
+            { warehouse: { $not: /godown/i } }
+          ];
+        } else {
+          const cleanWh = warehouse.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          filter.warehouse = { $regex: new RegExp(cleanWh, "i") };
+        }
       }
     }
 
     const items = await Item.find(filter).sort({ currentStock: -1, name: 1 }).lean();
-    return NextResponse.json({ success: true, data: items });
+
+    // When filtered to one real warehouse, also surface how much of each
+    // item sits specifically there — callers that only read `currentStock`
+    // keep working unchanged.
+    const data = mongoose.isValidObjectId(warehouse)
+      ? items.map((it: any) => ({
+          ...it,
+          stockAtWarehouse:
+            (it.stockByWarehouse || []).find((e: any) => String(e.warehouseId) === warehouse)?.qty || 0,
+        }))
+      : items;
+
+    return NextResponse.json({ success: true, data });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

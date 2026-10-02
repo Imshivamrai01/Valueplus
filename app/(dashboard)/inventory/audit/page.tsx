@@ -132,6 +132,7 @@ export default function InventoryAuditPage() {
         </div>
 
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full text-xs text-left">
             <thead className="bg-slate-50 border-b text-slate-700 uppercase font-bold">
               <tr>
@@ -174,6 +175,7 @@ export default function InventoryAuditPage() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
 
@@ -199,6 +201,7 @@ export default function InventoryAuditPage() {
             </div>
 
             <div className="border rounded-xl overflow-hidden max-h-[50vh] overflow-y-auto">
+              <div className="overflow-x-auto">
               <table className="w-full text-xs text-left">
                 <thead className="bg-slate-100 border-b text-slate-700 uppercase font-bold sticky top-0">
                   <tr>
@@ -254,6 +257,7 @@ export default function InventoryAuditPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           </div>
 

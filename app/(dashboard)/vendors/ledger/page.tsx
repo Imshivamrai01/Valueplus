@@ -2,12 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
 import { PageShell } from "@/components/shared/page-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 import { DateRangeFilter, resolveDateRange } from "@/components/shared/date-range-filter";
 import {
@@ -19,48 +17,34 @@ import {
 } from "lucide-react";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { ExportMenu } from "@/components/shared/ExportMenu";
-import { RoleGuard, usePermissions, AccessDenied } from "@/components/shared/role-guard";
-import { PartyLedgerPanel, LedgerParty } from "@/components/PartyLedgerPanel";
-import { VendorPaymentModal } from "@/components/vendor/VendorPaymentModal";
+import { RoleGuard, usePermissions } from "@/components/shared/role-guard";
+import { PartyLedgerPanel } from "@/components/PartyLedgerPanel";
 import { PaymentModal } from "@/components/PaymentModal";
-
-/**
- * Every party's ledger position on one screen — the "sabka data ek jagah" view.
- *
- * Both tabs read the same endpoint with a different `party`, so a vendor row and
- * a supplier row are computed by identical maths; only the direction of the
- * balance differs (a vendor owes us, we owe a supplier).
- */
 
 type SortKey = "name" | "billed" | "paid" | "pending" | "overdue";
 
 export default function AllLedgersPage() {
   return (
-    <RoleGuard permission="ledger.vendor.view">
+    <RoleGuard permission="ledger.supplier.view">
       <AllLedgersInner />
     </RoleGuard>
   );
 }
 
 function AllLedgersInner() {
-  const router = useRouter();
   const { can } = usePermissions();
-  const [party, setParty] = useState<LedgerParty>("vendor");
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("pending");
   const [sortDesc, setSortDesc] = useState(true);
   const [dateFilter, setDateFilter] = useState("All Time");
   const [range, setRange] = useState<{ start?: string; end?: string }>({});
   const [drawerParty, setDrawerParty] = useState<any | null>(null);
-  const [paymentVendorId, setPaymentVendorId] = useState<string | null>(null);
   const [paymentSupplierId, setPaymentSupplierId] = useState<string | null>(null);
 
-  const canSeeSuppliers = can("ledger.supplier.view");
-
   const { data, isLoading, isFetching, refetch, error } = useQuery({
-    queryKey: ["all-ledgers", party, range.start, range.end],
+    queryKey: ["all-ledgers", "supplier", range.start, range.end],
     queryFn: async () => {
-      const qs = new URLSearchParams({ party });
+      const qs = new URLSearchParams({ party: "supplier" });
       if (range.start) qs.set("from", range.start);
       if (range.end) qs.set("to", range.end);
       const res = await fetch(`/api/vendors/ledger?${qs.toString()}`);
@@ -68,16 +52,6 @@ function AllLedgersInner() {
       if (!json.success) throw new Error(json.error || "Could not load ledgers");
       return json.data;
     },
-  });
-
-  const { data: vendors = [] } = useQuery({
-    queryKey: ["vendors"],
-    queryFn: async () => {
-      const res = await fetch("/api/vendors");
-      const json = await res.json();
-      return json.success ? json.data : [];
-    },
-    enabled: party === "vendor",
   });
 
   const rows = useMemo(() => {
@@ -120,14 +94,6 @@ function AllLedgersInner() {
   }, [data, search, sortKey, sortDesc]);
 
   const totals = data?.totals;
-  const isPayable = party === "supplier";
-
-  // A vendor has a full profile page (bills, payments, ledger); a supplier has
-  // only the statement drawer, since its bills live in the purchase module.
-  const openParty = (p: any) => {
-    if (party === "vendor") router.push(`/vendors/${p._id}`);
-    else setDrawerParty(p);
-  };
 
   const handleDateChange = (value: string, start?: string, end?: string) => {
     setDateFilter(value);
@@ -150,12 +116,8 @@ function AllLedgersInner() {
   return (
     <PageShell
       title="All Ledgers"
-      subtitle={
-        isPayable
-          ? "Every supplier's position — purchases, payments made and what is still owed"
-          : "Every vendor's position — bills raised, payments received and what is still pending"
-      }
-      breadcrumbs={[{ label: "Vendors & Ledger" }, { label: "All Ledgers" }]}
+      subtitle="Every supplier's position — purchases, payments made and what is still owed"
+      breadcrumbs={[{ label: "Suppliers & Ledger" }, { label: "All Ledgers" }]}
       actions={
         <div className="flex items-center gap-2">
           <DateRangeFilter value={dateFilter} onChange={handleDateChange} className="w-[150px]" />
@@ -173,8 +135,8 @@ function AllLedgersInner() {
           {can("ledger.export") && (
             <ExportMenu
               className="h-9"
-              title={isPayable ? "Supplier Ledger Summary" : "Vendor Ledger Summary"}
-              subtitle={`${rows.length} ${party}s`}
+              title="Supplier Ledger Summary"
+              subtitle={`${rows.length} suppliers`}
               data={rows.map((p: any) => ({
                 Code: p.code,
                 Name: p.name,
@@ -187,24 +149,13 @@ function AllLedgersInner() {
                 "Last Amount": p.summary.lastPaymentAmount || 0,
                 "90+ Days": p.summary.ageing.d90plus,
               }))}
-              filename={`${party}-ledger-summary`}
+              filename="supplier-ledger-summary"
             />
           )}
         </div>
       }
     >
-      <Tabs value={party} onValueChange={(v) => setParty(v as LedgerParty)}>
-        <TabsList>
-          <TabsTrigger value="vendor">Vendors (Receivable)</TabsTrigger>
-          <TabsTrigger value="supplier" disabled={!canSeeSuppliers}>
-            Suppliers (Payable)
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
-
-      {party === "supplier" && !canSeeSuppliers ? (
-        <AccessDenied permission="ledger.supplier.view" />
-      ) : error ? (
+      {error ? (
         <div className="py-12 text-center bg-white rounded-xl border border-slate-200">
           <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto mb-2" />
           <p className="text-sm font-semibold text-slate-800">{(error as Error).message}</p>
@@ -212,21 +163,9 @@ function AllLedgersInner() {
       ) : (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <Metric
-              label={isPayable ? "Total Purchased" : "Total Billed"}
-              value={formatCurrency(totals?.totalBilled || 0)}
-              sub={`${totals?.parties || 0} parties`}
-            />
-            <Metric
-              label={isPayable ? "Total Paid Out" : "Total Collected"}
-              value={formatCurrency(totals?.totalPaid || 0)}
-              tone="emerald"
-            />
-            <Metric
-              label={isPayable ? "We Still Owe" : "Still Pending"}
-              value={formatCurrency(totals?.outstanding || 0)}
-              tone="amber"
-            />
+            <Metric label="Total Purchased" value={formatCurrency(totals?.totalBilled || 0)} sub={`${totals?.parties || 0} parties`} />
+            <Metric label="Total Paid Out" value={formatCurrency(totals?.totalPaid || 0)} tone="emerald" />
+            <Metric label="We Still Owe" value={formatCurrency(totals?.outstanding || 0)} tone="amber" />
             <Metric
               label="Overdue"
               value={formatCurrency(totals?.overdue || 0)}
@@ -240,7 +179,7 @@ function AllLedgersInner() {
               <div className="relative flex-1 max-w-sm">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <Input
-                  placeholder={`Search ${party}s…`}
+                  placeholder="Search suppliers…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="pl-9"
@@ -257,35 +196,11 @@ function AllLedgersInner() {
                   <tr className="text-xs font-semibold text-muted-foreground uppercase">
                     <SortableTh label="Party" sortKey="name" active={sortKey} onSort={handleSort} />
                     <th className="px-4 py-3 text-left">Contact</th>
-                    <SortableTh
-                      label={isPayable ? "Purchased" : "Billed"}
-                      sortKey="billed"
-                      active={sortKey}
-                      onSort={handleSort}
-                      align="right"
-                    />
-                    <SortableTh
-                      label={isPayable ? "Paid" : "Received"}
-                      sortKey="paid"
-                      active={sortKey}
-                      onSort={handleSort}
-                      align="right"
-                    />
-                    <SortableTh
-                      label="Pending"
-                      sortKey="pending"
-                      active={sortKey}
-                      onSort={handleSort}
-                      align="right"
-                    />
+                    <SortableTh label="Purchased" sortKey="billed" active={sortKey} onSort={handleSort} align="right" />
+                    <SortableTh label="Paid" sortKey="paid" active={sortKey} onSort={handleSort} align="right" />
+                    <SortableTh label="Pending" sortKey="pending" active={sortKey} onSort={handleSort} align="right" />
                     <th className="px-4 py-3 text-left">Last Payment</th>
-                    <SortableTh
-                      label="Overdue"
-                      sortKey="overdue"
-                      active={sortKey}
-                      onSort={handleSort}
-                      align="right"
-                    />
+                    <SortableTh label="Overdue" sortKey="overdue" active={sortKey} onSort={handleSort} align="right" />
                     <th className="px-4 py-3 text-right">Action</th>
                   </tr>
                 </thead>
@@ -299,7 +214,7 @@ function AllLedgersInner() {
                   ) : rows.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="text-center p-10 text-muted-foreground">
-                        No {party}s to show.
+                        No suppliers to show.
                       </td>
                     </tr>
                   ) : (
@@ -307,7 +222,7 @@ function AllLedgersInner() {
                       <tr
                         key={p._id}
                         className="hover:bg-slate-50 transition-colors cursor-pointer"
-                        onClick={() => openParty(p)}
+                        onClick={() => setDrawerParty(p)}
                       >
                         <td className="px-4 py-3">
                           <p className="font-semibold text-foreground">{p.name}</p>
@@ -368,7 +283,7 @@ function AllLedgersInner() {
                             variant="outline"
                             size="sm"
                             className="h-8 gap-1.5 text-blue-600 bg-blue-50/50 border-blue-200"
-                            onClick={() => openParty(p)}
+                            onClick={() => setDrawerParty(p)}
                           >
                             <FileText className="w-3.5 h-3.5" /> Ledger
                           </Button>
@@ -387,24 +302,16 @@ function AllLedgersInner() {
         <DialogContent className="max-w-5xl p-0 overflow-hidden rounded-2xl border-none shadow-2xl">
           {drawerParty && (
             <PartyLedgerPanel
-              party={party}
+              party="supplier"
               partyId={drawerParty._id}
               onRecordPayment={() => {
-                if (party === "vendor") setPaymentVendorId(drawerParty._id);
-                else setPaymentSupplierId(drawerParty._id);
+                setPaymentSupplierId(drawerParty._id);
                 setDrawerParty(null);
               }}
             />
           )}
         </DialogContent>
       </Dialog>
-
-      <VendorPaymentModal
-        open={Boolean(paymentVendorId)}
-        onOpenChange={(o) => !o && setPaymentVendorId(null)}
-        vendorId={paymentVendorId || undefined}
-        vendors={vendors}
-      />
 
       <PaymentModal
         isOpen={Boolean(paymentSupplierId)}

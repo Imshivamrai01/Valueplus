@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 import { ExportMenu } from "@/components/shared/ExportMenu";
+import { toast } from "sonner";
 
 export default function StockJournalPage() {
   const queryClient = useQueryClient();
@@ -20,10 +21,19 @@ export default function StockJournalPage() {
   const [newJournal, setNewJournal] = useState({
     date: format(new Date(), "yyyy-MM-dd"),
     purpose: "Adjustment",
-    items: [{ itemId: "", itemName: "", quantity: 1, type: "in" }]
+    items: [{ itemId: "", itemName: "", quantity: 1, type: "in", warehouseId: "" }]
   });
 
-  const { data: items = [] } = useQuery({ 
+  const { data: warehouses = [] } = useQuery({
+    queryKey: ["warehouses"],
+    queryFn: async () => {
+      const res = await fetch("/api/warehouses");
+      const json = await res.json();
+      return json.success ? json.data : [];
+    }
+  });
+
+  const { data: items = [] } = useQuery({
     queryKey: ["items"], 
     queryFn: async () => {
       const res = await fetch("/api/items");
@@ -91,7 +101,14 @@ export default function StockJournalPage() {
           </DialogTrigger>
           <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader><DialogTitle>Create Stock Journal</DialogTitle></DialogHeader>
-            <form onSubmit={(e) => { e.preventDefault(); addMutation.mutate(newJournal); }} className="space-y-4 mt-4">
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              if (newJournal.items.some((line) => !line.warehouseId)) {
+                toast.error("Select a warehouse for every line item.");
+                return;
+              }
+              addMutation.mutate(newJournal);
+            }} className="space-y-4 mt-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-medium">Date</label>
@@ -115,10 +132,12 @@ export default function StockJournalPage() {
               
               <div>
                 <h4 className="font-medium text-sm mb-2">Items</h4>
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm border">
                   <thead className="bg-slate-50 border-b">
                     <tr>
                       <th className="px-3 py-2 text-left">Item</th>
+                      <th className="px-3 py-2 text-left">Warehouse</th>
                       <th className="px-3 py-2 text-left">Type</th>
                       <th className="px-3 py-2 text-right">Quantity</th>
                       <th className="px-3 py-2"></th>
@@ -137,6 +156,18 @@ export default function StockJournalPage() {
                                 <SelectItem key={it._id} value={it._id}>
                                   {it.name} <span className="text-muted-foreground ml-2">(Stock: {it.currentStock || 0})</span>
                                 </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        <td className="p-2">
+                          <Select value={line.warehouseId} onValueChange={(val) => handleItemChange(idx, "warehouseId", val)}>
+                            <SelectTrigger className="w-full bg-white">
+                              <SelectValue placeholder="Select Warehouse..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {warehouses.map((w: any) => (
+                                <SelectItem key={w._id} value={w._id}>{w.name}</SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
@@ -160,7 +191,8 @@ export default function StockJournalPage() {
                     ))}
                   </tbody>
                 </table>
-                <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => setNewJournal({...newJournal, items: [...newJournal.items, { itemId: "", itemName: "", quantity: 1, type: "in" }]})}>+ Add Line</Button>
+                </div>
+                <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => setNewJournal({...newJournal, items: [...newJournal.items, { itemId: "", itemName: "", quantity: 1, type: "in", warehouseId: "" }]})}>+ Add Line</Button>
               </div>
               
               <div className="flex justify-end gap-3 pt-4 border-t">
@@ -174,6 +206,7 @@ export default function StockJournalPage() {
       </div>
 
       <Card className="overflow-hidden border border-slate-200">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
             <tr>
@@ -202,6 +235,7 @@ export default function StockJournalPage() {
             ))}
           </tbody>
         </table>
+        </div>
       </Card>
     </PageShell>
   );

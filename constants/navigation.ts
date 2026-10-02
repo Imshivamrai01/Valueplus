@@ -103,7 +103,6 @@ export const NAV_GROUPS: NavGroup[] = [
       { title: "Units", href: "/masters/units", icon: Ruler, roles: ["admin", "manager"] },
       { title: "Warehouses & Godowns", href: "/masters/warehouses", icon: Warehouse, roles: ["admin", "manager"] },
       { title: "Customers", href: "/masters/customers", icon: Users, roles: ["admin", "salesman", "cashier", "accounts", "manager"] },
-      { title: "Suppliers", href: "/masters/suppliers", icon: Truck, roles: ["admin", "accounts", "supplier", "manager"] },
     ],
   },
   {
@@ -117,15 +116,15 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    // Vendors are trade parties who buy from us on account. They keep their own
-    // section rather than sitting under Masters because the ledger, payments and
-    // ageing screens are the point of the module, not the party list.
-    title: "Vendors & Ledger",
+    // Suppliers are who we buy from (payable). They keep their own section
+    // rather than sitting under Masters because the ledger, payments and
+    // ageing screens are the point of the module, not just the party list.
+    title: "Suppliers & Ledger",
     roles: ["admin", "accounts", "manager"],
     items: [
-      { title: "Vendor Master", href: "/vendors", icon: Building2, roles: ["admin", "accounts", "manager"] },
+      { title: "Supplier Master", href: "/suppliers", icon: Building2, roles: ["admin", "accounts", "manager"] },
       { title: "All Ledgers", href: "/vendors/ledger", icon: BookOpen, roles: ["admin", "accounts", "manager"] },
-      { title: "Vendor Payments", href: "/vendors/payments", icon: CreditCard, roles: ["admin", "accounts", "manager"] },
+      { title: "Supplier Payments", href: "/vendors/payments", icon: CreditCard, roles: ["admin", "accounts", "manager"] },
       { title: "Outstanding & Ageing", href: "/vendors/outstanding", icon: Clock, roles: ["admin", "accounts", "manager"] },
     ],
   },

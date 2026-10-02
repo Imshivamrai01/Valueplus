@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
 
 export interface BranchOrGodown {
   id: string;
@@ -67,6 +68,7 @@ const BranchContext = createContext<BranchContextType>({
 });
 
 export function BranchProvider({ children }: { children: React.ReactNode }) {
+  const { data: session } = useSession();
   const [locations, setLocations] = useState<BranchOrGodown[]>(DEFAULT_BRANCHES);
   const [activeLocation, setActiveLocationState] = useState<BranchOrGodown>(DEFAULT_BRANCHES[0]);
 
@@ -79,13 +81,36 @@ export function BranchProvider({ children }: { children: React.ReactNode }) {
           id: w._id || w.id || w.code,
           name: w.name,
           code: w.code || "WH-01",
-          type: (w.name?.toLowerCase().includes("godown") || w.name?.toLowerCase().includes("warehouse") || w.name?.toLowerCase().includes("gida") || w.name?.toLowerCase().includes("logistics")) ? "warehouse" : "showroom",
+          // Prefer the real Warehouse.type field; the keyword guess only
+          // covers warehouses saved before that field existed.
+          type: w.type === "godown" ? "warehouse" : w.type === "showroom" ? "showroom" : (w.name?.toLowerCase().includes("godown") || w.name?.toLowerCase().includes("warehouse") || w.name?.toLowerCase().includes("gida") || w.name?.toLowerCase().includes("logistics")) ? "warehouse" : "showroom",
           city: w.city || "Gorakhpur",
           address: w.address || "",
           isDefault: !!w.isDefault,
         }));
 
         setLocations(apiLocations);
+
+        // A role without switch rights is locked to their own assigned
+        // location server-side — the sidebar already shows this as a "🔒
+        // Assigned Location" badge, but until now nothing actually reset
+        // this context to match, so a stale/tampered localStorage value
+        // could silently disagree with it. For everyone else, the user's
+        // last manual choice (or the warehouse default) still wins.
+        const user = session?.user as any;
+        const isLocked = Boolean(
+          user && user.role !== "admin" && user.assignedWarehouseName && user.assignedWarehouseName !== "ALL" && !user.canSwitchWarehouse
+        );
+
+        if (isLocked) {
+          const assigned = apiLocations.find(
+            (l) => l.name.toLowerCase() === String(user.assignedWarehouseName).toLowerCase()
+          );
+          if (assigned) {
+            setActiveLocationState(assigned);
+            return;
+          }
+        }
 
         // Update active location safely
         const saved = typeof window !== "undefined" ? localStorage.getItem("vp_active_location") : null;
@@ -123,7 +148,8 @@ export function BranchProvider({ children }: { children: React.ReactNode }) {
     return () => {
       window.removeEventListener("erp-warehouses-updated", handleUpdate);
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user]);
 
   const setActiveLocation = (loc: BranchOrGodown) => {
     setActiveLocationState(loc);

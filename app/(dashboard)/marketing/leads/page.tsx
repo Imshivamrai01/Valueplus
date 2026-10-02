@@ -281,6 +281,7 @@ export default function LeadsPipelinePage() {
 
         {/* LEADS DATA TABLE */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full text-xs text-left">
             <thead className="bg-slate-50 border-b text-slate-700 uppercase font-bold text-[10px]">
               <tr>
@@ -390,6 +391,7 @@ export default function LeadsPipelinePage() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
 

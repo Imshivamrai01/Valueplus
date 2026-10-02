@@ -3,6 +3,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Topnav } from "@/components/layout/topnav";
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
 import { PWAInstallPrompt } from "@/components/shared/pwa-install-prompt";
+import { DayCloseGate } from "@/components/shared/DayCloseGate";
 import { Toaster } from "sonner";
 import { BranchProvider } from "@/context/BranchContext";
 
@@ -30,6 +31,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         {/* PWA 1-Click Install Banner */}
         <PWAInstallPrompt />
+
+        {/* Blocks Sales/Billing + Cash Register until the pending day's cash audit is done */}
+        <DayCloseGate />
 
         <Toaster position="top-right" richColors expand={false} />
       </div>

@@ -7,10 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, Search, ArrowLeftRight, Warehouse, Trash2, AlertTriangle, X, Check, Package } from "lucide-react";
+import { Plus, Search, ArrowLeftRight, Warehouse, Trash2, AlertTriangle, X, Check, Package, FileText } from "lucide-react";
 import { useState, useMemo, useRef, useEffect } from "react";
 import { toast } from "sonner";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatCurrency } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useBranch } from "@/context/BranchContext";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
@@ -215,7 +215,7 @@ export default function StockTransferPage() {
   const [formData, setFormData] = useState({
     fromWarehouse: defaultSource,
     toWarehouse: defaultDest,
-    items: [{ itemId: "", itemName: "", quantity: 1, unit: "PCS", hsn: "", currentStock: 0 }],
+    items: [{ itemId: "", itemName: "", quantity: 1, unit: "PCS", hsn: "", currentStock: 0, costPrice: 0 }],
   });
 
   // Loads the full catalog rather than filtering by `fromWarehouse` server-side —
@@ -245,6 +245,7 @@ export default function StockTransferPage() {
       unit: it.unit || "PCS",
       hsn: it.hsnCode || it.hsn || "8528",
       currentStock: it.currentStock || 0,
+      costPrice: Number(it.purchasePrice) || 0,
       quantity: 1,
     };
     setFormData({ ...formData, items: updated });
@@ -298,7 +299,7 @@ export default function StockTransferPage() {
       queryClient.invalidateQueries({ queryKey: ["stock-transfers"] });
       toast.success(`Stock Transfer ${data.transferNo || ""} initiated!`);
       setIsFormOpen(false);
-      setFormData({ fromWarehouse: "Main Store - Mumbai", toWarehouse: "Pune Branch", items: [{ itemId: "", itemName: "", quantity: 1, unit: "PCS", hsn: "" }] });
+      setFormData({ fromWarehouse: "Main Store - Mumbai", toWarehouse: "Pune Branch", items: [{ itemId: "", itemName: "", quantity: 1, unit: "PCS", hsn: "", currentStock: 0, costPrice: 0 }] });
     },
     onError: (error: any) => {
       toast.error(error.message || "An error occurred");
@@ -370,6 +371,7 @@ export default function StockTransferPage() {
               "To Store": t.toWarehouse,
               "Item Name": (t.items || []).map((line: any) => `${line.quantity} x ${line.itemName}`).join(", "),
               Quantity: (t.items || []).reduce((acc: number, item: any) => acc + item.quantity, 0),
+              "Cost Value": t.totalValue ?? (t.items || []).reduce((sum: number, item: any) => sum + (item.costPrice || 0) * (item.quantity || 0), 0),
               Date: formatDate(t.date),
               Status: t.status === "received" ? "Delivered & Received" : "In-Transit",
             }))}
@@ -406,6 +408,7 @@ export default function StockTransferPage() {
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">From Store → To Store</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Item Name</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Quantity</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Value</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Date</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Status</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase w-10">Action</th>
@@ -414,13 +417,13 @@ export default function StockTransferPage() {
             <tbody className="divide-y">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="p-0">
-                    <TableShimmer rows={6} cols={7} />
+                  <td colSpan={8} className="p-0">
+                    <TableShimmer rows={6} cols={8} />
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No stock transfers found</td>
+                  <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">No stock transfers found</td>
                 </tr>
               ) : (
                 filtered.map((t: any) => (
@@ -440,6 +443,9 @@ export default function StockTransferPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3 text-center font-bold">{t.items?.reduce((acc: number, item: any) => acc + item.quantity, 0)} Items</td>
+                  <td className="px-4 py-3 text-right font-mono font-bold text-slate-700">
+                    {formatCurrency(t.totalValue ?? (t.items || []).reduce((sum: number, item: any) => sum + (item.costPrice || 0) * (item.quantity || 0), 0))}
+                  </td>
                   <td className="px-4 py-3 text-muted-foreground text-xs">{formatDate(t.date)}</td>
                   <td className="px-4 py-3 text-center">
                     <Badge variant={t.status === "received" ? "success" : "info"}>
@@ -448,6 +454,15 @@ export default function StockTransferPage() {
                   </td>
                   <td className="px-4 py-3 text-center">
                     <div className="flex items-center justify-center gap-1.5">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-slate-500 hover:text-[#3F63AD] hover:bg-blue-50"
+                        title="View/Print Challan"
+                        onClick={() => window.open(`/stock-transfer-challan?transferNo=${encodeURIComponent(t.transferNo)}`, "_blank")}
+                      >
+                        <FileText className="w-4 h-4" />
+                      </Button>
                       {t.status !== "received" && (
                         <Button
                           size="sm"
@@ -551,6 +566,7 @@ export default function StockTransferPage() {
                       <tr>
                         <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600">Product Item (Search Name, HSN, VP Code)</th>
                         <th className="px-3 py-2 text-right text-xs font-semibold text-slate-600 w-24">Quantity</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold text-slate-600 w-28">Cost Value</th>
                         <th className="px-3 py-2 text-center text-xs font-semibold text-slate-600 w-12"></th>
                       </tr>
                     </thead>
@@ -586,6 +602,9 @@ export default function StockTransferPage() {
                               </span>
                             )}
                           </td>
+                          <td className="p-2 text-right align-top text-xs font-mono font-bold text-slate-600 whitespace-nowrap">
+                            {formatCurrency((line.costPrice || 0) * (line.quantity || 0))}
+                          </td>
                           <td className="p-2 text-center align-top">
                             <button
                               type="button"
@@ -598,6 +617,17 @@ export default function StockTransferPage() {
                         </tr>
                       ))}
                     </tbody>
+                    <tfoot>
+                      <tr className="bg-slate-50 border-t">
+                        <td className="px-3 py-2 text-right text-xs font-semibold text-slate-600" colSpan={2}>
+                          Total Cost Value
+                        </td>
+                        <td className="px-3 py-2 text-right text-xs font-mono font-black text-slate-800">
+                          {formatCurrency(formData.items.reduce((sum, l) => sum + (l.costPrice || 0) * (l.quantity || 0), 0))}
+                        </td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
                   </table>
                   <div className="bg-slate-50 p-2 border-t">
                     <Button
@@ -605,7 +635,7 @@ export default function StockTransferPage() {
                       variant="outline"
                       size="sm"
                       className="h-7 text-xs border-dashed text-slate-600"
-                      onClick={() => setFormData({ ...formData, items: [...formData.items, { itemId: "", itemName: "", quantity: 1, unit: "PCS", hsn: "" }] })}
+                      onClick={() => setFormData({ ...formData, items: [...formData.items, { itemId: "", itemName: "", quantity: 1, unit: "PCS", hsn: "", currentStock: 0, costPrice: 0 }] })}
                     >
                       <Plus className="w-3 h-3 mr-1" /> Add Product
                     </Button>

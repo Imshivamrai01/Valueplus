@@ -165,6 +165,7 @@ export default function EWayBillPage() {
         </div>
 
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full text-xs text-left">
             <thead className="bg-slate-50 border-b text-slate-700 uppercase font-bold">
               <tr>
@@ -229,6 +230,7 @@ export default function EWayBillPage() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
 

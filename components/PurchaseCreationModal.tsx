@@ -53,10 +53,11 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
 
   const [currentMode, setCurrentMode] = useState<"entry" | "debit-note" | "order">(mode);
   const [createdBillToPrint, setCreatedBillToPrint] = useState<any | null>(null);
-  // "" means untouched — defaults to fully paid (the old, only behaviour) so
-  // nobody who never looks at this field sees anything change. Editing it
-  // down is what lets a bill be recorded as unpaid/partially paid instead of
-  // the supplier balance silently always reading zero.
+  // Starts unset on purpose — the form used to silently assume "fully paid"
+  // whenever nobody touched the amount field, which meant the supplier's
+  // payable balance almost never actually recorded a pending amount. Forcing
+  // an explicit Yes/No here closes that gap.
+  const [paymentMadeChoice, setPaymentMadeChoice] = useState<"yes" | "no" | null>(null);
   const [amountPaidNow, setAmountPaidNow] = useState<string>("");
   const [purchaseDueDate, setPurchaseDueDate] = useState<string>("");
 
@@ -71,12 +72,13 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
 
   // Combined list of all available Showrooms and Godowns
   const allLocationsList = useMemo(() => {
-    const list: Array<{ name: string; type: string; code: string }> = [];
+    const list: Array<{ _id: string; name: string; type: string; code: string }> = [];
     const source = dbWarehouses.length > 0 ? dbWarehouses : locations;
     source.forEach((loc: any) => {
-      const isG = loc.name?.toLowerCase().includes("godown") || loc.name?.toLowerCase().includes("warehouse") || loc.name?.toLowerCase().includes("gida");
+      const isG = loc.type ? loc.type === "godown" : (loc.name?.toLowerCase().includes("godown") || loc.name?.toLowerCase().includes("warehouse") || loc.name?.toLowerCase().includes("gida"));
       if (!list.some(x => x.name.toLowerCase() === loc.name.toLowerCase())) {
         list.push({
+          _id: loc._id || loc.id || "",
           name: loc.name,
           type: isG ? "Central Godown" : "Showroom / Store",
           code: loc.code || "WH"
@@ -99,6 +101,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
     billNo: "",
     billDate: new Date().toISOString().split("T")[0],
     warehouse: userAssignedBranch,
+    warehouseId: "" as string,
     supplierName: "",
     supplierPhone: "",
     supplierGST: "",
@@ -123,6 +126,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
   useEffect(() => {
     if (isOpen && !prevIsOpenRef.current) {
       setCurrentMode(mode);
+      setPaymentMadeChoice(null);
       setAmountPaidNow("");
       setPurchaseDueDate("");
       const defaultWh = userAssignedBranch || "Ashoka Enterprises (Kunraghat Showroom)";
@@ -168,6 +172,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
           billNo: "",
           billDate: new Date().toISOString().split("T")[0],
           warehouse: defaultWh,
+          warehouseId: "",
           supplierName: supplierName,
           // Left blank (not a shared placeholder number) when no real supplier
           // matched. A hardcoded fallback phone here meant every unmatched
@@ -540,12 +545,12 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
     };
   }, [form.items]);
 
-  // Untouched, this defaults to the full total — the same "fully paid" behaviour
-  // as before this field existed. Editing it down is what records a bill that's
-  // unpaid or only partly paid, so the supplier's payable balance isn't always zero.
-  const paidAmount = amountPaidNow === ""
-    ? totals.total
-    : Math.max(0, Math.min(totals.total, Number(amountPaidNow) || 0));
+  // Only counts as paid once the cashier has explicitly said "yes" — picking
+  // "no" always zeroes this out regardless of whatever is sitting in the
+  // amount field, so there's no way to end up fully-paid by accident.
+  const paidAmount = paymentMadeChoice !== "yes"
+    ? 0
+    : (amountPaidNow === "" ? totals.total : Math.max(0, Math.min(totals.total, Number(amountPaidNow) || 0)));
   const balanceAmount = Math.max(0, totals.total - paidAmount);
   const entryPaymentStatus: "paid" | "partial" | "pending" =
     balanceAmount <= 0 ? "paid" : (paidAmount > 0 ? "partial" : "pending");
@@ -553,10 +558,14 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
   const saveMutation = useMutation({
     networkMode: "always",
     mutationFn: async () => {
+      const effectiveWarehouseName = form.warehouse || userAssignedBranch;
+      const resolvedWarehouseId =
+        form.warehouseId || allLocationsList.find((l) => l.name === effectiveWarehouseName)?._id || "";
       const payload: any = {
         type: currentMode,
         billNo: form.billNo,
-        warehouse: form.warehouse || userAssignedBranch,
+        warehouse: effectiveWarehouseName,
+        warehouseId: resolvedWarehouseId,
         supplierName: form.supplierName,
         supplierPhone: form.supplierPhone,
         supplierGST: form.supplierGST,
@@ -629,6 +638,8 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
       setForm({
         billNo: "",
         billDate: new Date().toISOString().split("T")[0],
+        warehouse: userAssignedBranch,
+        warehouseId: "",
         supplierName: "",
         supplierPhone: "",
         supplierGST: "",
@@ -638,6 +649,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
         items: [],
       });
       setSupplierLookupStatus("idle");
+      setPaymentMadeChoice(null);
       setAmountPaidNow("");
       setPurchaseDueDate("");
     },
@@ -663,6 +675,11 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
 
     if (form.items.length === 0) {
       toast.error("Please add or load at least one product item");
+      return;
+    }
+
+    if (currentMode === "entry" && !paymentMadeChoice) {
+      toast.error("Supplier ko payment hua ya nahi, yeh batana zaroori hai.");
       return;
     }
 
@@ -867,7 +884,10 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
                 {isSuperAdmin ? (
                   <Select
                     value={form.warehouse || userAssignedBranch}
-                    onValueChange={(val) => setForm({ ...form, warehouse: val })}
+                    onValueChange={(val) => {
+                      const matched = allLocationsList.find((l) => l.name === val);
+                      setForm({ ...form, warehouse: val, warehouseId: matched?._id || "" });
+                    }}
                   >
                     <SelectTrigger className="bg-white border-slate-300 text-xs font-bold text-slate-800 h-9">
                       <SelectValue placeholder="Select Inward Showroom / Godown" />
@@ -1297,32 +1317,57 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
           {isEntry && (
             <div className="bg-white p-4 rounded-xl border border-slate-200 flex flex-wrap items-end gap-4">
               <div>
-                <Label className="text-xs font-bold text-slate-700">Amount Paid Now (₹)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  max={totals.total}
-                  placeholder={String(Math.round(totals.total))}
-                  value={amountPaidNow}
-                  onChange={(e) => setAmountPaidNow(e.target.value)}
-                  className="h-9 w-40 text-sm font-bold mt-1"
-                />
-                <p className="text-[10px] text-slate-400 mt-0.5">Blank = fully paid now. Lower it if payment is partial or on hold.</p>
+                <Label className="text-xs font-bold text-slate-700">Supplier ko payment hua?</Label>
+                <div className="flex gap-2 mt-1">
+                  <Button
+                    type="button"
+                    variant={paymentMadeChoice === "yes" ? "default" : "outline"}
+                    className="h-9 px-4 text-sm"
+                    onClick={() => setPaymentMadeChoice("yes")}
+                  >
+                    Haan, Paid
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={paymentMadeChoice === "no" ? "default" : "outline"}
+                    className={`h-9 px-4 text-sm ${paymentMadeChoice === "no" ? "bg-rose-600 hover:bg-rose-700" : ""}`}
+                    onClick={() => setPaymentMadeChoice("no")}
+                  >
+                    Nahi, Pending
+                  </Button>
+                </div>
               </div>
-              <div className="text-sm">
-                <span className="text-slate-500">Balance Payable to Supplier: </span>
-                <span className={`font-mono font-black ${balanceAmount > 0 ? "text-rose-600" : "text-emerald-600"}`}>
-                  {formatCurrency(balanceAmount)}
-                </span>
-                <span className={`ml-2 text-[10px] font-bold uppercase px-2 py-0.5 rounded ${
-                  entryPaymentStatus === "paid" ? "bg-emerald-100 text-emerald-800" :
-                  entryPaymentStatus === "partial" ? "bg-amber-100 text-amber-800" :
-                  "bg-rose-100 text-rose-800"
-                }`}>
-                  {entryPaymentStatus}
-                </span>
-              </div>
-              {balanceAmount > 0 && (
+              {paymentMadeChoice === "yes" && (
+                <div>
+                  <Label className="text-xs font-bold text-slate-700">Amount Paid Now (₹)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={totals.total}
+                    placeholder={String(Math.round(totals.total))}
+                    value={amountPaidNow}
+                    onChange={(e) => setAmountPaidNow(e.target.value)}
+                    className="h-9 w-40 text-sm font-bold mt-1"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-0.5">Blank = fully paid now. Lower it if payment is partial.</p>
+                </div>
+              )}
+              {paymentMadeChoice && (
+                <div className="text-sm">
+                  <span className="text-slate-500">Balance Payable to Supplier: </span>
+                  <span className={`font-mono font-black ${balanceAmount > 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                    {formatCurrency(balanceAmount)}
+                  </span>
+                  <span className={`ml-2 text-[10px] font-bold uppercase px-2 py-0.5 rounded ${
+                    entryPaymentStatus === "paid" ? "bg-emerald-100 text-emerald-800" :
+                    entryPaymentStatus === "partial" ? "bg-amber-100 text-amber-800" :
+                    "bg-rose-100 text-rose-800"
+                  }`}>
+                    {entryPaymentStatus}
+                  </span>
+                </div>
+              )}
+              {paymentMadeChoice && balanceAmount > 0 && (
                 <div>
                   <Label className="text-xs font-bold text-slate-700">Payment Due Date</Label>
                   <Input

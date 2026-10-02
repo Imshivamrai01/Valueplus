@@ -28,10 +28,20 @@ export default function StockAdjustmentPage() {
   const [newAdjustment, setNewAdjustment] = useState({
     date: new Date().toISOString().split("T")[0],
     reason: "Opening Stock",
+    warehouseId: "",
     items: [{ itemId: "", itemName: "", quantity: 1, type: "in", remarks: "" }]
   });
 
-  const { data: items = [] } = useQuery({ 
+  const { data: warehouses = [] } = useQuery({
+    queryKey: ["warehouses"],
+    queryFn: async () => {
+      const res = await fetch("/api/warehouses");
+      const json = await res.json();
+      return json.success ? json.data : [];
+    }
+  });
+
+  const { data: items = [] } = useQuery({
     queryKey: ["items"], 
     queryFn: async () => {
       const res = await fetch("/api/items");
@@ -87,6 +97,7 @@ export default function StockAdjustmentPage() {
       setNewAdjustment({
         date: new Date().toISOString().split("T")[0],
         reason: "Opening Stock",
+        warehouseId: "",
         items: [{ itemId: "", itemName: "", quantity: 1, type: "in", remarks: "" }]
       });
     },
@@ -114,6 +125,10 @@ export default function StockAdjustmentPage() {
   });
 
   const handleSave = () => {
+    if (!newAdjustment.warehouseId) {
+      toast.error("Please select which warehouse this adjustment applies to");
+      return;
+    }
     if (newAdjustment.items.length === 0 || !newAdjustment.items[0].itemId) {
       toast.error("Please add at least one item to adjust");
       return;
@@ -248,10 +263,23 @@ export default function StockAdjustmentPage() {
 
           <div className="p-6 space-y-6 bg-slate-50/50 max-h-[70vh] overflow-y-auto">
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <Label className="text-xs font-semibold text-slate-700 mb-1.5 block">Adjustment Date *</Label>
                   <Input type="date" required value={newAdjustment.date} onChange={e => setNewAdjustment({...newAdjustment, date: e.target.value})} className="bg-slate-50" />
+                </div>
+                <div>
+                  <Label className="text-xs font-semibold text-slate-700 mb-1.5 block">Warehouse *</Label>
+                  <Select value={newAdjustment.warehouseId} onValueChange={(val) => setNewAdjustment({...newAdjustment, warehouseId: val})}>
+                    <SelectTrigger className="bg-slate-50">
+                      <SelectValue placeholder="Select Warehouse" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {warehouses.map((w: any) => (
+                        <SelectItem key={w._id} value={w._id}>{w.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <Label className="text-xs font-semibold text-slate-700 mb-1.5 block">Reason / Purpose *</Label>

@@ -12,6 +12,11 @@ export interface IStockAdjustment extends Document {
   adjustmentNo: string;
   date: string;
   reason: string;
+  /** Which warehouse this adjustment's quantities apply to — one adjustment
+   *  covers one warehouse, matching how the form already groups items. Optional
+   *  at the schema level so historical adjustments made before this field
+   *  existed don't fail validation; new adjustments require it in the route. */
+  warehouseId?: mongoose.Types.ObjectId;
   items: IStockAdjustmentItem[];
 }
 
@@ -28,6 +33,7 @@ const StockAdjustmentSchema = new Schema<IStockAdjustment>(
     adjustmentNo: { type: String, required: true, unique: true },
     date: { type: String, required: true },
     reason: { type: String, required: true },
+    warehouseId: { type: Schema.Types.ObjectId, ref: "Warehouse" },
     items: [StockAdjustmentItemSchema],
   },
   { timestamps: true, collection: "stock_adjustments" }

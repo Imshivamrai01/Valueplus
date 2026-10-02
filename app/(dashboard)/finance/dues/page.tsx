@@ -384,6 +384,7 @@ export default function CustomerDuesOverdueStandalonePage() {
                   {isExpanded && (
                     <div className="p-4 bg-slate-50/60 border-t border-slate-200">
                       <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+                        <div className="overflow-x-auto">
                         <table className="w-full text-xs text-left">
                           <thead className="bg-slate-100/80 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10.5px]">
                             <tr>
@@ -458,6 +459,7 @@ export default function CustomerDuesOverdueStandalonePage() {
                             })}
                           </tbody>
                         </table>
+                        </div>
                       </div>
                     </div>
                   )}

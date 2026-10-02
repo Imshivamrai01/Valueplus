@@ -36,7 +36,14 @@ export default function GSTReportsPage() {
   // invoice/bill raised in a later month never showed up until the admin
   // happened to notice the dropdown was out of date).
   const [period, setPeriod] = useState(() => monthLabel(new Date()));
-  const [activeTab, setActiveTab] = useState<"gstr3b" | "gstr1" | "gstr2">("gstr3b");
+  const [activeTab, setActiveTab] = useState<"gstr3b" | "gstr1" | "gstr2" | "b2b" | "b2c">("gstr3b");
+
+  const parsePeriod = (p: string) => {
+    const [month, year] = p.split(" ");
+    const monthIndex = new Date(`${month} 1, 2000`).getMonth();
+    return { month: monthIndex, year: parseInt(year) };
+  };
+  const selectedFilter = parsePeriod(period);
 
   const { data: gstr1 = [], isLoading: loadingGstr1 } = useQuery({
     queryKey: ["gstr-reports", "GSTR1"],
@@ -55,6 +62,26 @@ export default function GSTReportsPage() {
       return json.success ? json.data : [];
     }
   });
+
+  const { data: b2bRows = [], isLoading: loadingB2B } = useQuery({
+    queryKey: ["gstr-reports", "GSTR1_B2B", selectedFilter.month, selectedFilter.year],
+    queryFn: async () => {
+      const res = await fetch(`/api/gstr-reports?type=GSTR1_B2B&month=${selectedFilter.month}&year=${selectedFilter.year}`);
+      const json = await res.json();
+      return json.success ? json.data : [];
+    }
+  });
+
+  const { data: b2cData, isLoading: loadingB2C } = useQuery({
+    queryKey: ["gstr-reports", "GSTR1_B2C", selectedFilter.month, selectedFilter.year],
+    queryFn: async () => {
+      const res = await fetch(`/api/gstr-reports?type=GSTR1_B2C&month=${selectedFilter.month}&year=${selectedFilter.year}`);
+      const json = await res.json();
+      return json.success ? { rows: json.data, b2clCandidates: json.meta?.b2clCandidates || 0 } : { rows: [], b2clCandidates: 0 };
+    }
+  });
+  const b2cRows = b2cData?.rows || [];
+  const b2clCandidates = b2cData?.b2clCandidates || 0;
 
   // Every month that actually has a Sales or Purchase record, newest first —
   // replaces the old fixed Aug/Jul/Jun list, which silently hid any period
@@ -75,14 +102,6 @@ export default function GSTReportsPage() {
       return db - da;
     });
   }, [gstr1, gstr2]);
-
-  const parsePeriod = (p: string) => {
-    const [month, year] = p.split(" ");
-    const monthIndex = new Date(`${month} 1, 2000`).getMonth();
-    return { month: monthIndex, year: parseInt(year) };
-  };
-
-  const selectedFilter = parsePeriod(period);
 
   const filterByPeriod = (data: any[], dateKey: string) => {
     return data.filter((row: any) => {
@@ -117,6 +136,10 @@ export default function GSTReportsPage() {
   const exportConfig =
     activeTab === "gstr2"
       ? { data: filteredGstr2, filename: "gst_purchase_register", title: "GST Purchase Register (GSTR-2)" }
+      : activeTab === "b2b"
+      ? { data: b2bRows, filename: "gstr1_b2b", title: "GSTR-1 B2B Invoices" }
+      : activeTab === "b2c"
+      ? { data: b2cRows, filename: "gstr1_b2c", title: "GSTR-1 B2C (Small) Summary" }
       : { data: filteredGstr1, filename: "gst_sales_register", title: "GST Sales Register (GSTR-1)" };
 
   return (
@@ -146,9 +169,11 @@ export default function GSTReportsPage() {
       }
     >
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-3 mb-6 bg-slate-100 p-1">
+        <TabsList className="grid w-full max-w-2xl grid-cols-5 mb-6 bg-slate-100 p-1">
           <TabsTrigger value="gstr3b" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">GSTR-3B (Summary)</TabsTrigger>
-          <TabsTrigger value="gstr1" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">GSTR-1 (Sales)</TabsTrigger>
+          <TabsTrigger value="gstr1" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">GSTR-1 (Tally)</TabsTrigger>
+          <TabsTrigger value="b2b" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">GSTR-1 B2B</TabsTrigger>
+          <TabsTrigger value="b2c" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">GSTR-1 B2C</TabsTrigger>
           <TabsTrigger value="gstr2" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">GSTR-2 (Purchases)</TabsTrigger>
         </TabsList>
 
@@ -292,6 +317,112 @@ export default function GSTReportsPage() {
               Export (top right) includes every column from the reference sheet — A/C Group, Original Bill No/Date,
               IRN No, Accode, Tin No are left blank where this ERP doesn't track them, rather than guessed at.
             </p>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="b2b">
+          <div className="bg-white border rounded-2xl overflow-hidden">
+            <div className="p-4 border-b">
+              <h3 className="font-semibold">GSTR-1 — Table 4: B2B Invoices</h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                Every tax invoice billed to a GST-registered business this period, invoice-wise by recipient GSTIN —
+                matches the official GSTR-1 B2B table shape. Verify with your CA before filing.
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left whitespace-nowrap">
+                <thead className="text-[10px] text-muted-foreground bg-slate-50 border-b uppercase">
+                  <tr>
+                    <th className="px-3 py-2.5">GSTIN/UIN of Recipient</th>
+                    <th className="px-3 py-2.5">Receiver Name</th>
+                    <th className="px-3 py-2.5">Invoice Number</th>
+                    <th className="px-3 py-2.5">Invoice Date</th>
+                    <th className="px-3 py-2.5 text-right">Invoice Value</th>
+                    <th className="px-3 py-2.5">Place of Supply</th>
+                    <th className="px-3 py-2.5 text-right">Rate (%)</th>
+                    <th className="px-3 py-2.5 text-right">Taxable Value</th>
+                    <th className="px-3 py-2.5 text-right">IGST</th>
+                    <th className="px-3 py-2.5 text-right">CGST</th>
+                    <th className="px-3 py-2.5 text-right">SGST</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {loadingB2B ? (
+                    <tr><td colSpan={11} className="p-0"><TableShimmer rows={6} cols={11} /></td></tr>
+                  ) : b2bRows.length === 0 ? (
+                    <tr><td colSpan={11} className="text-center p-8 text-muted-foreground">No B2B invoices found for this period</td></tr>
+                  ) : (
+                    b2bRows.map((row: any, i: number) => (
+                      <tr key={row["Invoice Number"] || i} className="hover:bg-slate-50/50">
+                        <td className="px-3 py-2.5 font-mono">{row["GSTIN/UIN of Recipient"]}</td>
+                        <td className="px-3 py-2.5">{row["Receiver Name"]}</td>
+                        <td className="px-3 py-2.5 font-medium text-blue-600">{row["Invoice Number"]}</td>
+                        <td className="px-3 py-2.5">{row["Invoice Date"]}</td>
+                        <td className="px-3 py-2.5 text-right font-medium">{money(row["Invoice Value"])}</td>
+                        <td className="px-3 py-2.5">{row["Place of Supply"]}</td>
+                        <td className="px-3 py-2.5 text-right">{row["Rate (%)"]}%</td>
+                        <td className="px-3 py-2.5 text-right">{money(row["Taxable Value"])}</td>
+                        <td className="px-3 py-2.5 text-right">{money(row["IGST Amount"])}</td>
+                        <td className="px-3 py-2.5 text-right">{money(row["CGST Amount"])}</td>
+                        <td className="px-3 py-2.5 text-right">{money(row["SGST Amount"])}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="b2c">
+          <div className="bg-white border rounded-2xl overflow-hidden">
+            <div className="p-4 border-b">
+              <h3 className="font-semibold">GSTR-1 — Table 7: B2C (Small) Consolidated Summary</h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                Every sale with no business GSTIN, consolidated by Place of Supply + Tax Rate — matches the official
+                GSTR-1 B2C Small table shape. Verify with your CA before filing.
+              </p>
+              {b2clCandidates > 0 && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-2 inline-block">
+                  ⚠️ {b2clCandidates} inter-state sale(s) over ₹2,50,000 excluded here — these belong in GSTR-1's
+                  separate B2C Large (B2CL) table, not this consolidated summary. Review them manually.
+                </p>
+              )}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left whitespace-nowrap">
+                <thead className="text-[10px] text-muted-foreground bg-slate-50 border-b uppercase">
+                  <tr>
+                    <th className="px-3 py-2.5">Place of Supply</th>
+                    <th className="px-3 py-2.5 text-right">Rate (%)</th>
+                    <th className="px-3 py-2.5 text-right">Taxable Value</th>
+                    <th className="px-3 py-2.5 text-right">IGST</th>
+                    <th className="px-3 py-2.5 text-right">CGST</th>
+                    <th className="px-3 py-2.5 text-right">SGST</th>
+                    <th className="px-3 py-2.5 text-right">Invoice Count</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {loadingB2C ? (
+                    <tr><td colSpan={7} className="p-0"><TableShimmer rows={6} cols={7} /></td></tr>
+                  ) : b2cRows.length === 0 ? (
+                    <tr><td colSpan={7} className="text-center p-8 text-muted-foreground">No B2C sales found for this period</td></tr>
+                  ) : (
+                    b2cRows.map((row: any, i: number) => (
+                      <tr key={`${row["Place of Supply"]}-${row["Rate (%)"]}-${i}`} className="hover:bg-slate-50/50">
+                        <td className="px-3 py-2.5">{row["Place of Supply"]}</td>
+                        <td className="px-3 py-2.5 text-right">{row["Rate (%)"]}%</td>
+                        <td className="px-3 py-2.5 text-right font-medium">{money(row["Taxable Value"])}</td>
+                        <td className="px-3 py-2.5 text-right">{money(row["IGST Amount"])}</td>
+                        <td className="px-3 py-2.5 text-right">{money(row["CGST Amount"])}</td>
+                        <td className="px-3 py-2.5 text-right">{money(row["SGST Amount"])}</td>
+                        <td className="px-3 py-2.5 text-right">{row["Invoice Count"]}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </TabsContent>
 

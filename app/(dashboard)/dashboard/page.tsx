@@ -2077,10 +2077,10 @@ export default function DashboardPage() {
               </div>
               <div>
                 <h3 className="text-sm font-black text-slate-900 tracking-tight">
-                  Vendor &amp; Supplier Ledger
+                  Supplier Ledger
                 </h3>
                 <p className="text-xs text-slate-500 font-medium">
-                  Money in from vendors and money out to suppliers, tracked apart from counter sales
+                  Money out to suppliers, tracked apart from counter sales
                 </p>
               </div>
             </div>
@@ -2100,61 +2100,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 pt-3.5">
-            {/* VENDOR COLLECTIONS — with the mode split the counter actually used */}
-            <div className="p-3 rounded-lg border border-emerald-200 bg-emerald-50/50">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider">
-                  Vendor Collections
-                </span>
-                <Badge className="bg-emerald-200 text-emerald-900 text-[10px] font-black px-1.5 py-0.5 border-none">
-                  {vendorSupplier.vendorCollections.count}
-                </Badge>
-              </div>
-              <p className="text-lg font-black text-emerald-700 font-mono">
-                {formatCurrency(vendorSupplier.vendorCollections.total)}
-              </p>
-              <div className="mt-2 pt-2 border-t border-emerald-200/60 grid grid-cols-2 gap-x-2 gap-y-0.5">
-                {[
-                  ["Cash", vendorSupplier.vendorCollections.byMode?.cash],
-                  ["UPI", vendorSupplier.vendorCollections.byMode?.upi],
-                  ["NEFT/IMPS", vendorSupplier.vendorCollections.byMode?.online],
-                  ["Card", vendorSupplier.vendorCollections.byMode?.card],
-                ].map(([label, value]: any) => (
-                  <div key={label} className="flex items-center justify-between text-[10px]">
-                    <span className="text-emerald-700 font-semibold">{label}</span>
-                    <span className="font-mono font-bold text-emerald-900">
-                      {formatCurrency(Number(value) || 0)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* VENDOR DUE */}
-            <Link
-              href="/vendors/outstanding"
-              className="p-3 rounded-lg border border-amber-200 bg-amber-50/50 hover:bg-amber-100/60 hover:border-amber-400 transition-all group flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wider">
-                    Vendor Due
-                  </span>
-                  <Badge className="bg-amber-200 text-amber-900 text-[10px] font-black px-1.5 py-0.5 border-none">
-                    {vendorSupplier.vendorDue.count} Parties
-                  </Badge>
-                </div>
-                <p className="text-lg font-black text-amber-700 font-mono">
-                  {formatCurrency(vendorSupplier.vendorDue.total)}
-                </p>
-              </div>
-              <span className="text-[11px] text-amber-800 font-semibold flex items-center justify-between pt-2 mt-2 border-t border-amber-200/60">
-                <span>Overdue {formatCurrency(vendorSupplier.vendorDue.overdue)}</span>
-                <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-              </span>
-            </Link>
-
+          <div className="grid grid-cols-2 gap-2 pt-3.5">
             {/* SUPPLIER PAYOUTS — money out, kept out of the Expense card on purpose */}
             <div className="p-3 rounded-lg border border-sky-200 bg-sky-50/50 flex flex-col justify-between">
               <div>
@@ -2209,7 +2155,7 @@ export default function DashboardPage() {
           <p className="text-[10px] text-slate-400 pt-3 mt-1 border-t border-slate-100 leading-relaxed">
             These figures are reported separately and are not included in Total Revenue, Total
             Expenses or Net Profit above: a supplier payout settles a bill the purchase already
-            expensed, and vendor collections are not counter sales.
+            expensed.
           </p>
         </div>
 

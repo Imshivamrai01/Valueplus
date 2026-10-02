@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import mongoose from "mongoose";
+import { getServerSession } from "next-auth";
 import connectToDatabase from "@/lib/db";
 import Invoice from "@/models/Invoice";
 import Customer from "@/models/Customer";
-import Item from "@/models/Item";
+import Warehouse from "@/models/Warehouse";
 import Estimate from "@/models/Estimate";
 import DeletedInvoice from "@/models/DeletedInvoice";
 import AuditLog from "@/models/AuditLog";
@@ -11,6 +12,37 @@ import { derivePaymentModeLabel, isCollectedMode } from "@/lib/payment-modes";
 import { derivePanFromGstin } from "@/lib/gst";
 import { getActor } from "@/lib/requirePermission";
 import { authoriseDestructiveAction } from "@/lib/destructiveAction";
+import { applyStockMovement } from "@/lib/stock";
+import authOptions from "@/lib/authOptions";
+
+/**
+ * Which warehouse a sale's stock comes out of. A role without switch rights
+ * is trusted against their own server-side assignment, not whatever a client
+ * happens to send — the sidebar already shows this as a locked location, this
+ * is what actually enforces it for stock. Admin / switch-permitted roles use
+ * whatever warehouse the client sent (the one they're actively operating as,
+ * from BranchContext). Falls back to null (today's warehouse-blind behaviour)
+ * when nothing resolves, rather than blocking the sale over it.
+ */
+async function resolveSaleWarehouseId(body: any): Promise<string | null> {
+  const session = await getServerSession(authOptions);
+  const user: any = session?.user;
+  const canChoose = !user || user.role === "admin" || user.assignedWarehouseName === "ALL" || user.canSwitchWarehouse;
+
+  if (!canChoose && user?.assignedWarehouseId && mongoose.isValidObjectId(user.assignedWarehouseId)) {
+    return String(user.assignedWarehouseId);
+  }
+  if (body.warehouseId && mongoose.isValidObjectId(body.warehouseId)) {
+    return String(body.warehouseId);
+  }
+  const nameToMatch = !canChoose ? user?.assignedWarehouseName : body.warehouse;
+  if (nameToMatch) {
+    const escaped = String(nameToMatch).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const matched = await Warehouse.findOne({ name: { $regex: new RegExp(`^${escaped}$`, "i") } }).lean();
+    if (matched) return String((matched as any)._id);
+  }
+  return null;
+}
 
 export async function GET(req: Request) {
   try {
@@ -232,6 +264,10 @@ export async function POST(req: Request) {
       }
     }
 
+    const resolvedWarehouseId = await resolveSaleWarehouseId(body);
+    if (resolvedWarehouseId) body.warehouseId = resolvedWarehouseId;
+    else delete body.warehouseId;
+
     const invoice = await Invoice.create(body);
 
     try {
@@ -251,7 +287,7 @@ export async function POST(req: Request) {
           amount: body.paidAmount,
           // For a Finance sale, the amount actually collected here is the customer's down
           // payment — tag it with however that down payment was really collected, not "Finance".
-          paymentMode: body.financeProvider ? (body.financeDownPaymentMode || body.downPaymentMode || "Cash") : (body.paymentMode || "Cash"),
+          paymentMode: body.financeProvider ? (body.financeDownPaymentMode || body.downPaymentMode || "Unclassified") : (body.paymentMode || "Unclassified"),
           date: body.date || new Date().toISOString().split("T")[0],
           referenceId: invoice.invoiceNumber,
           notes: invoice.type === 'credit-note' ? `Refund for Credit Note ${invoice.invoiceNumber}` : `Initial payment for ${invoice.type === 'sales-order' ? 'order' : 'invoice'} ${invoice.invoiceNumber}`,
@@ -282,9 +318,8 @@ export async function POST(req: Request) {
           for (const item of body.items) {
             // Deduct / add stock
             if (item.itemId && (item.itemId.length === 24 || item.itemId.length > 10)) {
-              await Item.findByIdAndUpdate(item.itemId, {
-                $inc: { currentStock: body.type === "credit-note" ? item.quantity : -item.quantity },
-              });
+              const delta = body.type === "credit-note" ? item.quantity : -item.quantity;
+              await applyStockMovement(item.itemId, resolvedWarehouseId, delta);
             }
 
             // Lock Serial Number if serialized item was sold
@@ -756,13 +791,14 @@ export async function PUT(req: Request) {
         });
       }
 
-      // Reverse inventory stock (same logic as hard delete)
+      // Reverse inventory stock (same logic as hard delete) — against the same
+      // warehouse this sale actually deducted from, not whoever's cancelling it.
       if (existingInvoice.type !== "proforma" && existingInvoice.items && existingInvoice.items.length > 0) {
+        const reversalWarehouseId = existingInvoice.warehouseId ? String(existingInvoice.warehouseId) : null;
         for (const item of existingInvoice.items) {
           if (item.itemId) {
-            await Item.findByIdAndUpdate(item.itemId, {
-              $inc: { currentStock: existingInvoice.type === "credit-note" ? -item.quantity : item.quantity }
-            });
+            const delta = existingInvoice.type === "credit-note" ? -item.quantity : item.quantity;
+            await applyStockMovement(item.itemId, reversalWarehouseId, delta);
           }
         }
       }
@@ -900,11 +936,11 @@ export async function DELETE(req: Request) {
 
     if (invoice.type !== "proforma") {
       if (invoice.items && invoice.items.length > 0) {
+        const reversalWarehouseId = invoice.warehouseId ? String(invoice.warehouseId) : null;
         for (const item of invoice.items) {
           if (item.itemId) {
-            await Item.findByIdAndUpdate(item.itemId, {
-              $inc: { currentStock: invoice.type === "credit-note" ? -item.quantity : item.quantity }
-            });
+            const delta = invoice.type === "credit-note" ? -item.quantity : item.quantity;
+            await applyStockMovement(item.itemId, reversalWarehouseId, delta);
           }
         }
       }

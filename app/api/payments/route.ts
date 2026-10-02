@@ -8,10 +8,20 @@ export async function GET(request: Request) {
     
     const { searchParams } = new URL(request.url);
     const partyId = searchParams.get("partyId");
-    
-    const filter = partyId ? { partyId } : {};
+    const partyType = searchParams.get("partyType"); // "Customer" | "Supplier"
+
+    const filter: any = {};
+    if (partyId) filter.partyId = partyId;
+    if (partyType) filter.partyType = partyType;
     let payments: any[] = await PaymentTransaction.find(filter).sort({ date: -1 }).lean();
-    
+
+    // The legacy-invoice backfill below only ever represents a Customer's own
+    // initial payment on their own bill — skip it entirely for a Supplier-only
+    // listing, since there's no supplier-side equivalent to synthesize.
+    if (partyType === "Supplier") {
+      return NextResponse.json({ success: true, data: payments });
+    }
+
     // Fetch old invoices that have paidAmount > 0 and include them as transactions if not already there
     const Invoice = (await import("@/models/Invoice")).default;
     const invoiceFilter = partyId ? { customerId: partyId, paidAmount: { $gt: 0 } } : { paidAmount: { $gt: 0 } };

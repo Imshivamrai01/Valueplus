@@ -17,6 +17,7 @@ import { INDIA_STATES, INDIA_STATES_AND_DISTRICTS, normalizeStateName, normalize
 import { saveOfflineInvoice, getCachedCatalogItems, getCachedCustomers, cacheCustomers } from "@/lib/offline-storage";
 import ValueplusInvoice from "@/app/invoice/page";
 import { useSession } from "next-auth/react";
+import { useBranch } from "@/context/BranchContext";
 
 function formatCurrency(val: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(val || 0);
@@ -68,6 +69,7 @@ export function InvoiceCreationModal({
   const { data: session } = useSession();
   const userRole = ((session?.user as any)?.role || "admin").toLowerCase();
   const currentUserName = session?.user?.name || "Staff Member";
+  const { activeLocation } = useBranch();
   
   const isSuperAdmin = userRole === "admin" || userRole === "superadmin";
   const isManager = userRole === "manager" || userRole === "store_manager" || userRole === "storemanager";
@@ -201,7 +203,9 @@ export function InvoiceCreationModal({
     vehicleNumber: "",
     
     // Primary Payment Mode: "Cash" | "UPI" | "Online" | "Credit Card" | "Debit Card" | "Finance" | "Due / Credit"
-    paymentMode: "Cash" as "Cash" | "UPI" | "Online" | "Credit Card" | "Debit Card" | "Finance" | "Due / Credit",
+    // Starts unselected on purpose — the cashier must actively pick the real mode
+    // used, instead of every bill silently defaulting to "Cash" when nobody taps a button.
+    paymentMode: "" as "" | "Cash" | "UPI" | "Online" | "Credit Card" | "Debit Card" | "Finance" | "Due / Credit",
     paymentStatus: "Paid",
     
     // Cash specifics
@@ -991,6 +995,10 @@ export function InvoiceCreationModal({
       toast.error("Please add at least 1 product item to the bill.");
       return;
     }
+    if (!isSplitPayment && !billingForm.paymentMode) {
+      toast.error("Payment mode select karna zaroori hai — Cash/UPI/Card me se koi ek chunein.");
+      return;
+    }
 
     if (mode === "invoice") {
       for (const it of billingForm.lineItems) {
@@ -1182,6 +1190,11 @@ export function InvoiceCreationModal({
       payments: splitPaymentsPayload,
       ...billingForm,
       invoiceNumber: billingForm.invoiceNo,
+      // Which warehouse this sale deducts from — the server trusts the
+      // cashier's own assigned location over this for locked roles, so this
+      // only actually matters for admin/switch-permitted roles.
+      warehouseId: activeLocation?.id,
+      warehouse: activeLocation?.name,
       type: mode === "credit-note" ? "credit-note" : (mode === "sales-order" ? "sales-order" : (mode === "estimate" ? "proforma" : "tax-invoice")),
       salesExecutive: isIndividualStaff ? currentUserName : (billingForm.salesExecutive || currentUserName),
       salesperson: isIndividualStaff ? currentUserName : (billingForm.salesExecutive || currentUserName),

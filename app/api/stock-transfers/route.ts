@@ -1,6 +1,20 @@
 import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import StockTransfer from "@/models/StockTransfer";
+import Warehouse from "@/models/Warehouse";
+import Item from "@/models/Item";
+import { applyStockMovement } from "@/lib/stock";
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+async function resolveWarehouseId(name: string): Promise<string | null> {
+  if (!name) return null;
+  const escaped = escapeRegex(name);
+  const warehouse = await Warehouse.findOne({ name: { $regex: new RegExp(`^${escaped}$`, "i") } }).lean();
+  return warehouse ? String((warehouse as any)._id) : null;
+}
 
 export async function GET() {
   try {
@@ -17,22 +31,40 @@ export async function POST(req: Request) {
     const body = await req.json();
     await connectToDatabase();
 
+    const fromWarehouseId = body.fromWarehouseId || (await resolveWarehouseId(body.fromWarehouse));
+    const toWarehouseId = body.toWarehouseId || (await resolveWarehouseId(body.toWarehouse));
+
+    // Snapshot each item's cost price at transfer time — this is an internal
+    // stock move, not a sale, so it's priced at cost, never at a selling price.
+    const itemIds = (body.items || []).map((i: any) => i.itemId).filter(Boolean);
+    const catalogItems = itemIds.length ? await Item.find({ _id: { $in: itemIds } }).lean() : [];
+    const costById = new Map(catalogItems.map((it: any) => [String(it._id), Number(it.purchasePrice) || 0]));
+
+    const itemsWithCost = (body.items || []).map((i: any) => ({
+      ...i,
+      costPrice: costById.get(String(i.itemId)) || 0,
+    }));
+    const totalValue = itemsWithCost.reduce((sum: number, i: any) => sum + i.costPrice * (Number(i.quantity) || 0), 0);
+
     const payload = {
       ...body,
+      items: itemsWithCost,
+      totalValue,
+      fromWarehouseId: fromWarehouseId || undefined,
+      toWarehouseId: toWarehouseId || undefined,
       transferNo: body.transferNo || `STR-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}-${Math.floor(Math.random() * 1000).toString().padStart(3, "0")}`,
       status: body.status || "in-transit",
     };
 
     const transfer = await StockTransfer.create(payload);
-    const Item = (await import("@/models/Item")).default;
 
-    // Deduct stock from source warehouse and transfer
+    // Deduct stock from the source warehouse's own entry on the same item —
+    // no duplicate Item document is created for the destination; receipt
+    // below credits the same item's entry for the destination warehouse.
     if (body.items && Array.isArray(body.items)) {
       for (const item of body.items) {
         if (item.itemId && item.quantity) {
-          await Item.findByIdAndUpdate(item.itemId, {
-            $inc: { currentStock: -Number(item.quantity) }
-          });
+          await applyStockMovement(item.itemId, fromWarehouseId, -Number(item.quantity));
         }
       }
     }
@@ -50,58 +82,30 @@ export async function PUT(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const transferNo = searchParams.get("transferNo");
-    
+
     if (!transferNo) {
       return NextResponse.json({ success: false, error: "transferNo is required" }, { status: 400 });
     }
 
     const body = await req.json();
     await connectToDatabase();
-    const Item = (await import("@/models/Item")).default;
-    
+
     const existingTransfer = await StockTransfer.findOne({ transferNo });
     if (!existingTransfer) {
       return NextResponse.json({ success: false, error: "Stock Transfer not found" }, { status: 404 });
     }
 
-    // If status changed to 'received' or 'completed', add stock to destination warehouse
+    // If status changed to 'received' or 'completed', credit the destination
+    // warehouse's entry on the SAME item that was debited at dispatch.
     if (body.status === "received" && existingTransfer.status !== "received") {
-      for (const item of existingTransfer.items) {
-        const sourceItem = await Item.findById(item.itemId);
-        if (sourceItem) {
-          // Check if item exists in destination warehouse
-          const destItem = await Item.findOne({
-            code: `${sourceItem.code}-${existingTransfer.toWarehouse.replace(/\s+/g, "").substring(0, 4)}`,
-            warehouse: existingTransfer.toWarehouse,
-          }) || await Item.findOne({
-            name: sourceItem.name,
-            warehouse: existingTransfer.toWarehouse,
-          });
+      const toWarehouseId =
+        (existingTransfer as any).toWarehouseId
+          ? String((existingTransfer as any).toWarehouseId)
+          : await resolveWarehouseId(existingTransfer.toWarehouse);
 
-          if (destItem) {
-            destItem.currentStock = (destItem.currentStock || 0) + Number(item.quantity);
-            await destItem.save();
-          } else {
-            // Create item in destination warehouse
-            await Item.create({
-              code: `${sourceItem.code}-${existingTransfer.toWarehouse.replace(/[^a-zA-Z0-9]/g, "").substring(0, 4).toUpperCase()}`,
-              vpCode: sourceItem.vpCode,
-              name: sourceItem.name,
-              category: sourceItem.category,
-              brand: sourceItem.brand,
-              unit: sourceItem.unit || "Pcs",
-              hsnCode: sourceItem.hsnCode,
-              gstRate: sourceItem.gstRate,
-              purchasePrice: sourceItem.purchasePrice,
-              sellingPrice: sourceItem.sellingPrice,
-              mrp: sourceItem.mrp,
-              openingStock: Number(item.quantity),
-              currentStock: Number(item.quantity),
-              reorderLevel: sourceItem.reorderLevel || 5,
-              warehouse: existingTransfer.toWarehouse,
-              status: "active",
-            });
-          }
+      for (const item of existingTransfer.items) {
+        if (item.itemId && item.quantity) {
+          await applyStockMovement(item.itemId, toWarehouseId, Number(item.quantity));
         }
       }
     }
@@ -117,14 +121,14 @@ export async function DELETE(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const transferNo = searchParams.get("transferNo");
-    
+
     if (!transferNo) {
       return NextResponse.json({ success: false, error: "transferNo is required" }, { status: 400 });
     }
 
     await connectToDatabase();
     const deletedTransfer = await StockTransfer.findOneAndDelete({ transferNo });
-    
+
     if (!deletedTransfer) {
       return NextResponse.json({ success: false, error: "Stock Transfer not found" }, { status: 404 });
     }

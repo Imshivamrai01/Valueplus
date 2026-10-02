@@ -78,6 +78,11 @@ export interface IInvoice extends Document {
   placeOfSupply?: string;
   vehicleNumber?: string;
   shippingAddress?: string;
+  /** Which warehouse this sale's stock was deducted from — resolved once at
+   *  creation time (the cashier's assigned location, or their chosen one if
+   *  they're allowed to switch) so edits/cancellations reverse the same real
+   *  warehouse rather than re-guessing it later. */
+  warehouseId?: mongoose.Types.ObjectId;
   date: string;
   dueDate: string;
   status: "draft" | "sent" | "paid" | "partial" | "overdue" | "cancelled" | "pending";
@@ -96,7 +101,7 @@ export interface IInvoice extends Document {
   paidAmount: number;
   balanceAmount: number;
   extendedWarrantyTotal?: number;
-  paymentMode: "Cash" | "UPI" | "Online" | "Card" | "Credit Card" | "Debit Card" | "Finance" | "Due / Credit" | "Multiple";
+  paymentMode: "Cash" | "UPI" | "Online" | "Card" | "Credit Card" | "Debit Card" | "Finance" | "Due / Credit" | "Multiple" | "Unclassified";
   /**
    * Split payment breakdown. Empty/absent on every invoice created before split
    * payments existed — all readers fall back to `paymentMode` + `paidAmount`, so
@@ -256,6 +261,7 @@ const InvoiceSchema = new Schema<IInvoice>(
     placeOfSupply: { type: String, default: "Uttar Pradesh(09)" },
     vehicleNumber: { type: String, default: "" },
     shippingAddress: String,
+    warehouseId: { type: Schema.Types.ObjectId, ref: "Warehouse" },
     date: { type: String, required: true, index: true },
     dueDate: { type: String, required: true, index: true },
     status: { type: String, enum: ["draft", "sent", "paid", "partial", "overdue", "cancelled", "pending"], default: "sent", index: true },
@@ -272,7 +278,10 @@ const InvoiceSchema = new Schema<IInvoice>(
     total: { type: Number, required: true },
     paidAmount: { type: Number, default: 0 },
     balanceAmount: { type: Number, required: true },
-    paymentMode: { type: String, default: "Cash" },
+    // No longer defaults to "Cash" — that silently mislabeled every invoice saved
+    // without an explicit mode (credit notes, sales orders, admin tooling) as a
+    // real cash sale, which is exactly what polluted the cash register's totals.
+    paymentMode: { type: String, default: "Unclassified" },
     payments: { type: [PaymentSplitSchema], default: [] },
     paymentTerms: { type: String, default: "Net 30" },
 
@@ -375,7 +384,7 @@ InvoiceSchema.index({ date: -1, createdAt: -1 });
 InvoiceSchema.index({ customerPhone: 1 });
 InvoiceSchema.index({ invoiceNumber: 1 });
 InvoiceSchema.index({ status: 1 });
-InvoiceSchema.index({ warehouse: 1 });
+InvoiceSchema.index({ warehouseId: 1 });
 
 const Invoice: Model<IInvoice> = mongoose.models.Invoice || mongoose.model<IInvoice>("Invoice", InvoiceSchema);
 export default Invoice;

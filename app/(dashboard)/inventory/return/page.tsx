@@ -195,6 +195,7 @@ export default function StockReturnPage() {
               
               <div>
                 <h4 className="font-medium text-sm mb-2">Returned Items</h4>
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm border">
                   <thead className="bg-slate-50 border-b">
                     <tr>
@@ -240,6 +241,7 @@ export default function StockReturnPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
                 <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => setNewReturn({...newReturn, items: [...newReturn.items, { itemId: "", itemName: "", quantity: 1, reason: "" }]})}>+ Add Line</Button>
               </div>
               
@@ -254,6 +256,7 @@ export default function StockReturnPage() {
       </div>
 
       <Card className="overflow-hidden border border-slate-200">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
             <tr>
@@ -290,6 +293,7 @@ export default function StockReturnPage() {
             ))}
           </tbody>
         </table>
+        </div>
       </Card>
     </PageShell>
   );

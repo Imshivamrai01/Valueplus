@@ -12,6 +12,11 @@ export interface IPurchaseEntry extends Document {
    *  field and keep resolving via supplierName. */
   supplierId?: mongoose.Types.ObjectId;
   warehouse?: string;
+  /** The real warehouse this bill's stock landed in — resolved once at creation
+   *  time so cancel/delete reverse the same specific warehouse even if it's
+   *  since been renamed. Older entries predate this and fall back to matching
+   *  the `warehouse` name string above. */
+  warehouseId?: mongoose.Types.ObjectId;
   linkedPoNo?: string;
   /** Why this entry was billed without going through a Purchase Order first — mandatory when linkedPoNo is empty. */
   noPoReason?: string;
@@ -47,6 +52,7 @@ const PurchaseEntrySchema = new Schema<IPurchaseEntry>(
     supplierGST: { type: String, default: "" },
     supplierId: { type: Schema.Types.ObjectId, ref: "Supplier" },
     warehouse: { type: String, default: "Ashoka Enterprises (Kunraghat Showroom)" },
+    warehouseId: { type: Schema.Types.ObjectId, ref: "Warehouse" },
     linkedPoNo: { type: String },
     noPoReason: { type: String, default: "" },
     type: { type: String, enum: ["entry", "debit-note"], default: "entry" },

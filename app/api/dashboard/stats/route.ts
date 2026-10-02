@@ -206,6 +206,9 @@ export async function GET(request: Request) {
     let warrantyCount = 0;
     let dueRevenue = 0;
     let dueCount = 0;
+    // Payments with no real mode on record — never folded into Cash (or any other
+    // bucket) just because that used to be the silent default everywhere.
+    let unclassifiedRevenue = 0;
     // Khata-only figures. `dueRevenue` above sums the balance of EVERY unpaid
     // invoice, so a financed sale's un-disbursed loan lands in it as well — the
     // same rupees the Finance bucket already holds, which is why the distribution
@@ -222,6 +225,7 @@ export async function GET(request: Request) {
     const cardTxns: any[] = [];
     const financeTxns: any[] = [];
     const dueTxns: any[] = [];
+    const unclassifiedTxns: any[] = [];
     const isSingleDay = Boolean(startDateParam && endDateParam && startDateParam === endDateParam);
     
     // Initialize continuous buckets so graph curves are always complete & smooth
@@ -450,9 +454,23 @@ export async function GET(request: Request) {
         const amt = Number(p.amount) || 0;
         if (amt <= 0) return;
 
-        const rawMode = (p.paymentMode || "Cash").toLowerCase();
+        const rawMode = (p.paymentMode || "unclassified").toLowerCase();
 
-        if (rawMode.includes("cash")) {
+        if (rawMode === "unclassified") {
+          unclassifiedRevenue += amt;
+          unclassifiedTxns.push({
+            id: p.referenceId || p.transactionId || `PAY-${p._id}`,
+            customer: p.partyName,
+            amount: amt,
+            paidAmount: amt,
+            dueAmount: 0,
+            time: p.date ? `${p.date} (Receipt)` : "Today (Receipt)",
+            mode: "Unclassified",
+            status: "paid",
+            notes: p.notes || `No payment mode recorded (${p.referenceId || "Direct"})`,
+            isReceipt: true,
+          });
+        } else if (rawMode.includes("cash")) {
           cashRevenue += amt;
           cashTxns.push({
             // Prefer the invoice number this receipt is FOR, not the receipt's own
@@ -1174,6 +1192,9 @@ export async function GET(request: Request) {
         // Kept as-is because other screens already read it.
         dueRevenue,
         dueCount,
+        // Payments recorded with no real mode — kept visible instead of silently
+        // folded into Cash so a data gap stays discoverable, not hidden.
+        unclassifiedRevenue,
         // Khata-only breakdown used by the payment distribution card.
         dueSalesRevenue,
         dueSalesCount,
@@ -1207,7 +1228,8 @@ export async function GET(request: Request) {
         card: cardTxns,
         finance: financeTxns,
         due: dueTxns,
-        all: [...cashTxns, ...upiTxns, ...onlineTxns, ...cardTxns, ...financeTxns],
+        unclassified: unclassifiedTxns,
+        all: [...cashTxns, ...upiTxns, ...onlineTxns, ...cardTxns, ...financeTxns, ...unclassifiedTxns],
       },
       payments: {
         duesCollected,
@@ -1306,7 +1328,7 @@ export async function POST(request: Request) {
         paidAmount: body.status === "paid" ? grandTotal : 0,
         balanceAmount: body.status === "paid" ? 0 : grandTotal,
         paymentTerms: body.status || "paid",
-        paymentMode: body.paymentMode || "Cash",
+        paymentMode: body.paymentMode || "Unclassified",
         financeCompany: body.financeCompany,
         financeApprovalNo: body.financeApprovalNo,
         downPayment: body.downPayment,

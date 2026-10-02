@@ -1,7 +1,7 @@
 "use client";
 import { PageShell } from "@/components/shared/page-shell";
 import { Button } from "@/components/ui/button";
-import { Plus, Warehouse, MapPin, Phone, X, Package, ShoppingBag, Store, Building2, ArrowRight } from "lucide-react";
+import { Plus, Warehouse, MapPin, Phone, X, Package, ShoppingBag, Store, Building2, ArrowRight, Edit } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -19,9 +19,11 @@ export default function WarehousesPage() {
   const [warehouses, setWarehouses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingWarehouse, setEditingWarehouse] = useState<any | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     code: "",
+    type: "showroom" as "showroom" | "godown",
     address: "",
     city: "Gorakhpur",
     state: "Uttar Pradesh",
@@ -29,6 +31,40 @@ export default function WarehousesPage() {
     contact: "",
     phone: "",
   });
+
+  const EMPTY_FORM = {
+    name: "",
+    code: "",
+    type: "showroom" as "showroom" | "godown",
+    address: "",
+    city: "Gorakhpur",
+    state: "Uttar Pradesh",
+    pincode: "273008",
+    contact: "",
+    phone: "",
+  };
+
+  const openAddForm = () => {
+    setEditingWarehouse(null);
+    setFormData(EMPTY_FORM);
+    setIsFormOpen(true);
+  };
+
+  const openEditForm = (wh: any) => {
+    setEditingWarehouse(wh);
+    setFormData({
+      name: wh.name || "",
+      code: wh.code || "",
+      type: wh.type === "godown" ? "godown" : "showroom",
+      address: wh.address || "",
+      city: wh.city || "Gorakhpur",
+      state: wh.state || "Uttar Pradesh",
+      pincode: wh.pincode || "273008",
+      contact: wh.contactPerson || wh.contact || "",
+      phone: (wh.phone || "").replace(/^\+91\s?/, ""),
+    });
+    setIsFormOpen(true);
+  };
 
   const fetchWarehouses = async () => {
     try {
@@ -71,9 +107,10 @@ export default function WarehousesPage() {
       return;
     }
 
-    const newWh = {
+    const payload = {
       code: formData.code || `WH-${formData.city.substring(0, 3).toUpperCase()}`,
       name: formData.name,
+      type: formData.type,
       address: formData.address || "Gorakhpur, Uttar Pradesh",
       city: formData.city,
       state: formData.state,
@@ -82,25 +119,32 @@ export default function WarehousesPage() {
       phone: formData.phone.startsWith("+91") ? formData.phone : `+91 ${formData.phone}`,
       email: formData.name.replace(/\s+/g, '').toLowerCase() + "@valueplus.com",
       status: "active",
-      isDefault: false,
+      isDefault: editingWarehouse?.isDefault || false,
     };
 
     try {
-      const res = await fetch("/api/warehouses", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newWh)
-      });
+      const res = editingWarehouse
+        ? await fetch(`/api/warehouses?id=${editingWarehouse._id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          })
+        : await fetch("/api/warehouses", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
       const json = await res.json();
       if (json.success) {
-        toast.success(`Warehouse "${json.data.name}" added successfully!`);
+        toast.success(editingWarehouse ? `"${json.data.name}" updated successfully!` : `Warehouse "${json.data.name}" added successfully!`);
         setIsFormOpen(false);
+        setEditingWarehouse(null);
         fetchWarehouses();
         if (typeof window !== "undefined") {
           window.dispatchEvent(new CustomEvent("erp-warehouses-updated"));
         }
       } else {
-        toast.error(json.error || "Failed to add warehouse");
+        toast.error(json.error || "Failed to save warehouse");
       }
     } catch (error) {
       toast.error("An error occurred");
@@ -118,7 +162,7 @@ export default function WarehousesPage() {
             title="Warehouses & Showroom Outlets"
             subtitle={`${warehouses.length} registered locations (Showrooms & Central Godowns)`}
             data={warehouses.map((wh: any) => {
-              const isGodown = wh.name?.toLowerCase().includes("godown") || wh.name?.toLowerCase().includes("warehouse") || wh.name?.toLowerCase().includes("gida") || wh.name?.toLowerCase().includes("logistics");
+              const isGodown = wh.type ? wh.type === "godown" : wh.name?.toLowerCase().includes("godown") || wh.name?.toLowerCase().includes("warehouse") || wh.name?.toLowerCase().includes("gida") || wh.name?.toLowerCase().includes("logistics");
               return {
                 Code: wh.code,
                 Name: wh.name,
@@ -137,7 +181,7 @@ export default function WarehousesPage() {
           <Button variant="outline" size="sm" onClick={() => router.push("/purchase/entries?action=create")}>
             <ShoppingBag className="w-4 h-4 mr-1.5 text-[#3F63AD]" /> Inward Purchase Entry
           </Button>
-          <Button size="sm" onClick={() => setIsFormOpen(true)}>
+          <Button size="sm" onClick={openAddForm}>
             <Plus className="w-4 h-4 mr-1.5" /> Add Location / Godown
           </Button>
         </div>
@@ -159,7 +203,7 @@ export default function WarehousesPage() {
             </div>
           ))
         ) : warehouses.map(wh => {
-          const isGodown = wh.name?.toLowerCase().includes("godown") || wh.name?.toLowerCase().includes("warehouse") || wh.name?.toLowerCase().includes("gida") || wh.name?.toLowerCase().includes("logistics");
+          const isGodown = wh.type ? wh.type === "godown" : wh.name?.toLowerCase().includes("godown") || wh.name?.toLowerCase().includes("warehouse") || wh.name?.toLowerCase().includes("gida") || wh.name?.toLowerCase().includes("logistics");
           return (
             <div key={wh._id || wh.id} className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition-all space-y-4">
               <div className="flex items-start justify-between">
@@ -213,23 +257,33 @@ export default function WarehousesPage() {
                   </Button>
                 </div>
 
-                {!wh.isDefault && (
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="h-8 text-xs text-rose-500 hover:text-rose-700 hover:bg-rose-50" 
-                    onClick={() => handleDelete(wh._id || wh.id, wh.name)}
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 text-xs text-slate-600 hover:bg-slate-100"
+                    onClick={() => openEditForm(wh)}
                   >
-                    Delete
+                    <Edit className="w-3.5 h-3.5 mr-1" /> Edit
                   </Button>
-                )}
+                  {!wh.isDefault && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 text-xs text-rose-500 hover:text-rose-700 hover:bg-rose-50"
+                      onClick={() => handleDelete(wh._id || wh.id, wh.name)}
+                    >
+                      Delete
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
           );
         })}
       </div>
 
-      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+      <Dialog open={isFormOpen} onOpenChange={(o) => { setIsFormOpen(o); if (!o) setEditingWarehouse(null); }}>
         <DialogContent className="max-w-2xl p-0 rounded-2xl border-none shadow-2xl overflow-hidden">
           {/* Header */}
           <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-6 flex items-center justify-between">
@@ -238,9 +292,9 @@ export default function WarehousesPage() {
                 <Warehouse className="w-6 h-6 text-[#76C043]" />
               </div>
               <div>
-                <h3 className="text-xl font-bold tracking-tight">Add Warehouse / Store Outlet</h3>
+                <h3 className="text-xl font-bold tracking-tight">{editingWarehouse ? "Edit Warehouse / Store Outlet" : "Add Warehouse / Store Outlet"}</h3>
                 <p className="text-xs text-slate-300 mt-0.5">
-                  Register new store showroom location or regional distribution hub
+                  {editingWarehouse ? "Update this location's details, including whether it's a showroom or a godown." : "Register new store showroom location or regional distribution hub"}
                 </p>
               </div>
             </div>
@@ -267,6 +321,22 @@ export default function WarehousesPage() {
                     onChange={(e) => setFormData({ ...formData, code: e.target.value })}
                     className="bg-slate-50 border-slate-300 font-mono"
                   />
+                </div>
+
+                <div className="space-y-1.5 md:col-span-3">
+                  <Label className="text-xs font-semibold text-slate-700">Location Type *</Label>
+                  <Select value={formData.type} onValueChange={(v) => setFormData({ ...formData, type: v as "showroom" | "godown" })}>
+                    <SelectTrigger className="bg-slate-50 border-slate-300">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="showroom">Showroom — sells to walk-in customers</SelectItem>
+                      <SelectItem value="godown">Godown — storage / distribution, no retail counter</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-slate-500">
+                    This decides which stock bucket this location's inventory rolls up into everywhere in the app.
+                  </p>
                 </div>
 
                 <div className="space-y-1.5 md:col-span-3">
@@ -354,11 +424,11 @@ export default function WarehousesPage() {
           </div>
 
           <div className="bg-slate-100 px-6 py-4 rounded-b-2xl border-t border-slate-200 flex items-center justify-end gap-3">
-            <Button variant="outline" onClick={() => setIsFormOpen(false)} className="px-5">
+            <Button variant="outline" onClick={() => { setIsFormOpen(false); setEditingWarehouse(null); }} className="px-5">
               Cancel
             </Button>
             <Button onClick={handleSave} className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white px-6 font-bold shadow-lg shadow-[#3F63AD]/20">
-              Save & Create Warehouse
+              {editingWarehouse ? "Save Changes" : "Save & Create Warehouse"}
             </Button>
           </div>
         </DialogContent>

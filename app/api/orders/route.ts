@@ -76,7 +76,7 @@ export async function POST(request: Request) {
         partyType: "Customer",
         partyName: newOrder.customerName,
         amount: newOrder.paidAmount,
-        paymentMode: body.paymentMode || "Cash",
+        paymentMode: body.paymentMode || "Unclassified",
         date: newOrder.date,
         referenceId: newOrder.invoiceNumber,
         notes: `Initial payment for sales order ${newOrder.invoiceNumber}`,

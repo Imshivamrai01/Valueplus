@@ -3,6 +3,10 @@ import mongoose, { Schema, Document, Model } from "mongoose";
 export interface IWarehouse extends Document {
   name: string;
   code: string;
+  /** Replaces the keyword-guessing on `name` ("godown"/"warehouse"/"gida"/"logistics")
+   *  that used to be reimplemented separately in several places — this is now the
+   *  single source of truth for which stock bucket a warehouse rolls up into. */
+  type: "showroom" | "godown";
   address: string;
   city: string;
   state: string;
@@ -18,6 +22,7 @@ const WarehouseSchema = new Schema<IWarehouse>(
   {
     name: { type: String, required: true },
     code: { type: String, required: true, unique: true },
+    type: { type: String, enum: ["showroom", "godown"], required: true },
     address: { type: String, required: true },
     city: { type: String, required: true },
     state: { type: String, required: true },
