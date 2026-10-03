@@ -51,6 +51,7 @@ interface ItemFormData {
   gstRate: string;
   purchasePrice: string;
   sellingPrice: string;
+  vsp: string;
   minSellingPrice: string;
   maxDiscountPercent: string;
   maxDiscountAmount: string;
@@ -77,6 +78,7 @@ const EMPTY_FORM: ItemFormData = {
   gstRate: "18",
   purchasePrice: "",
   sellingPrice: "",
+  vsp: "",
   minSellingPrice: "",
   maxDiscountPercent: "",
   maxDiscountAmount: "",
@@ -335,8 +337,9 @@ function ItemsPageContent() {
       unit: item.unit || "PCS", 
       hsn: item.hsnCode || item.hsn || "", 
       gstRate: String(item.gstRate || 18),
-      purchasePrice: String(item.purchasePrice || ""), 
+      purchasePrice: String(item.purchasePrice || ""),
       sellingPrice: String(item.sellingPrice || ""),
+      vsp: String(item.vsp || item.sellingPrice || ""),
       minSellingPrice: String(item.minSellingPrice || item.purchasePrice || ""),
       maxDiscountPercent: String(item.maxDiscountPercent || ""),
       maxDiscountAmount: String(item.maxDiscountAmount || ""),
@@ -493,6 +496,9 @@ function ItemsPageContent() {
       gstRate: Number(formData.gstRate),
       purchasePrice: Number(formData.purchasePrice),
       sellingPrice: Number(formData.sellingPrice),
+      // Untouched, this mirrors Selling Price — editing it independently is what
+      // lets VSP diverge from whatever the actual billing price ends up being.
+      vsp: Number(formData.vsp) || Number(formData.sellingPrice) || 0,
       minSellingPrice: Number(formData.minSellingPrice) || Number(formData.purchasePrice) || 0,
       maxDiscountPercent: Number(formData.maxDiscountPercent) || 0,
       maxDiscountAmount: Number(formData.maxDiscountAmount) || 0,
@@ -998,6 +1004,7 @@ function ItemsPageContent() {
                       <td className="px-4 py-3 text-right">
                         <p className="font-semibold text-foreground">{formatCurrency(item.sellingPrice)}</p>
                         <p className="text-xs text-muted-foreground">MRP {formatCurrency(item.mrp)}</p>
+                        <p className="text-[10px] text-emerald-600 font-medium">VSP {formatCurrency(item.vsp || item.sellingPrice)}</p>
                         {item.incentiveType && item.incentiveType !== "none" && Number(item.incentiveValue || item.incentiveAmount) > 0 && (
                           <span
                             className="inline-flex items-center gap-1 mt-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5"
@@ -1326,6 +1333,19 @@ function ItemsPageContent() {
                   />
                 </div>
                 <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-emerald-700 flex items-center gap-1">
+                    VSP (₹) <span className="text-[10px] text-emerald-600 font-normal">(Value Plus Price)</span>
+                  </Label>
+                  <Input
+                    type="number"
+                    placeholder={`Default: ₹${formData.sellingPrice || 0}`}
+                    value={formData.vsp}
+                    onChange={(e) => setFormData((f) => ({ ...f, vsp: e.target.value }))}
+                    className="bg-emerald-50/50 border-emerald-300 font-mono font-semibold"
+                  />
+                  <p className="text-[10px] text-slate-400">Suggested price only — billing can still charge any amount.</p>
+                </div>
+                <div className="space-y-1.5">
                   <Label className="text-xs font-semibold text-amber-700 flex items-center gap-1">
                     Min Floor Price (₹) <span className="text-[10px] text-amber-600 font-normal">(PIN Lock)</span>
                   </Label>
@@ -1522,9 +1542,14 @@ function ItemsPageContent() {
                     placeholder="10"
                     value={formData.showroomStock}
                     onChange={(e) => setFormData((f) => ({ ...f, showroomStock: e.target.value }))}
-                    className="bg-blue-50/50 border-blue-300 font-bold"
+                    disabled={!!editingItem}
+                    className="bg-blue-50/50 border-blue-300 font-bold disabled:opacity-60 disabled:cursor-not-allowed"
                   />
-                  <p className="text-[10px] text-slate-500">Available units in {activeLocation?.name || "Showroom"}</p>
+                  <p className="text-[10px] text-slate-500">
+                    {editingItem
+                      ? "Stock ko yahan se edit nahi karte — Inventory Adjustment use karein."
+                      : `Available units in ${activeLocation?.name || "Showroom"}`}
+                  </p>
                 </div>
 
                 <div className="space-y-1.5">
@@ -1537,9 +1562,12 @@ function ItemsPageContent() {
                     placeholder="25"
                     value={formData.godownStock}
                     onChange={(e) => setFormData((f) => ({ ...f, godownStock: e.target.value }))}
-                    className="bg-amber-50/50 border-amber-300 font-bold"
+                    disabled={!!editingItem}
+                    className="bg-amber-50/50 border-amber-300 font-bold disabled:opacity-60 disabled:cursor-not-allowed"
                   />
-                  <p className="text-[10px] text-slate-500">Available units in Central Godown</p>
+                  <p className="text-[10px] text-slate-500">
+                    {editingItem ? "Stock ko yahan se edit nahi karte — Inventory Adjustment use karein." : "Available units in Central Godown"}
+                  </p>
                 </div>
 
                 <div className="space-y-1.5">
@@ -1751,18 +1779,18 @@ function ItemsPageContent() {
       {/* View Item Modal */}
       <Dialog open={!!viewingItem} onOpenChange={(open) => !open && setViewingItem(null)}>
         <DialogContent className="max-w-6xl p-0 rounded-2xl overflow-hidden border-none shadow-2xl">
-          <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-5 flex justify-between items-center">
-            <div>
+          <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-5 pr-14 flex flex-wrap justify-between items-center gap-3">
+            <div className="min-w-0">
               <h3 className="text-lg font-bold tracking-tight">Product Details & Live Stock</h3>
-              <p className="text-xs text-slate-300 mt-0.5">
+              <p className="text-xs text-slate-300 mt-0.5 truncate">
                 VP Code: <span className="font-mono text-amber-300 font-bold">{viewingItem?.vpCode || viewingItem?.code}</span> · {viewingItem?.brand}
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className="bg-blue-500/20 text-blue-200 border-blue-400/30 font-bold text-xs">
+            <div className="flex items-center gap-2 flex-wrap shrink-0">
+              <Badge variant="outline" className="bg-blue-500/20 text-blue-200 border-blue-400/30 font-bold text-xs whitespace-nowrap">
                 🏪 Showroom: {viewingItem?.showroomStock ?? viewingItem?.currentStock ?? 0} {viewingItem?.unit || "PCS"}
               </Badge>
-              <Badge variant="outline" className="bg-amber-500/20 text-amber-200 border-amber-400/30 font-bold text-xs">
+              <Badge variant="outline" className="bg-amber-500/20 text-amber-200 border-amber-400/30 font-bold text-xs whitespace-nowrap">
                 🏭 Godown: {viewingItem?.godownStock ?? viewingItem?.currentStock ?? 0} {viewingItem?.unit || "PCS"}
               </Badge>
             </div>
@@ -1838,6 +1866,10 @@ function ItemsPageContent() {
                   <div>
                     <p className="text-xs text-muted-foreground font-semibold uppercase">Selling Price</p>
                     <p className="font-bold text-[#3F63AD]">{formatCurrency(viewingItem?.sellingPrice || 0)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground font-semibold uppercase">VSP</p>
+                    <p className="font-bold text-emerald-700">{formatCurrency(viewingItem?.vsp || viewingItem?.sellingPrice || 0)}</p>
                   </div>
                 </div>
               </div>

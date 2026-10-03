@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { 
   Building2, Landmark, CreditCard, IndianRupee, Save, Plus, Edit2, 
-  Trash2, Copy, CheckCircle2, ShieldCheck, MapPin, Phone, Mail, FileText, X, AlertTriangle
+  Trash2, Copy, CheckCircle2, ShieldCheck, MapPin, Phone, Mail, FileText, AlertTriangle
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils";
@@ -441,21 +441,18 @@ export default function StoreProfilePage() {
       {/* ─── ADD / EDIT BANK ACCOUNT MODAL ─── */}
       <Dialog open={isBankModalOpen} onOpenChange={setIsBankModalOpen}>
         <DialogContent className="max-w-md p-0 rounded-2xl shadow-2xl border-none overflow-hidden">
-          <div className="bg-gradient-to-r from-[#1B2537] via-[#243753] to-[#1B2537] text-white p-5 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
+          <div className="bg-gradient-to-r from-[#1B2537] via-[#243753] to-[#1B2537] text-white p-5 pr-12 flex items-center justify-between">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
                 <Building2 className="w-5 h-5 text-[#76C043]" />
               </div>
-              <div>
-                <h4 className="text-base font-bold">
+              <div className="min-w-0">
+                <h4 className="text-base font-bold truncate">
                   {editingAccount ? "Edit Bank Account" : "Add Store Bank Account"}
                 </h4>
                 <p className="text-[11px] text-slate-300">Syncs directly with MongoDB database</p>
               </div>
             </div>
-            <button onClick={() => setIsBankModalOpen(false)} className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white">
-              <X className="w-4 h-4" />
-            </button>
           </div>
 
           <form onSubmit={handleSaveBankForm} className="p-5 space-y-3.5 bg-slate-50 text-xs">

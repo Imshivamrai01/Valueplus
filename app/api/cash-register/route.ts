@@ -31,6 +31,7 @@ export async function POST(req: Request) {
       targetBankAccount,
       handedTo,
       recordedBy,
+      time, // Explicit handover/transaction time — e.g. the cashier backdating when cash actually changed hands, not just "now"
     } = body;
 
     if (!type || !category || !amount || Number(amount) <= 0) {
@@ -56,7 +57,7 @@ export async function POST(req: Request) {
       category,
       amount: Number(amount),
       date: date || todayStr,
-      time: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
+      time: time || new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
       referenceNo: genRef,
       description: description.trim(),
       partyName: partyName || (category === "MD_HANDOVER" ? handedTo : targetBankAccount) || "Showroom Expense",

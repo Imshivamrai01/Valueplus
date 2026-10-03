@@ -11,6 +11,7 @@ export interface IDayClose extends Document {
   difference: number;
   notes?: string;
   closedBy: string;
+  closedByRole?: string;
   closedAt: string;
 }
 
@@ -23,6 +24,7 @@ const DayCloseSchema = new Schema<IDayClose>(
     difference: { type: Number, required: true },
     notes: { type: String, default: "" },
     closedBy: { type: String, required: true },
+    closedByRole: { type: String, default: "" },
     closedAt: { type: String, required: true },
   },
   { timestamps: true, collection: "day_closes" }

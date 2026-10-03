@@ -31,7 +31,10 @@ export async function GET(req: Request) {
   try {
     await connectToDatabase();
     const pendingDate = await getPendingDate();
-    return NextResponse.json({ success: true, data: { pendingDate } });
+    // Last 60 days of closed audits — so Admin/Manager can see who actually
+    // did each day's cash count, when, and whether it matched the system.
+    const history = await DayClose.find({}).sort({ date: -1 }).limit(60).lean();
+    return NextResponse.json({ success: true, data: { pendingDate, history } });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
@@ -66,6 +69,7 @@ export async function POST(req: Request) {
       difference: countedCash - systemExpectedCash,
       notes: body.notes || "",
       closedBy: body.closedBy || "Admin / Cashier",
+      closedByRole: body.closedByRole || "",
       closedAt: new Date().toISOString(),
     });
 

@@ -50,6 +50,7 @@ import { AttendancePunchWidget } from "@/components/shared/AttendancePunchWidget
 import { useBranch } from "@/context/BranchContext";
 import { useSession } from "next-auth/react";
 import { SalesmanDashboardView } from "@/components/dashboard/SalesmanDashboardView";
+import { CashHandoverCard } from "@/components/dashboard/CashHandoverCard";
 import { ProductLedgerModal } from "@/components/ProductLedgerModal";
 import { ExportMenu } from "@/components/shared/ExportMenu";
 
@@ -1346,6 +1347,11 @@ export default function DashboardPage() {
 
   return (
     <div className="page-container space-y-5 pb-10">
+      {/* ─── CASHIER-ONLY: TRANSFER CASH TO ADMIN ──────────────── */}
+      {userRole === "cashier" && (
+        <CashHandoverCard cashierName={session?.user?.name || "Cashier"} />
+      )}
+
       {/* ─── PENDING INVENTORY AUDIT WARNING BANNER ──────────────── */}
       {isAuditPending && (
         <div className="bg-gradient-to-r from-amber-500/20 via-orange-500/10 to-transparent border-l-4 border-amber-500 p-4 rounded-xl shadow-sm flex items-center justify-between gap-4">

@@ -10,9 +10,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { 
-  Search, Printer, Eye, Sparkles, FileText, CheckCircle2, Clock, Plus, 
+  Search, Printer, Eye, Sparkles, FileText, CheckCircle2, Clock, Plus,
   Building2, User, CreditCard, Receipt, MessageCircle, X, ShieldCheck,
-  ExternalLink, ArrowDownLeft, Landmark, Tag, Calendar
+  ExternalLink, ArrowDownLeft, Landmark, Tag, Calendar, Paperclip
 } from "lucide-react";
 import { FinanceDODocument } from "@/components/FinanceDODocument";
 import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/shared/date-range-filter";
@@ -474,6 +474,19 @@ export default function FinanceLedgerStandalonePage() {
                                 <Receipt className="w-3.5 h-3.5 text-[#30539C]" />
                                 <span>Bill</span>
                               </Link>
+                            )}
+
+                            {rec.uploadedPdfUrl && (
+                              <a
+                                href={rec.uploadedPdfUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="h-8 px-2.5 text-[11px] font-bold text-emerald-700 border border-emerald-200 bg-emerald-50/70 hover:bg-emerald-100 rounded-lg inline-flex items-center gap-1.5 transition-colors shadow-2xs whitespace-nowrap shrink-0"
+                                title="View uploaded DO attachment"
+                              >
+                                <Paperclip className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>Attachment</span>
+                              </a>
                             )}
                           </div>
                         </td>

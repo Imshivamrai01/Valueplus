@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { AutocompleteSearch } from "@/components/shared/autocomplete-search";
 import { 
   Receipt, Users, CreditCard, Sparkles, ShoppingCart, Plus, Trash2, Printer,
-  XCircle, Phone, UserCheck, UserPlus, X, Shield, AlertTriangle, FileText, CheckCircle2, Truck, Clock, ChevronsDownUp, Wallet
+  XCircle, Phone, UserCheck, UserPlus, X, Shield, AlertTriangle, FileText, CheckCircle2, Truck, Clock, ChevronsDownUp, Wallet, Upload
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -488,6 +488,7 @@ export function InvoiceCreationModal({
   // When on, the bill is divided across several modes and the rows must add up
   // to the amount payable before the invoice can be saved.
   const [isSplitPayment, setIsSplitPayment] = useState(false);
+  const [isUploadingFinanceDoc, setIsUploadingFinanceDoc] = useState(false);
   const [splitRows, setSplitRows] = useState<Array<{ mode: string; amount: string; txnId: string }>>([
     { mode: "Cash", amount: "", txnId: "" },
     { mode: "UPI", amount: "", txnId: "" },
@@ -974,6 +975,38 @@ export function InvoiceCreationModal({
       toast.error(error.message || "Failed to generate invoice");
     }
   });
+
+  const handleFinanceDocUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file again later
+    if (!file) return;
+
+    const allowed = ["image/jpeg", "image/png", "image/webp", "image/jpg", "application/pdf"];
+    if (!allowed.includes(file.type)) {
+      toast.error("Sirf JPG, PNG, WEBP image ya PDF file upload kar sakte hain.");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("File 10 MB se chhoti honi chahiye.");
+      return;
+    }
+
+    setIsUploadingFinanceDoc(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("folder", "valueplus/finance-docs");
+      const res = await fetch("/api/upload", { method: "POST", body: fd });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || "Upload failed");
+      setBillingForm((f: any) => ({ ...f, financePdfUrl: json.data.url }));
+      toast.success("DO attachment upload ho gaya.");
+    } catch (err: any) {
+      toast.error(err.message || "Upload failed, dobara try karein.");
+    } finally {
+      setIsUploadingFinanceDoc(false);
+    }
+  };
 
   const handleFinalSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1937,6 +1970,7 @@ export function InvoiceCreationModal({
                                     </div>
                                     <div className="text-right flex-shrink-0">
                                       <span className="font-black text-[#76C043] text-sm block">{formatCurrency(prod.sellingPrice || prod.rate || 0)}</span>
+                                      <span className="text-[9px] font-bold text-emerald-700 block">VSP: {formatCurrency(prod.vsp || prod.sellingPrice || prod.rate || 0)}</span>
                                       <span className="text-[9.5px] text-blue-600 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 mt-0.5 inline-block">
                                         + Select
                                       </span>
@@ -2771,8 +2805,34 @@ export function InvoiceCreationModal({
                       </Select>
                     </div>
                     <div>
-                      <Label className="font-bold text-orange-950">DO / Approval Attachment Link</Label>
-                      <Input placeholder="Attachment link or scan ref" value={billingForm.financePdfUrl} onChange={(e) => setBillingForm({ ...billingForm, financePdfUrl: e.target.value })} className="bg-white border-orange-300 mt-1" />
+                      <Label className="font-bold text-orange-950">DO / Approval Attachment (Link, Image or PDF)</Label>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Input placeholder="Attachment link or scan ref" value={billingForm.financePdfUrl} onChange={(e) => setBillingForm({ ...billingForm, financePdfUrl: e.target.value })} className="bg-white border-orange-300" />
+                        <label className={cn(
+                          "shrink-0 h-9 px-3 rounded-md border border-orange-300 bg-white text-orange-800 text-xs font-bold flex items-center gap-1.5 cursor-pointer hover:bg-orange-50",
+                          isUploadingFinanceDoc && "opacity-60 pointer-events-none"
+                        )}>
+                          <Upload className="w-3.5 h-3.5" />
+                          {isUploadingFinanceDoc ? "Uploading..." : "Upload"}
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp,image/jpg,application/pdf"
+                            className="hidden"
+                            onChange={handleFinanceDocUpload}
+                            disabled={isUploadingFinanceDoc}
+                          />
+                        </label>
+                      </div>
+                      {billingForm.financePdfUrl && (
+                        <a
+                          href={billingForm.financePdfUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[11px] text-blue-600 hover:underline font-semibold mt-1 inline-block"
+                        >
+                          📎 View attached file
+                        </a>
+                      )}
                     </div>
                   </div>
                 </div>

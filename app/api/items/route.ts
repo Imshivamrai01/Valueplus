@@ -124,11 +124,21 @@ export async function PUT(req: Request) {
   try {
     const body = await req.json();
     await connectToDatabase();
-    const payload = {
+    const payload: any = {
       ...body,
       hsnCode: body.hsn || body.hsnCode,
     };
-    
+
+    // currentStock/showroomStock/godownStock are derived from stockByWarehouse
+    // by lib/stock.ts on every real stock movement (purchase, sale, transfer,
+    // adjustment) — writing them directly from an edit form here would silently
+    // desync them from stockByWarehouse until the next movement recomputes and
+    // overwrites whatever was typed in. Stock corrections belong in Inventory
+    // Adjustment, which goes through that same helper.
+    delete payload.currentStock;
+    delete payload.showroomStock;
+    delete payload.godownStock;
+
     if (!payload.code) {
       return NextResponse.json({ success: false, error: "Item code is required for update" }, { status: 400 });
     }

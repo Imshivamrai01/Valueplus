@@ -32,6 +32,21 @@ export async function getCashRegisterSummary() {
 
   const financeRecords = await FinanceTransaction.find({}).sort({ createdAt: -1 });
 
+  // FinanceTransaction itself never recorded how the down payment was actually
+  // collected — only the Invoice it came from does (financeDownPaymentMode).
+  // Without this join, every finance down payment got labelled "Cash" here
+  // regardless of whether it was really UPI/card/online.
+  const financeInvoiceNumbers = financeRecords.map((f: any) => f.invoiceNumber).filter(Boolean);
+  const linkedInvoices = financeInvoiceNumbers.length
+    ? await Invoice.find(
+        { invoiceNumber: { $in: financeInvoiceNumbers } },
+        { invoiceNumber: 1, financeDownPaymentMode: 1 }
+      ).lean()
+    : [];
+  const downPaymentModeByInvoice = new Map(
+    linkedInvoices.map((i: any) => [i.invoiceNumber, i.financeDownPaymentMode])
+  );
+
   const consolidatedLedger: any[] = [];
   const seenRefs = new Set<string>();
 
@@ -88,7 +103,9 @@ export async function getCashRegisterSummary() {
   });
 
   financeRecords.forEach((f) => {
-    if (Number(f.customerDownPayment) > 0) {
+    const downPaymentMode = downPaymentModeByInvoice.get(f.invoiceNumber) || "";
+    const isDownPaymentCash = /cash/i.test(downPaymentMode);
+    if (Number(f.customerDownPayment) > 0 && isDownPaymentCash) {
       const dpRef = `DP-${f.doId}`;
       if (!seenRefs.has(dpRef)) {
         seenRefs.add(dpRef);

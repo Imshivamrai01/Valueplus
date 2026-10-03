@@ -339,21 +339,21 @@ export default function EstimatesPage() {
         <Dialog open={!!selectedEstimate} onOpenChange={() => setSelectedEstimate(null)}>
           <DialogContent className="max-w-4xl p-0 rounded-2xl border-none shadow-2xl overflow-hidden bg-slate-50/50">
             {/* Header */}
-            <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-6 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/20">
+            <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-6 pr-14 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/20 shrink-0">
                   <FileText className="w-6 h-6 text-yellow-400" />
                 </div>
-                <div>
-                  <h3 className="text-xl font-bold tracking-tight">Estimate: {selectedEstimate.estimateNumber || selectedEstimate.estimateNo}</h3>
-                  <p className="text-xs text-slate-300 mt-0.5 flex items-center gap-2">
-                    <CalendarDays className="w-3.5 h-3.5" /> Date: {formatDate(selectedEstimate.date)} 
-                    <span className="opacity-50">|</span> 
+                <div className="min-w-0">
+                  <h3 className="text-xl font-bold tracking-tight truncate">Estimate: {selectedEstimate.estimateNumber || selectedEstimate.estimateNo}</h3>
+                  <p className="text-xs text-slate-300 mt-0.5 flex items-center gap-2 flex-wrap">
+                    <CalendarDays className="w-3.5 h-3.5" /> Date: {formatDate(selectedEstimate.date)}
+                    <span className="opacity-50">|</span>
                     Valid Until: {formatDate(selectedEstimate.expiryDate)}
                   </p>
                 </div>
               </div>
-              <Badge variant="outline" className={`text-sm py-1 px-3 border-white/30 ${selectedEstimate.status === "Converted" ? "bg-emerald-500 text-white" : "bg-white/10 text-white"}`}>
+              <Badge variant="outline" className={`text-sm py-1 px-3 border-white/30 shrink-0 ${selectedEstimate.status === "Converted" ? "bg-emerald-500 text-white" : "bg-white/10 text-white"}`}>
                 {selectedEstimate.status ? selectedEstimate.status.toUpperCase() : "DRAFT"}
               </Badge>
             </div>

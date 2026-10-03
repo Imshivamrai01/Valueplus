@@ -82,6 +82,19 @@ export default function BankAccountsAndCashRegisterPage() {
     },
   });
 
+  // 2b. Daily Cash Audit (Day-Close) history — so Admin/Manager can see which
+  // day was closed, by whom, and whether the physical count matched the system.
+  const { data: dayCloseData, isLoading: isLoadingAudits } = useQuery({
+    queryKey: ["day-close-status"],
+    queryFn: async () => {
+      const res = await fetch("/api/day-close");
+      const json = await res.json();
+      return json.success ? json.data : null;
+    },
+  });
+  const auditHistory = dayCloseData?.history || [];
+  const auditPendingDate = dayCloseData?.pendingDate || null;
+
   const liveCashBalance = cashRegisterData?.currentBalance || 0;
   const todayInflow = cashRegisterData?.todayInflow || 0;
   const todayOutflow = cashRegisterData?.todayOutflow || 0;
@@ -379,6 +392,66 @@ export default function BankAccountsAndCashRegisterPage() {
               </span>
               <span className="text-[10px] text-slate-400">Tea, logistics & petty cash</span>
             </div>
+          </div>
+        </div>
+
+        {/* ─── 1B. DAILY CASH AUDIT (DAY-CLOSE) HISTORY ─── */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200/90 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+                <ShieldCheck className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Daily Cash Audit History</h3>
+                <p className="text-xs text-slate-500">Jis din jo audit hua, kisne kiya, kitna cash gina gaya aur system se match hua ya nahi.</p>
+              </div>
+            </div>
+            {auditPendingDate && (
+              <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 font-bold text-[11px]">
+                ⚠️ {auditPendingDate} ka audit abhi baaki hai
+              </Badge>
+            )}
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b">
+                <tr>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase">Date</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase">Done By</th>
+                  <th className="px-3 py-2.5 text-right text-xs font-semibold text-muted-foreground uppercase">Counted Cash</th>
+                  <th className="px-3 py-2.5 text-right text-xs font-semibold text-muted-foreground uppercase">System Expected</th>
+                  <th className="px-3 py-2.5 text-right text-xs font-semibold text-muted-foreground uppercase">Difference</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase">Submitted At</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase">Notes</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {isLoadingAudits ? (
+                  <tr><td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">Loading audit history...</td></tr>
+                ) : auditHistory.length === 0 ? (
+                  <tr><td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">Abhi tak koi daily audit submit nahi hua.</td></tr>
+                ) : (
+                  auditHistory.map((a: any) => (
+                    <tr key={a._id} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-3 py-2.5 font-mono font-bold text-[#3F63AD]">{a.date}</td>
+                      <td className="px-3 py-2.5">
+                        <p className="font-semibold text-foreground">{a.closedBy}</p>
+                        {a.closedByRole && <p className="text-[10px] text-slate-400 capitalize">{a.closedByRole}</p>}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-mono font-bold">{formatCurrency(a.countedCash)}</td>
+                      <td className="px-3 py-2.5 text-right font-mono text-slate-500">{formatCurrency(a.systemExpectedCash)}</td>
+                      <td className={`px-3 py-2.5 text-right font-mono font-bold ${Math.abs(a.difference) < 1 ? "text-emerald-600" : "text-rose-600"}`}>
+                        {a.difference > 0 ? "+" : ""}{formatCurrency(a.difference)}
+                      </td>
+                      <td className="px-3 py-2.5 text-xs text-muted-foreground">{new Date(a.closedAt).toLocaleString("en-IN")}</td>
+                      <td className="px-3 py-2.5 text-xs text-muted-foreground max-w-[200px] truncate">{a.notes || "—"}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
 

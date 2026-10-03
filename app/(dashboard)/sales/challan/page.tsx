@@ -692,17 +692,17 @@ export default function DeliveryChallanPage() {
 
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
         <DialogContent className="max-w-4xl max-h-[94vh] overflow-y-auto p-0 rounded-2xl shadow-2xl border border-slate-200">
-          <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-6 rounded-t-2xl flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/20">
+          <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-6 pr-14 rounded-t-2xl flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/20 shrink-0">
                 <Truck className="w-6 h-6 text-[#76C043]" />
               </div>
-              <div>
-                <h3 className="text-xl font-bold tracking-tight">Issue Delivery & Return Challan</h3>
+              <div className="min-w-0">
+                <h3 className="text-xl font-bold tracking-tight truncate">Issue Delivery & Return Challan</h3>
                 <p className="text-xs text-slate-300 mt-0.5">GIDA Hub Logistics & Replacement Transit.</p>
               </div>
             </div>
-            <div className="flex items-center gap-2 bg-white/10 p-1.5 rounded-xl border border-white/15">
+            <div className="flex items-center gap-2 bg-white/10 p-1.5 rounded-xl border border-white/15 shrink-0">
               <button onClick={() => setFormData({ ...formData, flowType: "CNR" })} className={cn("px-3 py-1 rounded-lg text-xs font-black", formData.flowType === "CNR" ? "bg-amber-500 text-white" : "text-slate-300")}>CNR</button>
               <button onClick={() => setFormData({ ...formData, flowType: "PR" })} className={cn("px-3 py-1 rounded-lg text-xs font-black", formData.flowType === "PR" ? "bg-[#30539C] text-white" : "text-slate-300")}>PR</button>
             </div>

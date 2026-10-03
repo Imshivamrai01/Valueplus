@@ -18,6 +18,11 @@ export interface IItem extends Document {
   gstRate: number;
   purchasePrice: number;
   sellingPrice: number;
+  /** Value Plus Selling Price — the price Value Plus suggests this item be
+   *  sold at. Reference only: billing can still charge any amount, this
+   *  doesn't constrain it (unlike minSellingPrice). Defaults to sellingPrice
+   *  when not explicitly set, but is independently editable from there. */
+  vsp?: number;
   minSellingPrice?: number;
   maxDiscountPercent?: number;
   maxDiscountAmount?: number;
@@ -72,6 +77,7 @@ const ItemSchema = new Schema<IItem>(
     gstRate: { type: Number, default: 18 },
     purchasePrice: { type: Number, required: true },
     sellingPrice: { type: Number, required: true },
+    vsp: { type: Number, default: 0 },
     minSellingPrice: { type: Number, default: 0 },
     maxDiscountPercent: { type: Number, default: 0 },
     maxDiscountAmount: { type: Number, default: 0 },
