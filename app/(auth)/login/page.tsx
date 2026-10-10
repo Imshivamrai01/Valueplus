@@ -5,7 +5,7 @@ import Link from "next/link";
 import { signIn, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Eye, EyeOff, ArrowRight, Shield, Zap, BarChart2, Lock } from "lucide-react";
+import { Eye, EyeOff, ArrowRight, Shield, Zap, BarChart2, Lock, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -310,6 +310,16 @@ export default function LoginPage() {
           </div>
 
           <div className="mt-6 flex flex-col items-center gap-3 text-center">
+            {/* One Android app for every role — it opens this same site and each
+                person signs in with their own account. */}
+            <a
+              href="/downloads/valueplus.apk"
+              download="ValuePlus.apk"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#1B2537] hover:bg-[#243552] text-white text-xs font-bold shadow-md transition-colors"
+            >
+              <Download className="w-4 h-4 text-[#76C043]" />
+              Download Android App
+            </a>
             <a
               href="https://www.shineinfosolutions.in/"
               target="_blank"
