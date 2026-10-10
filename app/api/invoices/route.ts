@@ -8,7 +8,7 @@ import Warehouse from "@/models/Warehouse";
 import Estimate from "@/models/Estimate";
 import DeletedInvoice from "@/models/DeletedInvoice";
 import AuditLog from "@/models/AuditLog";
-import { derivePaymentModeLabel, isCollectedMode } from "@/lib/payment-modes";
+import { derivePaymentModeLabel, isCollectedMode, isFinanceInvoice, classifyPaymentMode } from "@/lib/payment-modes";
 import { derivePanFromGstin } from "@/lib/gst";
 import { getActor } from "@/lib/requirePermission";
 import { authoriseDestructiveAction } from "@/lib/destructiveAction";
@@ -425,14 +425,22 @@ export async function POST(req: Request) {
       }
 
       // 4.6 Register Finance Transaction ONLY if Payment Mode is Finance
-      if (body.paymentMode === "Finance") {
+      //
+      // A split bill settled partly through finance is saved with paymentMode
+      // "Multiple", so it never matched the check below and its loan never reached
+      // the payouts screen. Its finance row is the loan; the other rows are already
+      // counted through `payments`, so no down payment is repeated on the DO.
+      const financeSplitAmount = splitRows
+        .filter((p: any) => classifyPaymentMode(p.mode) === "finance")
+        .reduce((s: number, p: any) => s + p.amount, 0);
+      if (body.paymentMode === "Finance" || financeSplitAmount > 0) {
         const FinanceTransaction = (await import("@/models/FinanceTransaction")).default;
         const doId = body.financeDoId || `DO-2026-${Math.floor(100000000 + Math.random() * 900000000)}`;
-        
+
         const existingDO = await FinanceTransaction.findOne({ doId });
         if (!existingDO) {
-          const grossLoan = Number(body.financeGrossLoan || body.total || 0);
-          const downPayment = Number(body.downPayment || body.financeDownPayment || 0);
+          const grossLoan = financeSplitAmount > 0 ? financeSplitAmount : Number(body.financeGrossLoan || body.total || 0);
+          const downPayment = financeSplitAmount > 0 ? 0 : Number(body.downPayment || body.financeDownPayment || 0);
           const subsidy = Number(body.financeDealerSubsidy || Math.round(grossLoan * 0.0354));
           const deductions = downPayment + subsidy + 270; // Matching typical DO calculations
           const netDisb = Math.max(0, grossLoan - deductions);
@@ -463,7 +471,9 @@ export async function POST(req: Request) {
             customerDownPayment: downPayment,
             totalDeductions: deductions,
             netDisbursement: netDisb,
-            approvalStatus: body.financeApprovalStatus || "Pending",
+            // The finance form is hidden while Split Payment is on, so whatever status
+            // it last held is not something the cashier chose for this bill.
+            approvalStatus: financeSplitAmount > 0 ? "Pending" : body.financeApprovalStatus || "Pending",
             uploadedPdfUrl: body.financePdfUrl || "",
           });
         }
@@ -713,6 +723,47 @@ export async function PUT(req: Request) {
         );
       }
 
+      // A financed bill's balance is owed by the finance company, not the customer.
+      // "Clearing" it is the financier's payout reaching a store bank account, so it
+      // is recorded as a finance disbursement rather than a khata receipt — which
+      // used to count the loan a second time, as NEFT revenue on top of Finance.
+      if (isFinanceInvoice(existingInvoice)) {
+        if (!(Number(existingInvoice.balanceAmount) > 0)) {
+          return NextResponse.json({ success: false, error: "This finance bill has no pending payout." }, { status: 400 });
+        }
+        if (!body.bankAccountId && !body.bankAccountRef) {
+          return NextResponse.json(
+            { success: false, error: "Select the bank account the finance payout was credited to." },
+            { status: 400 }
+          );
+        }
+        const { recordFinancePayout } = await import("@/lib/financeSettlement");
+        const result = await recordFinancePayout({
+          invoiceNumber: existingInvoice.invoiceNumber,
+          amount: Number(body.clearedAmount) || undefined,
+          bankAccountId: body.bankAccountId,
+          bankAccountRef: body.bankAccountRef,
+          utr: body.dueClearedTxnId,
+          date: body.paymentReceivedDate,
+          by: body.dueClearedBy,
+          remarks: body.dueClearedNotes,
+        });
+        return NextResponse.json({
+          success: true,
+          financePayout: true,
+          message: `Finance payout of ₹${result.amount.toLocaleString("en-IN")} recorded${result.bankAccountRef ? ` in ${result.bankAccountRef}` : ""}`,
+          data: result.invoice,
+        });
+      }
+
+      // Money that did not come in as cash landed in a bank account — remember which.
+      const { resolveBankAccount, bankAccountLabel, creditBankAccount } = await import("@/lib/financeSettlement");
+      const clearedIntoAccount = isCollectedMode(body.dueClearedMode) && classifyPaymentMode(body.dueClearedMode) !== "cash"
+        ? await resolveBankAccount(body.bankAccountId, body.bankAccountRef)
+        : null;
+      const clearedBankAccountId = clearedIntoAccount ? String(clearedIntoAccount._id) : "";
+      const clearedBankAccountRef = clearedIntoAccount ? bankAccountLabel(clearedIntoAccount) : "";
+
       // Clamped so a typo or stale client value can never collect more than
       // is actually outstanding, or go negative. Defaulting to the full
       // balance (when nothing was specified) keeps the old "clear it all"
@@ -733,9 +784,12 @@ export async function PUT(req: Request) {
           ? "Due fully settled and cleared"
           : `Partial due payment of ₹${amountToApply.toLocaleString("en-IN")} collected — ₹${existingInvoice.balanceAmount.toLocaleString("en-IN")} still outstanding`);
       existingInvoice.dueClearedTxnId = body.dueClearedTxnId || `CLR-${Date.now()}`;
+      existingInvoice.dueClearedBankAccountId = clearedBankAccountId;
+      existingInvoice.dueClearedBankAccount = clearedBankAccountRef;
       existingInvoice.lastModifiedReason = "due-clear";
 
       const saved = await existingInvoice.save();
+      await creditBankAccount(clearedBankAccountId, amountToApply);
 
       // Deduct from customer's outstanding balance
       if (existingInvoice.customerId && amountToApply > 0) {
@@ -756,8 +810,11 @@ export async function PUT(req: Request) {
           paymentMode: body.dueClearedMode || "Cash",
           date: new Date().toISOString().split("T")[0],
           referenceId: existingInvoice.invoiceNumber,
-          notes: `${isFullyCleared ? "Due balance cleared" : "Partial due payment collected"} for Invoice #${existingInvoice.invoiceNumber} via ${body.dueClearedMode || "Cash"}. Txn/Ref: ${body.dueClearedTxnId || "N/A"}`,
-          type: "received"
+          notes: `${isFullyCleared ? "Due balance cleared" : "Partial due payment collected"} for Invoice #${existingInvoice.invoiceNumber} via ${body.dueClearedMode || "Cash"}${clearedBankAccountRef ? ` into ${clearedBankAccountRef}` : ""}. Txn/Ref: ${body.dueClearedTxnId || "N/A"}`,
+          type: "received",
+          bankAccountId: clearedBankAccountId,
+          bankAccountRef: clearedBankAccountRef,
+          bankTxnRef: body.dueClearedTxnId || "",
         });
       } catch (txErr) {
         console.warn("Notice: PaymentTransaction log for due clearance:", txErr);

@@ -11,6 +11,10 @@ export interface IPaymentTransaction extends Document {
   referenceId?: string; // e.g. Invoice Number or Bill Number
   notes?: string;
   type: "received" | "paid"; // received from customer, paid to supplier
+  // Which store bank account the money landed in (non-cash receipts, finance payouts)
+  bankAccountId?: string;
+  bankAccountRef?: string;
+  bankTxnRef?: string; // UTR / bank reference
 }
 
 const PaymentTransactionSchema = new Schema<IPaymentTransaction>(
@@ -25,6 +29,9 @@ const PaymentTransactionSchema = new Schema<IPaymentTransaction>(
     referenceId: { type: String },
     notes: { type: String },
     type: { type: String, enum: ["received", "paid"], required: true },
+    bankAccountId: { type: String, default: "" },
+    bankAccountRef: { type: String, default: "" },
+    bankTxnRef: { type: String, default: "" },
   },
   { timestamps: true, collection: "payment_transactions" }
 );

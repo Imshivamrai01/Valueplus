@@ -72,6 +72,7 @@ export interface IFinanceTransaction extends Document {
   approvalDate?: string;
   actualReceivedAmount?: number;
   bankAccountRef?: string;
+  bankAccountId?: string;
   transactionRef?: string;
   paymentReceivedDate?: string;
   remarks?: string;
@@ -161,6 +162,7 @@ const FinanceTransactionSchema = new Schema<IFinanceTransaction>(
     approvalDate: { type: String },
     actualReceivedAmount: { type: Number, default: 0 },
     bankAccountRef: { type: String, default: "" },
+    bankAccountId: { type: String, default: "" },
     transactionRef: { type: String, default: "" },
     paymentReceivedDate: { type: String },
     remarks: { type: String, default: "" },

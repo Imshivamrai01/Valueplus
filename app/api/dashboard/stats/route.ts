@@ -9,7 +9,48 @@ import PurchaseEntry from "@/models/PurchaseEntry";
 import PurchaseOrder from "@/models/PurchaseOrder";
 import PaymentTransaction from "@/models/PaymentTransaction";
 import FinanceTransaction from "@/models/FinanceTransaction";
-import { resolveInvoicePayments, classifyPaymentMode } from "@/lib/payment-modes";
+import { resolveInvoicePayments, classifyPaymentMode, isFinanceInvoice, isFinanceSettlementReceipt } from "@/lib/payment-modes";
+
+const BUCKET_LABELS: Record<string, string> = {
+  cash: "Cash",
+  upi: "UPI",
+  card: "Card",
+  online: "NEFT/IMPS",
+  finance: "Finance",
+  due: "Due",
+  unclassified: "Unclassified",
+};
+
+/**
+ * One row per invoice. The per-mode lists carry one row for every mode a bill was
+ * settled through, so a ₹10,000 cash + ₹40,000 UPI bill is two rows with the same
+ * invoice number — right for "how much cash came in", wrong for "what was sold".
+ * This folds them back into a single row whose amount is the sum of its parts and
+ * whose mode names each of them; the parts themselves are in `details`.
+ */
+function groupTxnsByInvoice(rows: any[]): any[] {
+  const grouped = new Map<string, any>();
+  for (const t of rows) {
+    const key = String(t.id || `${t.customer}-${t.time}`);
+    const label = BUCKET_LABELS[t.bucket] || String(t.mode || "").split(" ")[0] || "Cash";
+    const existing = grouped.get(key);
+    if (!existing) {
+      grouped.set(key, { ...t, amount: Number(t.amount) || 0, modeLabels: [label], partCount: 1 });
+    } else {
+      existing.amount += Number(t.amount) || 0;
+      existing.partCount += 1;
+      if (!existing.modeLabels.includes(label)) existing.modeLabels.push(label);
+      // A bill is a receipt-only row only if every part of it is one.
+      existing.isReceipt = Boolean(existing.isReceipt && t.isReceipt);
+    }
+  }
+  return Array.from(grouped.values()).map(({ modeLabels, ...g }) => ({
+    ...g,
+    mode: modeLabels.length > 1 ? modeLabels.join(" + ") : g.partCount > 1 ? modeLabels[0] : g.mode,
+    paidAmount: g.amount,
+    isSplit: modeLabels.length > 1,
+  }));
+}
 
 export async function GET(request: Request) {
   try {
@@ -27,7 +68,7 @@ export async function GET(request: Request) {
       Supplier.find({}).sort({ createdAt: -1 }).lean(),
       Expense.find({}).sort({ createdAt: -1 }).lean(),
       PaymentTransaction.find({}).sort({ createdAt: -1 }).lean(),
-      FinanceTransaction.find({}, { invoiceNumber: 1, approvalStatus: 1 }).lean(),
+      FinanceTransaction.find({}, { invoiceNumber: 1, approvalStatus: 1, financeProvider: 1, doId: 1, bankAccountRef: 1, transactionRef: 1, paymentReceivedDate: 1, actualReceivedAmount: 1 }).lean(),
       PurchaseEntry.find({ type: { $ne: "debit-note" }, status: { $ne: "cancelled" } }).sort({ createdAt: -1 }).lean(),
       PurchaseOrder.find({}).sort({ createdAt: -1 }).lean(),
     ]);
@@ -39,13 +80,44 @@ export async function GET(request: Request) {
     let allExpenses = allExpensesRaw;
     let allPayments = allPaymentsRaw;
 
-    // Invoices whose finance loan amount has actually been credited to the store's bank
-    // account — once disbursed, that amount stops being "pending Finance" revenue and
-    // is instead counted as realized "Online" revenue on its actual credit date (see the
-    // Finance Disbursement payment-ledger loop below).
-    const disbursedInvoiceNumbers = new Set(
-      allFinanceTxnsRaw.filter((f: any) => f.approvalStatus === "Disbursed").map((f: any) => f.invoiceNumber)
-    );
+    // ─── FINANCE RECEIVABLES ────────────────────────────────────────────────
+    // A financed sale is counted once, under Finance, on the day it is billed. The
+    // financier's payout arriving later is that same money reaching the bank — a
+    // settlement, not a second sale. It used to be added again as NEFT/"due cleared"
+    // revenue, so a ₹20,000 loan showed as ₹40,000 once its due was cleared. The
+    // payout is now tracked only as the loan's status (pending / received, and into
+    // which bank account) and is kept out of every revenue bucket.
+    const financeRecordByInvoice = new Map<string, any>();
+    for (const f of allFinanceTxnsRaw as any[]) {
+      if (f.invoiceNumber) financeRecordByInvoice.set(f.invoiceNumber, f);
+    }
+    const financeInvoiceNumbers = new Set<string>([
+      ...financeRecordByInvoice.keys(),
+      ...allInvoicesRaw.filter((inv: any) => isFinanceInvoice(inv)).map((inv: any) => inv.invoiceNumber),
+    ]);
+    const isFinanceSettlement = (p: any) => isFinanceSettlementReceipt(p, financeInvoiceNumbers);
+    const invoiceByNumber = new Map<string, any>(allInvoicesRaw.map((inv: any) => [inv.invoiceNumber, inv]));
+    const financeSettlementByInvoice = new Map<string, any>();
+    for (const p of allPaymentsRaw as any[]) {
+      if (p.referenceId && isFinanceSettlement(p) && !financeSettlementByInvoice.has(p.referenceId)) {
+        financeSettlementByInvoice.set(p.referenceId, p);
+      }
+    }
+    const financePayoutOf = (inv: any) => {
+      const record = financeRecordByInvoice.get(inv.invoiceNumber);
+      const receipt = financeSettlementByInvoice.get(inv.invoiceNumber);
+      const disbursed = record?.approvalStatus === "Disbursed" || record?.approvalStatus === "Reconciled";
+      const received = disbursed || Boolean(receipt) || !(Number(inv.balanceAmount) > 0);
+      return {
+        received,
+        provider: record?.financeProvider || inv.financeProvider || "",
+        doId: record?.doId || inv.financeDoId || "",
+        bankAccount: record?.bankAccountRef || inv.financeBankAccount || receipt?.bankAccountRef || "",
+        utr: record?.transactionRef || inv.financeBankRef || receipt?.bankTxnRef || "",
+        date: record?.paymentReceivedDate || inv.financePayoutDate || receipt?.date || "",
+        amount: Number(record?.actualReceivedAmount) || Number(inv.financeActualDisbursement) || Number(receipt?.amount) || 0,
+      };
+    };
 
     // Multi-Warehouse Isolation Filter
     // Only enforce strict per-warehouse isolation on an entity type once records of that
@@ -169,7 +241,7 @@ export async function GET(request: Request) {
     // Finance Disbursement entries are bank settlements from the finance company, not a
     // customer clearing an owed due, so they're excluded from this "dues collected" metric
     // (they're still counted as revenue via the Online bucket below).
-    const isGenuineDueReceipt = (p: any) => p.type === "received" && p.partyType === "Customer" && p.paymentMode !== "Finance Disbursement";
+    const isGenuineDueReceipt = (p: any) => p.type === "received" && p.partyType === "Customer" && !isFinanceSettlement(p);
     const duesCollected = paymentsInRange
       .filter(isGenuineDueReceipt)
       .reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
@@ -180,8 +252,20 @@ export async function GET(request: Request) {
     // `duesCollected` above counts every customer receipt including the payment
     // taken at billing time, so it cannot answer "how much khata came in today".
     const dueClearanceReceipts = paymentsInRange.filter(
-      (p: any) => p.type === "received" && String(p.transactionId || "").startsWith("TXN-DUE-")
+      (p: any) => p.type === "received" && String(p.transactionId || "").startsWith("TXN-DUE-") && !isFinanceSettlement(p)
     );
+
+    // Finance payouts that reached the bank in this period — shown beside the
+    // Finance figure, never added to it or to any other bucket.
+    const financePayoutReceipts = paymentsInRange.filter(isFinanceSettlement);
+    const financeReceivedRevenue = financePayoutReceipts.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+    const financeReceivedCount = financePayoutReceipts.length;
+    const financeReceivedByAccount: Record<string, number> = {};
+    for (const p of financePayoutReceipts as any[]) {
+      const account =
+        p.bankAccountRef || financeRecordByInvoice.get(p.referenceId)?.bankAccountRef || "Bank account not recorded";
+      financeReceivedByAccount[account] = (financeReceivedByAccount[account] || 0) + (Number(p.amount) || 0);
+    }
     const dueClearedRevenue = dueClearanceReceipts.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
     const dueClearedCount = dueClearanceReceipts.length;
     // Which mode the khata was settled in — the same money is already inside that
@@ -218,6 +302,18 @@ export async function GET(request: Request) {
     let dueSalesCount = 0;
     let duePendingRevenue = 0; // of that credit, how much is still outstanding
     let duePendingCount = 0;
+    // Of the finance sales billed in this period: how much the financier still owes.
+    let financePendingRevenue = 0;
+    let financePendingCount = 0;
+    // Every part of every bill's settlement, keyed by invoice number — what the
+    // "payment details" popup shows when one row of a grouped list is opened.
+    const paymentDetails: Record<string, { id: string; customer: string; total: number; date: string; status: string; parts: any[] }> = {};
+    const detailFor = (id: string, seed: { customer?: string; total?: number; date?: string; status?: string }) => {
+      if (!paymentDetails[id]) {
+        paymentDetails[id] = { id, customer: seed.customer || "", total: Number(seed.total) || 0, date: seed.date || "", status: seed.status || "", parts: [] };
+      }
+      return paymentDetails[id];
+    };
 
     const cashTxns: any[] = [];
     const upiTxns: any[] = [];
@@ -250,9 +346,11 @@ export async function GET(request: Request) {
     }
 
     // Set of invoice numbers that already have separate PaymentTransaction records
+    // A finance payout is not the customer's own payment, so it must not make the
+    // invoice look as though its upfront collection was already receipted.
     const paymentInvoiceRefs = new Set(
       allPayments
-        .filter((p: any) => p.referenceId)
+        .filter((p: any) => p.referenceId && !isFinanceSettlement(p))
         .map((p: any) => p.referenceId)
     );
 
@@ -270,7 +368,9 @@ export async function GET(request: Request) {
         const actualDue = due > 0 ? due : total;
         dueRevenue += actualDue;
         dueCount += 1;
-        dueTxns.push({
+        // The due ledger is customer khata only. A financed bill's balance is owed
+        // by the finance company and is listed under Finance as a pending payout.
+        if (!isFinanceInvoice(inv)) dueTxns.push({
           id: inv.invoiceNumber,
           customer: inv.customerName,
           amount: total,
@@ -319,17 +419,37 @@ export async function GET(request: Request) {
       // from `balanceAmount` further above, for every invoice regardless of mode.
       // Counting them again here would double-count the outstanding amount.
       const splitRows = resolveInvoicePayments(inv);
-      const suppressCollected = hasSeparatePaymentReceipt || inv.status === "pending" || inv.status === "unpaid";
+      // A split bill never gets a receipt of its own at billing (its modes live on
+      // the invoice), so a receipt against it is later money — a due being cleared —
+      // and must not hide what was collected across its modes on the day.
+      const hasExplicitSplit = Array.isArray(inv.payments) && inv.payments.filter((p: any) => (Number(p?.amount) || 0) > 0).length > 1;
+      const suppressCollected = (hasSeparatePaymentReceipt && !hasExplicitSplit) || inv.status === "pending" || inv.status === "unpaid";
+      const isSplitInvoice = splitRows.filter((r) => r.bucket !== "due").length > 1;
+      const detail = detailFor(inv.invoiceNumber, { customer: inv.customerName, total, date: inv.date, status: inv.status });
+      const payout = financePayoutOf(inv);
 
       for (const row of splitRows) {
-        if (row.bucket === "due") continue;
+        if (row.bucket === "due") {
+          detail.parts.push({
+            kind: "due",
+            bucket: "due",
+            mode: row.mode || "Due / Credit",
+            amount: row.amount,
+            date: inv.date || "",
+            note: due > 0 ? `₹${Math.round(Math.min(row.amount, due)).toLocaleString("en-IN")} still pending` : "Cleared",
+          });
+          continue;
+        }
 
         if (row.bucket === "finance") {
-          // Only still "pending Finance" if the bank hasn't actually paid it out yet —
-          // once disbursed, this amount is counted as "Online" on its credit date instead
-          // (see the Finance Disbursement payment-ledger loop further below).
-          if (disbursedInvoiceNumbers.has(inv.invoiceNumber)) continue;
+          // Counted here, once, whether or not the financier has paid out yet. The
+          // payout is this row's status, not another transaction.
           financeRevenue += row.amount;
+          if (!payout.received) {
+            financePendingRevenue += row.amount;
+            financePendingCount += 1;
+          }
+          const financeMode = (inv.paymentMode && inv.financeCompany) ? `${inv.paymentMode} (${inv.financeCompany})` : (row.mode || "Finance (Bajaj / HDB)");
           financeTxns.push({
             id: inv.invoiceNumber,
             customer: inv.customerName,
@@ -337,19 +457,51 @@ export async function GET(request: Request) {
             paidAmount: paid,
             dueAmount: due,
             time: inv.date ? `${inv.date} 04:45 PM` : "Today",
-            mode: (inv.paymentMode && inv.financeCompany) ? `${inv.paymentMode} (${inv.financeCompany})` : (row.mode || "Finance (Bajaj / HDB)"),
+            mode: financeMode,
+            bucket: "finance",
+            isSplit: isSplitInvoice,
             status: inv.status,
             dueDate: inv.dueDate,
-            balanceAmount: inv.balanceAmount || total,
+            balanceAmount: inv.balanceAmount || 0,
+            payoutStatus: payout.received ? "received" : "pending",
+            payoutBankAccount: payout.bankAccount,
+            payoutUtr: payout.utr,
+            payoutDate: payout.date,
+            payoutAmount: payout.amount,
             reprintCount: inv.reprintCount || 0,
             lastPrintedAt: inv.lastPrintedAt,
+          });
+          detail.parts.push({
+            kind: "finance",
+            bucket: "finance",
+            mode: payout.provider ? `Finance · ${payout.provider}` : financeMode,
+            amount: row.amount,
+            date: inv.date || "",
+            reference: payout.doId ? `DO ${payout.doId}` : "",
+            payoutStatus: payout.received ? "received" : "pending",
+            payoutBankAccount: payout.bankAccount,
+            payoutUtr: payout.utr,
+            payoutDate: payout.date,
+            payoutAmount: payout.amount,
           });
           continue;
         }
 
+        // Shown in the breakdown even when a receipt carries the revenue instead —
+        // unless that receipt is about to be listed as its own part further below.
+        if (!(hasSeparatePaymentReceipt && !hasExplicitSplit)) {
+          detail.parts.push({
+            kind: "billing",
+            bucket: row.bucket,
+            mode: row.mode || inv.paymentMode || "Cash",
+            amount: row.amount,
+            date: inv.date || "",
+            reference: row.txnId || row.reference || "",
+          });
+        }
+
         if (suppressCollected) continue;
 
-        const isSplitInvoice = splitRows.filter((r) => r.bucket !== "due").length > 1;
         const txn = {
           id: inv.invoiceNumber,
           customer: inv.customerName,
@@ -360,6 +512,8 @@ export async function GET(request: Request) {
           mode: isSplitInvoice
             ? `${row.mode} (Split ₹${Math.round(row.amount).toLocaleString("en-IN")} of ₹${Math.round(total).toLocaleString("en-IN")})`
             : (row.mode || inv.paymentMode || "Cash Counter"),
+          bucket: row.bucket,
+          isSplit: isSplitInvoice,
           status: inv.status,
           reprintCount: inv.reprintCount || 0,
           lastPrintedAt: inv.lastPrintedAt,
@@ -434,9 +588,7 @@ export async function GET(request: Request) {
       for (const row of splitRows) {
         if (row.bucket === "due") continue;
         if (row.bucket === "finance") {
-          if (!disbursedInvoiceNumbers.has(inv.invoiceNumber)) {
-            dailyRevenueMap[bucketKey].finance += row.amount;
-          }
+          dailyRevenueMap[bucketKey].finance += row.amount;
           continue;
         }
         dailyRevenueMap[bucketKey][row.bucket] += row.amount;
@@ -449,10 +601,23 @@ export async function GET(request: Request) {
 
     // Process Received Customer Payments into channel revenues & transaction lists
     paymentsInRange
-      .filter((p: any) => p.type === "received" && p.partyType === "Customer")
+      // Finance payouts are settlements of a sale already counted under Finance.
+      .filter((p: any) => p.type === "received" && p.partyType === "Customer" && !isFinanceSettlement(p))
       .forEach((p: any) => {
         const amt = Number(p.amount) || 0;
         if (amt <= 0) return;
+
+        // Make sure the bill this receipt belongs to has a breakdown entry even
+        // when the bill itself was raised outside the selected period.
+        if (p.referenceId) {
+          const refInv: any = invoiceByNumber.get(p.referenceId);
+          detailFor(p.referenceId, {
+            customer: refInv?.customerName || p.partyName,
+            total: refInv?.total,
+            date: refInv?.date,
+            status: refInv?.status,
+          });
+        }
 
         const rawMode = (p.paymentMode || "unclassified").toLowerCase();
 
@@ -466,6 +631,7 @@ export async function GET(request: Request) {
             dueAmount: 0,
             time: p.date ? `${p.date} (Receipt)` : "Today (Receipt)",
             mode: "Unclassified",
+            bucket: "unclassified",
             status: "paid",
             notes: p.notes || `No payment mode recorded (${p.referenceId || "Direct"})`,
             isReceipt: true,
@@ -488,6 +654,7 @@ export async function GET(request: Request) {
             dueAmount: 0,
             time: p.date ? `${p.date} (Receipt)` : "Today (Receipt)",
             mode: p.paymentMode || "Cash Counter",
+            bucket: "cash",
             status: "paid",
             notes: p.notes || `Due payment receipt (${p.referenceId || "Direct"})`,
             isReceipt: true,
@@ -510,6 +677,7 @@ export async function GET(request: Request) {
             dueAmount: 0,
             time: p.date ? `${p.date} (Receipt)` : "Today (Receipt)",
             mode: p.paymentMode || "UPI / QR Code",
+            bucket: "upi",
             status: "paid",
             notes: p.notes || `Due payment receipt (${p.referenceId || "Direct"})`,
             isReceipt: true,
@@ -532,6 +700,7 @@ export async function GET(request: Request) {
             dueAmount: 0,
             time: p.date ? `${p.date} (Receipt)` : "Today (Receipt)",
             mode: p.paymentMode || "Card (POS)",
+            bucket: "card",
             status: "paid",
             notes: p.notes || `Due payment receipt (${p.referenceId || "Direct"})`,
             isReceipt: true,
@@ -554,6 +723,7 @@ export async function GET(request: Request) {
             dueAmount: 0,
             time: p.date ? `${p.date} (Receipt)` : "Today (Receipt)",
             mode: p.paymentMode || "NEFT / IMPS",
+            bucket: "online",
             status: "paid",
             notes: p.notes || `Due payment receipt (${p.referenceId || "Direct"})`,
             isReceipt: true,
@@ -593,6 +763,25 @@ export async function GET(request: Request) {
           dailyRevenueMap[bucketKey].online += amt;
         }
       });
+
+    // Receipts raised against a bill (the payment taken at billing, a due cleared
+    // later) are parts of that bill's settlement, whenever they were recorded.
+    for (const p of allPayments as any[]) {
+      if (p.type !== "received" || p.partyType !== "Customer" || !p.referenceId) continue;
+      const detail = paymentDetails[p.referenceId];
+      if (!detail || isFinanceSettlement(p)) continue;
+      const isDueClear = String(p.transactionId || "").startsWith("TXN-DUE-");
+      detail.parts.push({
+        kind: isDueClear ? "due-clear" : "receipt",
+        bucket: (p.paymentMode || "unclassified").toLowerCase() === "unclassified" ? "unclassified" : classifyPaymentMode(p.paymentMode),
+        mode: p.paymentMode || "Unclassified",
+        amount: Number(p.amount) || 0,
+        date: p.date || "",
+        reference: p.bankTxnRef || p.transactionId || "",
+        bankAccount: p.bankAccountRef || "",
+        note: isDueClear ? "Due cleared" : "",
+      });
+    }
 
     let dailyRevenue: any[] = [];
 
@@ -1205,6 +1394,14 @@ export async function GET(request: Request) {
         dueClearedRevenue,
         dueClearedCount,
         dueClearedByMode,
+        // Finance: of this period's financed sales, what the financier still owes;
+        // and payouts that reached the bank in this period, by account. Both are
+        // already inside financeRevenue (or an earlier period's) — never add them.
+        financePendingRevenue,
+        financePendingCount,
+        financeReceivedRevenue,
+        financeReceivedCount,
+        financeReceivedByAccount,
         duesCollected,
         duesCollectedCount,
         supplierPayouts,
@@ -1229,7 +1426,10 @@ export async function GET(request: Request) {
         finance: financeTxns,
         due: dueTxns,
         unclassified: unclassifiedTxns,
-        all: [...cashTxns, ...upiTxns, ...onlineTxns, ...cardTxns, ...financeTxns, ...unclassifiedTxns],
+        // One row per invoice — see groupTxnsByInvoice.
+        all: groupTxnsByInvoice([...cashTxns, ...upiTxns, ...onlineTxns, ...cardTxns, ...financeTxns, ...unclassifiedTxns]),
+        // Per-invoice settlement breakdown, keyed by invoice number.
+        details: paymentDetails,
       },
       payments: {
         duesCollected,

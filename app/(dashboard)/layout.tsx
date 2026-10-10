@@ -4,6 +4,7 @@ import { Topnav } from "@/components/layout/topnav";
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
 import { PWAInstallPrompt } from "@/components/shared/pwa-install-prompt";
 import { DayCloseGate } from "@/components/shared/DayCloseGate";
+import { FinancePayoutReminder } from "@/components/shared/FinancePayoutReminder";
 import { Toaster } from "sonner";
 import { BranchProvider } from "@/context/BranchContext";
 
@@ -34,6 +35,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         {/* Blocks Sales/Billing + Cash Register until the pending day's cash audit is done */}
         <DayCloseGate />
+
+        {/* Keeps asking for the bank account / UTR of finance payouts that have none yet */}
+        <FinancePayoutReminder />
 
         <Toaster position="top-right" richColors expand={false} />
       </div>

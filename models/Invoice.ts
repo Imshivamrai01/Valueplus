@@ -141,7 +141,10 @@ export interface IInvoice extends Document {
   financeApprovedBy?: string;
   financeApprovalDate?: string;
   financeBankRef?: string;
-  
+  financeBankAccountId?: string;
+  financeBankAccount?: string;
+  financePayoutDate?: string;
+
   downPayment?: number;
   downPaymentMode?: string;
   shippingCharges?: number;
@@ -158,6 +161,8 @@ export interface IInvoice extends Document {
   dueClearedAt?: string;
   dueClearedMode?: string;
   dueClearedBy?: string;
+  dueClearedBankAccountId?: string;
+  dueClearedBankAccount?: string;
   // Advance Payment & Pre-Booking Adjustment
   advanceAdjusted?: number;
   advanceReceiptNo?: string;
@@ -318,6 +323,10 @@ const InvoiceSchema = new Schema<IInvoice>(
     financeApprovedBy: String,
     financeApprovalDate: String,
     financeBankRef: String,
+    // Where and when the financier's payout actually landed
+    financeBankAccountId: String,
+    financeBankAccount: String,
+    financePayoutDate: String,
 
     downPayment: Number,
     downPaymentMode: String,
@@ -337,6 +346,8 @@ const InvoiceSchema = new Schema<IInvoice>(
     dueClearedBy: { type: String },
     dueClearedNotes: { type: String },
     dueClearedTxnId: { type: String },
+    dueClearedBankAccountId: { type: String },
+    dueClearedBankAccount: { type: String },
 
     // Advance Payment / Pre-Booking Adjustment
     advanceAdjusted: { type: Number, default: 0 },

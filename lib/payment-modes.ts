@@ -153,6 +153,38 @@ export function resolveInvoicePayments(inv: any): NormalizedSplit[] {
   return rows;
 }
 
+/**
+ * True when the unpaid part of this bill is owed by a finance company, not by the
+ * customer. Such a balance is never khata: it is settled by a bank payout from the
+ * financier, recorded against a store bank account, and must stay out of every
+ * customer-due list.
+ */
+export function isFinanceInvoice(inv: any): boolean {
+  if (!inv) return false;
+  if (inv.financeProvider || inv.financeDoId) return true;
+  if (classifyPaymentMode(inv.paymentMode) === "finance") return true;
+  return Array.isArray(inv.payments)
+    ? inv.payments.some((p: any) => (Number(p?.amount) || 0) > 0 && classifyPaymentMode(p?.mode) === "finance")
+    : false;
+}
+
+/**
+ * A receipt that settles a finance receivable — the financier's bank payout —
+ * as opposed to money a customer paid. `TXN-DUE-*` is included because finance
+ * bills used to be closed through the khata "Clear Due" flow, which tagged the
+ * payout as an ordinary due receipt.
+ */
+export function isFinanceSettlementReceipt(p: any, financeInvoiceNumbers: Set<string>): boolean {
+  if (!p || p.type !== "received") return false;
+  if (String(p.paymentMode || "").toLowerCase().includes("finance disbursement")) return true;
+  const txnId = String(p.transactionId || "");
+  return (
+    Boolean(p.referenceId) &&
+    financeInvoiceNumbers.has(p.referenceId) &&
+    (txnId.startsWith("TXN-DUE-") || txnId.startsWith("TXN-FIN-"))
+  );
+}
+
 /** Amount actually collected across the split (excludes finance & due receivables). */
 export function collectedTotal(rows: NormalizedSplit[]): number {
   return rows

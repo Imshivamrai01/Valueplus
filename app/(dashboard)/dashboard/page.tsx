@@ -53,6 +53,7 @@ import { SalesmanDashboardView } from "@/components/dashboard/SalesmanDashboardV
 import { CashHandoverCard } from "@/components/dashboard/CashHandoverCard";
 import { ProductLedgerModal } from "@/components/ProductLedgerModal";
 import { ExportMenu } from "@/components/shared/ExportMenu";
+import { isFinanceInvoice } from "@/lib/payment-modes";
 
 
 
@@ -530,7 +531,7 @@ export default function DashboardPage() {
 
   // ─── DUE / CREDIT COLLECTIONS & SETTLEMENT STATE ───────────
   const [dueInvoices, setDueInvoices] = useState<any[]>([]);
-  const [dueTabFilter, setDueTabFilter] = useState<"today" | "overdue" | "upcoming" | "cleared" | "all">("today");
+  const [dueTabFilter, setDueTabFilter] = useState<"today" | "overdue" | "upcoming" | "cleared" | "all" | "finance">("today");
   // Date-wise filter for the due collections widget (empty = all dates)
   const [dueDateFilter, setDueDateFilter] = useState<string>("");
   const [dueDateRange, setDueDateRange] = useState<{ start: string; end: string }>({ start: "", end: "" });
@@ -544,6 +545,22 @@ export default function DashboardPage() {
   // as before this field existed. Typing a smaller amount is what records a
   // partial settlement instead, leaving the rest still due.
   const [clearDueAmount, setClearDueAmount] = useState<string>("");
+  // Store bank accounts, for recording where non-cash money (and every finance
+  // payout) actually landed.
+  const [bankAccounts, setBankAccounts] = useState<any[]>([]);
+  const [clearDueBankId, setClearDueBankId] = useState<string>("");
+  // Invoice whose payment breakdown popup is open.
+  const [paymentDetailId, setPaymentDetailId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!selectedDueInvoice || bankAccounts.length > 0) return;
+    fetch("/api/bank-accounts")
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && Array.isArray(json.data)) setBankAccounts(json.data);
+      })
+      .catch((e) => console.warn("Notice loading bank accounts:", e));
+  }, [selectedDueInvoice, bankAccounts.length]);
 
   const fetchDueInvoices = async () => {
     try {
@@ -571,6 +588,19 @@ export default function DashboardPage() {
       toast.error("Enter an amount greater than ₹0");
       return;
     }
+    // A financed bill is settled by the financier's payout into a bank account;
+    // any other non-cash collection also lands in one. Cash stays in the drawer.
+    const isFinancePayout = isFinanceInvoice(selectedDueInvoice);
+    const needsBankAccount = isFinancePayout || clearDuePaymentMode !== "Cash";
+    const bankAccount = bankAccounts.find((acc: any) => String(acc._id) === clearDueBankId);
+    if (needsBankAccount && !bankAccount) {
+      toast.error("Select the bank account this amount was credited to");
+      return;
+    }
+    if (isFinancePayout && !clearDueTxnId.trim()) {
+      toast.error("Bank UTR / transaction reference is required for a finance payout");
+      return;
+    }
     setIsClearingDue(true);
     try {
       const res = await fetch("/api/invoices", {
@@ -580,9 +610,11 @@ export default function DashboardPage() {
           invoiceNumber: selectedDueInvoice.invoiceNumber,
           action: "clear-due",
           clearedAmount: amountToCollect,
-          dueClearedMode: clearDuePaymentMode,
+          dueClearedMode: isFinancePayout ? "Finance Payout" : clearDuePaymentMode,
           dueClearedBy: clearDueStaff,
-          dueClearedTxnId: clearDueTxnId || `TXN-${Date.now()}`,
+          dueClearedTxnId: clearDueTxnId.trim() || `TXN-${Date.now()}`,
+          bankAccountId: needsBankAccount ? clearDueBankId : "",
+          bankAccountRef: needsBankAccount && bankAccount ? `${bankAccount.name} - ${bankAccount.bank} (A/C: ${bankAccount.number})` : "",
           dueClearedNotes: clearDueNotes || (amountToCollect >= fullBalance ? `Due cleared via ${clearDuePaymentMode}` : `Partial payment of ₹${amountToCollect.toLocaleString("en-IN")} via ${clearDuePaymentMode}`),
         }),
       });
@@ -590,7 +622,9 @@ export default function DashboardPage() {
       if (json.success) {
         const remaining = fullBalance - amountToCollect;
         toast.success(
-          remaining > 0
+          isFinancePayout
+            ? `✅ Finance payout of ₹${amountToCollect.toLocaleString("en-IN")} recorded in ${bankAccount?.name || "bank"} for ${selectedDueInvoice.customerName}`
+            : remaining > 0
             ? `✅ ₹${amountToCollect.toLocaleString("en-IN")} collected for ${selectedDueInvoice.customerName} — ₹${remaining.toLocaleString("en-IN")} still due`
             : `✅ Due of ₹${fullBalance.toLocaleString("en-IN")} cleared successfully for ${selectedDueInvoice.customerName}!`
         );
@@ -598,6 +632,7 @@ export default function DashboardPage() {
         setClearDueTxnId("");
         setClearDueNotes("");
         setClearDueAmount("");
+        setClearDueBankId("");
         fetchDueInvoices();
         loadAllDashboardData();
       } else {
@@ -1223,9 +1258,7 @@ export default function DashboardPage() {
   const allTimeDueCredit = dueInvoices.filter((inv: any) => {
     const bal = Number(inv.balanceAmount) || 0;
     if (bal <= 0) return false;
-    const mode = String(inv.paymentMode || "").toLowerCase();
-    const isFinance = Boolean(inv.financeProvider) || /finance|bajaj|hdb|emi|loan/.test(mode);
-    return !isFinance;
+    return !isFinanceInvoice(inv);
   });
   const allTimeDueOutstanding = allTimeDueCredit.reduce((s: number, inv: any) => s + (Number(inv.balanceAmount) || 0), 0);
   const allTimeDueCount = allTimeDueCredit.length;
@@ -1268,6 +1301,45 @@ export default function DashboardPage() {
 
   const currentTrendsData = widgetData.trends || data;
   const DAILY_REVENUE = currentTrendsData?.dailyRevenue || data?.dailyRevenue || [];
+
+  // How one bill was settled — every mode, with amounts and references. Read from
+  // the breakdown the stats API sends; rebuilt from the per-mode lists for data
+  // that was cached before that breakdown existed.
+  const getPaymentDetail = (id: string | null) => {
+    if (!id) return null;
+    const sources = [widgetData.logs, widgetData.pie, data];
+    for (const src of sources) {
+      const found = src?.transactions?.details?.[id];
+      if (found) return found;
+    }
+    for (const src of sources) {
+      const t = src?.transactions;
+      if (!t) continue;
+      const parts: any[] = [];
+      let customer = "";
+      (["cash", "upi", "online", "card", "finance"] as const).forEach((bucket) => {
+        (t[bucket] || []).forEach((row: any) => {
+          if (String(row.id) !== id) return;
+          customer = customer || row.customer || "";
+          parts.push({
+            kind: bucket === "finance" ? "finance" : row.isReceipt ? "receipt" : "billing",
+            bucket,
+            mode: row.mode || bucket,
+            amount: Number(row.amount) || 0,
+            date: row.time || "",
+            payoutStatus: row.payoutStatus,
+            payoutBankAccount: row.payoutBankAccount,
+            payoutUtr: row.payoutUtr,
+            payoutDate: row.payoutDate,
+          });
+        });
+      });
+      if (parts.length > 0) {
+        return { id, customer, total: parts.reduce((sum, part) => sum + part.amount, 0), date: "", status: "", parts };
+      }
+    }
+    return null;
+  };
 
   const getFilteredTransactions = () => {
     if (!activeModal) return [];
@@ -1353,7 +1425,9 @@ export default function DashboardPage() {
       )}
 
       {/* ─── PENDING INVENTORY AUDIT WARNING BANNER ──────────────── */}
-      {isAuditPending && (
+      {/* Not shown to the Super Admin or the branch Admin (manager): the daily audit
+          is the staff's job, and they were being reminded of it on every visit. */}
+      {isAuditPending && userRole !== "admin" && userRole !== "manager" && (
         <div className="bg-gradient-to-r from-amber-500/20 via-orange-500/10 to-transparent border-l-4 border-amber-500 p-4 rounded-xl shadow-sm flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 text-amber-600 animate-bounce flex-shrink-0" />
@@ -1533,8 +1607,60 @@ export default function DashboardPage() {
                     through, so showing it as its own segment would count the same
                     rupees twice — which is exactly what the old duplicated
                     "Pending Due" row did. */}
-                {(dueClearedRevenue > 0 || allTimeDueOutstanding > 0) && (
+                {(dueClearedRevenue > 0 || allTimeDueOutstanding > 0 || (currentPieMetrics.financePendingRevenue || 0) > 0 || (currentPieMetrics.financeReceivedRevenue || 0) > 0) && (
                   <div className="mt-3 pt-3 border-t border-slate-200/90 space-y-2">
+                    {/* Finance payouts: the loan is already inside the Finance row
+                        above (counted once, on the bill date). These lines only say
+                        how much of it the financier still owes and how much has
+                        reached the bank — they are never added to the total. */}
+                    {(currentPieMetrics.financePendingRevenue || 0) > 0 && (
+                      <div
+                        onClick={() => setActiveModal("finance")}
+                        className="flex items-center justify-between gap-3 cursor-pointer group"
+                        title="Finance sales of this period whose payout has not reached the bank yet — already included in Finance above"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <Clock className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                          <span className="text-xs font-semibold text-amber-800 group-hover:underline">
+                            Finance payout pending
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2.5 flex-shrink-0">
+                          <span className="text-[10px] font-mono font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
+                            {currentPieMetrics.financePendingCount || 0}
+                          </span>
+                          <span className="text-sm font-bold text-amber-700 font-mono tabular-nums">
+                            ₹ {formatNumber(Math.round(currentPieMetrics.financePendingRevenue || 0))}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                    {(currentPieMetrics.financeReceivedRevenue || 0) > 0 && (
+                      <div
+                        className="flex items-center justify-between gap-3"
+                        title="Finance payouts credited to the bank in this period — the sale itself is counted under Finance on its bill date, so this is not added again"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <Building2 className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
+                          <span className="text-xs font-semibold text-blue-800">
+                            Finance payout received in bank
+                          </span>
+                          <span className="text-[11px] text-slate-400 truncate">
+                            {Object.entries(currentPieMetrics.financeReceivedByAccount || {})
+                              .map(([account, amt]) => `${String(account).split(" - ")[0]} ₹${formatNumber(Math.round(Number(amt) || 0))}`)
+                              .join(" · ")}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2.5 flex-shrink-0">
+                          <span className="text-[10px] font-mono font-bold text-blue-800 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5">
+                            {currentPieMetrics.financeReceivedCount || 0}
+                          </span>
+                          <span className="text-sm font-bold text-blue-700 font-mono tabular-nums">
+                            ₹ {formatNumber(Math.round(currentPieMetrics.financeReceivedRevenue || 0))}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                     {dueClearedRevenue > 0 && (
                       <div
                         onClick={() => setActiveModal("due")}
@@ -3210,7 +3336,9 @@ export default function DashboardPage() {
                     const grouped = new Map<string, any>();
                     rows.forEach((t: any) => {
                       const key = t.id || `${t.customer}-${t.time}`;
-                      const modeLabel = String(t.mode || "").split(" ")[0];
+                      const modeLabel =
+                        ({ cash: "Cash", upi: "UPI", card: "Card", online: "NEFT/IMPS", finance: "Finance", unclassified: "Unclassified" } as Record<string, string>)[t.bucket] ||
+                        String(t.mode || "").split(" ")[0];
                       const existing = grouped.get(key);
                       if (!existing) {
                         grouped.set(key, { ...t, amount: Number(t.amount) || 0, modeSet: new Set([modeLabel]) });
@@ -3244,12 +3372,20 @@ export default function DashboardPage() {
                             {displayTime}
                           </td>
                           <td className="px-2.5 py-2.5 text-left font-mono font-bold text-slate-800 text-xs truncate">
-                            <span className="cursor-pointer hover:text-[#3F63AD]" onClick={() => handlePrintTrigger(txn)}>
+                            <span
+                              className="cursor-pointer hover:text-[#3F63AD] hover:underline"
+                              title="View how this bill was paid"
+                              onClick={() => setPaymentDetailId(String(txn.id))}
+                            >
                               {txn.id}
                             </span>
                           </td>
                           <td className="px-2.5 py-2.5 text-center">
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase bg-slate-100 text-slate-700">
+                            <span
+                              className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase bg-slate-100 text-slate-700 cursor-pointer hover:bg-slate-200"
+                              title="View how this bill was paid"
+                              onClick={() => setPaymentDetailId(String(txn.id))}
+                            >
                               {/* mode is already the clean, pre-joined label ("Cash" or
                                   "Cash + UPI" for a split bill) from the grouping above —
                                   re-splitting it here would cut a split bill back down to
@@ -3774,8 +3910,13 @@ export default function DashboardPage() {
             )
           : dueInvoices;
 
+        // A financed bill's balance is owed by the finance company, not the customer,
+        // so it is not khata. It gets its own tab and is settled as a bank payout.
+        const khataDues = scopedDues.filter((inv: any) => !isFinanceInvoice(inv));
+        const financeDues = scopedDues.filter((inv: any) => isFinanceInvoice(inv) && Number(inv.balanceAmount) > 0);
+
         // Dues with balance > 0
-        const pendingDues = scopedDues.filter((inv: any) => (Number(inv.balanceAmount) > 0));
+        const pendingDues = khataDues.filter((inv: any) => (Number(inv.balanceAmount) > 0));
         
         // Today's Due: dueDate is today
         const todayDues = pendingDues.filter((inv: any) => {
@@ -3796,7 +3937,7 @@ export default function DashboardPage() {
         });
 
         // Cleared dues: dueClearedAt exists or status === paid and balance === 0
-        const clearedDues = scopedDues.filter((inv: any) => inv.dueClearedAt || (inv.paymentMode === "Due / Credit" && inv.status === "paid" && Number(inv.balanceAmount) === 0));
+        const clearedDues = khataDues.filter((inv: any) => inv.dueClearedAt || (inv.paymentMode === "Due / Credit" && inv.status === "paid" && Number(inv.balanceAmount) === 0));
 
         // Total outstanding across every pending due in the selected date scope
         const totalPendingAmount = pendingDues.reduce((sum, inv) => sum + (Number(inv.balanceAmount) || 0), 0);
@@ -3815,6 +3956,7 @@ export default function DashboardPage() {
         else if (dueTabFilter === "overdue") displayList = overdueDues;
         else if (dueTabFilter === "upcoming") displayList = upcomingDues;
         else if (dueTabFilter === "cleared") displayList = clearedDues;
+        else if (dueTabFilter === "finance") displayList = financeDues;
         else displayList = pendingDues;
 
         return (
@@ -3926,6 +4068,7 @@ export default function DashboardPage() {
                 { key: "upcoming", label: "📅 Upcoming", count: upcomingDues.length },
                 { key: "cleared", label: "✅ Cleared Dues", count: clearedDues.length },
                 { key: "all", label: "📋 All Pending", count: pendingDues.length },
+                { key: "finance", label: "🏦 Finance Payout Pending", count: financeDues.length },
               ].map(tab => (
                 <button
                   key={tab.key}
@@ -3973,6 +4116,7 @@ export default function DashboardPage() {
                   ) : (
                     displayList.map((inv: any) => {
                       const isCleared = Number(inv.balanceAmount) === 0 || inv.dueClearedAt;
+                      const isFinanceRow = isFinanceInvoice(inv);
                       const dDateStr = inv.dueDate ? (inv.dueDate.includes("T") ? inv.dueDate.split("T")[0] : inv.dueDate) : "";
                       const isTodayDue = dDateStr === todayStr;
                       const isOverdue = Boolean(dDateStr) && dDateStr < todayStr && !isCleared;
@@ -4050,8 +4194,8 @@ export default function DashboardPage() {
                                 </div>
                               </div>
                             ) : (
-                              <Badge className="bg-rose-50 text-rose-700 border-rose-200 text-[10px] font-bold">
-                                Pending Settlement
+                              <Badge className={cn("text-[10px] font-bold", isFinanceRow ? "bg-amber-50 text-amber-800 border-amber-200" : "bg-rose-50 text-rose-700 border-rose-200")}>
+                                {isFinanceRow ? `Awaiting payout${inv.financeProvider ? ` · ${inv.financeProvider}` : ""}` : "Pending Settlement"}
                               </Badge>
                             )}
                           </td>
@@ -4063,13 +4207,21 @@ export default function DashboardPage() {
                                   setSelectedDueInvoice(inv);
                                   setClearDuePaymentMode("Cash");
                                   setClearDueTxnId("");
+                                  setClearDueBankId("");
                                   setClearDueStaff(inv.salesExecutive || "AMIT SINGH");
-                                  setClearDueNotes(`Due settled for ${inv.customerName}`);
+                                  setClearDueNotes(isFinanceRow ? `Finance payout received for ${inv.customerName}` : `Due settled for ${inv.customerName}`);
                                   setClearDueAmount("");
                                 }}
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-8 px-3 shadow-sm rounded-lg"
+                                className={cn(
+                                  "text-white font-bold text-xs h-8 px-3 shadow-sm rounded-lg",
+                                  isFinanceRow ? "bg-[#3F63AD] hover:bg-[#30539C]" : "bg-emerald-600 hover:bg-emerald-700"
+                                )}
                               >
-                                <Check className="w-3.5 h-3.5 mr-1" /> Clear Due
+                                {isFinanceRow ? (
+                                  <><Building2 className="w-3.5 h-3.5 mr-1" /> Record Payout</>
+                                ) : (
+                                  <><Check className="w-3.5 h-3.5 mr-1" /> Clear Due</>
+                                )}
                               </Button>
                             ) : (
                               <Button
@@ -4475,8 +4627,12 @@ export default function DashboardPage() {
                     {getFilteredTransactions().map((txn: any, idx: number) => {
                       const dueAmt = Number(txn.dueAmount) || Number(txn.balanceAmount) || (Number(txn.amount || txn.total || 0) - Number(txn.paidAmount || 0));
                       return (
-                        <tr key={txn.id || txn.invoiceNumber || idx} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="p-3 font-mono font-bold text-slate-900">
+                        <tr key={`${txn.id || txn.invoiceNumber || "row"}-${idx}`} className="hover:bg-slate-50/80 transition-colors">
+                          <td
+                            className="p-3 font-mono font-bold text-slate-900 cursor-pointer hover:text-[#3F63AD] hover:underline"
+                            title="View how this bill was paid"
+                            onClick={() => setPaymentDetailId(String(txn.id || txn.invoiceNumber))}
+                          >
                             {txn.id || txn.invoiceNumber}
                           </td>
                           <td className="p-3 text-slate-700">{txn.customer || txn.customerName || "Walk-in Guest"}</td>
@@ -4488,6 +4644,20 @@ export default function DashboardPage() {
                             )}>
                               {txn.mode || activeModal}
                             </span>
+                            {txn.payoutStatus && (
+                              <span
+                                className={cn(
+                                  "block w-fit mt-1 px-1.5 py-0.5 rounded text-[9px] font-bold border",
+                                  txn.payoutStatus === "received"
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                    : "bg-amber-50 text-amber-700 border-amber-200"
+                                )}
+                              >
+                                {txn.payoutStatus === "received"
+                                  ? `Payout received${txn.payoutBankAccount ? ` · ${String(txn.payoutBankAccount).split(" - ")[0]}` : ""}`
+                                  : "Payout pending"}
+                              </span>
+                            )}
                           </td>
                           {activeModal === "due" ? (
                             <>
@@ -5447,7 +5617,9 @@ export default function DashboardPage() {
                 <IndianRupee className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-lg font-bold tracking-tight">Clear Due & Record Settlement</h3>
+                <h3 className="text-lg font-bold tracking-tight">
+                  {isFinanceInvoice(selectedDueInvoice) ? "Record Finance Bank Payout" : "Clear Due & Record Settlement"}
+                </h3>
                 <p className="text-xs text-slate-300">
                   Invoice #{selectedDueInvoice?.invoiceNumber} • {selectedDueInvoice?.customerName}
                 </p>
@@ -5458,7 +5630,11 @@ export default function DashboardPage() {
           <form onSubmit={handleConfirmClearDue} className="p-5 bg-slate-50 space-y-4">
             <div className="p-3.5 bg-rose-50/80 rounded-xl border border-rose-200 flex items-center justify-between">
               <div>
-                <p className="text-xs font-semibold text-rose-900">Outstanding Due Balance</p>
+                <p className="text-xs font-semibold text-rose-900">
+                  {isFinanceInvoice(selectedDueInvoice)
+                    ? `Finance Payout Pending${selectedDueInvoice?.financeProvider ? ` · ${selectedDueInvoice.financeProvider}` : ""}`
+                    : "Outstanding Due Balance"}
+                </p>
                 <p className="text-xs text-slate-500">Total: {formatCurrency(selectedDueInvoice?.total || 0)}</p>
               </div>
               <p className="text-2xl font-black text-rose-700 font-mono">
@@ -5467,7 +5643,9 @@ export default function DashboardPage() {
             </div>
 
             <div>
-              <Label className="text-xs font-bold text-slate-800">Amount Being Collected Now (₹)</Label>
+              <Label className="text-xs font-bold text-slate-800">
+                {isFinanceInvoice(selectedDueInvoice) ? "Amount Credited in Bank (₹)" : "Amount Being Collected Now (₹)"}
+              </Label>
               <Input
                 type="number"
                 min={0}
@@ -5479,22 +5657,47 @@ export default function DashboardPage() {
                 className="bg-white border-slate-300 mt-1 font-bold text-slate-900"
               />
               <p className="text-[10px] text-slate-400 mt-0.5">
-                Leave blank to clear the whole balance. Enter a smaller amount to record a partial payment — the rest stays due.
+                {isFinanceInvoice(selectedDueInvoice)
+                  ? "Enter what the finance company actually credited. If they deducted subvention or fees, enter the lower amount — the bill is still settled in full and is not counted as a new sale."
+                  : "Leave blank to clear the whole balance. Enter a smaller amount to record a partial payment — the rest stays due."}
               </p>
             </div>
 
-            <div>
-              <Label className="text-xs font-bold text-slate-800">Payment Collection Mode *</Label>
-              <Select value={clearDuePaymentMode} onValueChange={setClearDuePaymentMode}>
-                <SelectTrigger className="bg-white border-slate-300 mt-1 font-bold text-slate-900"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Cash">💵 Cash at Counter</SelectItem>
-                  <SelectItem value="UPI">📱 UPI / QR Code (PhonePe, GPay, Paytm)</SelectItem>
-                  <SelectItem value="Card">💳 POS Debit / Credit Card</SelectItem>
-                  <SelectItem value="Bank Transfer">🏦 Direct Bank Transfer / NEFT</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {!isFinanceInvoice(selectedDueInvoice) && (
+              <div>
+                <Label className="text-xs font-bold text-slate-800">Payment Collection Mode *</Label>
+                <Select value={clearDuePaymentMode} onValueChange={setClearDuePaymentMode}>
+                  <SelectTrigger className="bg-white border-slate-300 mt-1 font-bold text-slate-900"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Cash">💵 Cash at Counter</SelectItem>
+                    <SelectItem value="UPI">📱 UPI / QR Code (PhonePe, GPay, Paytm)</SelectItem>
+                    <SelectItem value="Card">💳 POS Debit / Credit Card</SelectItem>
+                    <SelectItem value="Bank Transfer">🏦 Direct Bank Transfer / NEFT</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {(isFinanceInvoice(selectedDueInvoice) || clearDuePaymentMode !== "Cash") && (
+              <div>
+                <Label className="text-xs font-bold text-slate-800">Credited to Bank Account *</Label>
+                <Select value={clearDueBankId} onValueChange={setClearDueBankId}>
+                  <SelectTrigger className="bg-white border-slate-300 mt-1 font-semibold text-slate-900">
+                    <SelectValue placeholder={bankAccounts.length === 0 ? "Loading bank accounts..." : "Select store bank account"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {bankAccounts.map((acc: any) => (
+                      <SelectItem key={String(acc._id)} value={String(acc._id)}>
+                        🏦 {acc.name} (A/C: {acc.number})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  Accounts come from Bank Accounts Master. The amount is added to this account's balance.
+                </p>
+              </div>
+            )}
 
             <div>
               <Label className="text-xs font-bold text-slate-800">Collected / Cleared By (Staff Name)</Label>
@@ -5510,7 +5713,9 @@ export default function DashboardPage() {
             </div>
 
             <div>
-              <Label className="text-xs font-bold text-slate-800">Transaction Ref / UTR / Note (Optional)</Label>
+              <Label className="text-xs font-bold text-slate-800">
+                {isFinanceInvoice(selectedDueInvoice) ? "Bank UTR / Transaction Ref *" : "Transaction Ref / UTR / Note (Optional)"}
+              </Label>
               <Input 
                 placeholder="e.g. UPI Ref #4829103984 / Cash Slip" 
                 value={clearDueTxnId} 
@@ -5535,8 +5740,8 @@ export default function DashboardPage() {
               </Button>
               <Button type="submit" disabled={isClearingDue} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5">
                 {isClearingDue
-                  ? "Collecting..."
-                  : "Confirm & Collect (₹" +
+                  ? "Saving..."
+                  : (isFinanceInvoice(selectedDueInvoice) ? "Confirm Payout (₹" : "Confirm & Collect (₹") +
                     (clearDueAmount.trim() === ""
                       ? Number(selectedDueInvoice?.balanceAmount || 0)
                       : Math.max(0, Math.min(Number(selectedDueInvoice?.balanceAmount || 0), Number(clearDueAmount) || 0))
@@ -5545,6 +5750,104 @@ export default function DashboardPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── PAYMENT DETAILS (HOW ONE BILL WAS PAID) ───────────────── */}
+      <Dialog open={!!paymentDetailId} onOpenChange={() => setPaymentDetailId(null)}>
+        <DialogContent className="max-w-lg p-0 rounded-2xl overflow-hidden border-none shadow-2xl">
+          {(() => {
+            const detail = getPaymentDetail(paymentDetailId);
+            const parts: any[] = detail?.parts || [];
+            const collected = parts
+              .filter((part) => part.kind !== "due" && part.kind !== "finance")
+              .reduce((sum, part) => sum + (Number(part.amount) || 0), 0);
+            return (
+              <>
+                <div className="bg-gradient-to-r from-[#1B2537] via-[#243753] to-[#1B2537] text-white p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <DialogTitle className="text-base font-bold tracking-tight flex items-center gap-2">
+                        <Receipt className="w-4 h-4 text-emerald-400" /> Payment Details
+                      </DialogTitle>
+                      <DialogDescription className="text-xs text-slate-300 mt-0.5 truncate">
+                        Invoice #{paymentDetailId} {detail?.customer ? `• ${detail.customer}` : ""}
+                      </DialogDescription>
+                    </div>
+                    {detail && Number(detail.total) > 0 && (
+                      <div className="text-right flex-shrink-0">
+                        <p className="text-[10px] text-slate-300 uppercase font-bold">Bill Total</p>
+                        <p className="text-lg font-black font-mono">{formatCurrency(detail.total)}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="p-4 bg-slate-50 space-y-2 max-h-[55vh] overflow-y-auto">
+                  {parts.length === 0 ? (
+                    <p className="text-xs text-slate-500 text-center py-6">
+                      No payment breakdown is available for this bill in the selected period.
+                    </p>
+                  ) : (
+                    parts.map((part, idx) => (
+                      <div key={idx} className="bg-white rounded-xl border border-slate-200 px-3 py-2.5 flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 text-slate-700">
+                              {part.mode}
+                            </span>
+                            {part.kind === "due-clear" && (
+                              <span className="text-[10px] font-bold text-emerald-700">Due cleared later</span>
+                            )}
+                            {part.kind === "due" && (
+                              <span className="text-[10px] font-bold text-rose-700">Credit / khata</span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-slate-500 mt-1">
+                            {[part.date, part.reference && `Ref: ${part.reference}`, part.bankAccount && `🏦 ${part.bankAccount}`, part.note]
+                              .filter(Boolean)
+                              .join(" • ")}
+                          </p>
+                          {part.kind === "finance" && (
+                            <p className={cn("text-[10px] font-bold mt-1", part.payoutStatus === "received" ? "text-emerald-700" : "text-amber-700")}>
+                              {part.payoutStatus === "received"
+                                ? `✅ Payout received${part.payoutAmount ? ` ₹${formatNumber(Math.round(part.payoutAmount))}` : ""}${part.payoutBankAccount ? ` in ${part.payoutBankAccount}` : ""}${part.payoutUtr ? ` • UTR ${part.payoutUtr}` : ""}${part.payoutDate ? ` • ${part.payoutDate}` : ""}`
+                                : "⏳ Payout from finance company pending"}
+                            </p>
+                          )}
+                        </div>
+                        <span className="font-mono font-black text-sm text-slate-900 flex-shrink-0">
+                          {formatCurrency(part.amount || 0)}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <div className="bg-white px-4 py-3 border-t border-slate-200 flex items-center justify-between gap-2">
+                  <span className="text-xs text-slate-500 font-medium">
+                    {parts.length} payment {parts.length === 1 ? "entry" : "entries"} • Collected {formatCurrency(collected)}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" onClick={() => setPaymentDetailId(null)}>
+                      Close
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="bg-[#3F63AD] hover:bg-[#30539C] text-white font-bold"
+                      onClick={() => {
+                        const id = paymentDetailId;
+                        setPaymentDetailId(null);
+                        if (id) handlePrintTrigger({ id });
+                      }}
+                    >
+                      <Printer className="w-3.5 h-3.5 mr-1" /> View Bill
+                    </Button>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 

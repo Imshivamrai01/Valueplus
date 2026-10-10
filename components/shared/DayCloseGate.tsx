@@ -27,10 +27,11 @@ export function DayCloseGate() {
   const [notes, setNotes] = useState("");
   const lastToastedDate = useRef<string | null>(null);
 
-  // Super Admin never gets nagged or blocked by this — only every other role
-  // (cashier, accounts, manager, etc.) is expected to do the nightly audit.
+  // Super Admin ("admin") and the branch Admin ("manager") never get nagged or
+  // blocked by this — every other role (cashier, accounts, etc.) is expected to
+  // do the nightly audit.
   const userRole = ((session?.user as any)?.role || "").toLowerCase();
-  const isExemptRole = userRole === "admin";
+  const isExemptRole = userRole === "admin" || userRole === "manager";
 
   const { data } = useQuery({
     queryKey: ["day-close-status"],

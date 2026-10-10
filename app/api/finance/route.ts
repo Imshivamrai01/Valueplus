@@ -197,7 +197,29 @@ export async function PUT(req: Request) {
     if (remarks) updateData.remarks = remarks;
     if (body.uploadedPdfUrl) updateData.uploadedPdfUrl = body.uploadedPdfUrl;
     
-    const wasAlreadyDisbursed = financeRecord.approvalStatus === "Disbursed";
+    // A payout landing in the bank goes through the shared settlement, which also
+    // closes the invoice's balance and credits the bank account. Updating only the
+    // DO here left the bill sitting in the due list after the money had arrived.
+    if (approvalStatus === "Disbursed") {
+      const { approvalStatus: _status, ...otherFields } = updateData;
+      if (Object.keys(otherFields).length > 0) {
+        await FinanceTransaction.updateOne({ doId }, otherFields);
+      }
+      const { recordFinancePayout } = await import("@/lib/financeSettlement");
+      await recordFinancePayout({
+        doId,
+        amount: Number(actualReceivedAmount) || undefined,
+        bankAccountId: body.bankAccountId,
+        bankAccountRef,
+        utr: transactionRef,
+        date: body.paymentReceivedDate,
+        by: approvedBy,
+        remarks,
+      });
+      const settled = await FinanceTransaction.findOne({ doId });
+      return NextResponse.json({ success: true, data: settled });
+    }
+
     const updated = await FinanceTransaction.findOneAndUpdate({ doId }, updateData, { new: true });
 
     // Sync status with invoice
@@ -210,24 +232,6 @@ export async function PUT(req: Request) {
           lastModifiedReason: "finance-sync",
         }
       );
-    }
-
-    // First time this DO is confirmed disbursed: record a customer-facing ledger credit.
-    // (Re-saving UTR/bank details on an already-disbursed record must NOT create a duplicate.)
-    if (updated && approvalStatus === "Disbursed" && !wasAlreadyDisbursed) {
-      const PaymentTransaction = (await import("@/models/PaymentTransaction")).default;
-      await PaymentTransaction.create({
-        transactionId: `TXN-FIN-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-        partyId: updated.customerId || updated.doId,
-        partyType: "Customer",
-        partyName: updated.customerName,
-        amount: Number(actualReceivedAmount) || updated.netDisbursement,
-        paymentMode: "Finance Disbursement",
-        date: body.paymentReceivedDate || new Date().toISOString().split("T")[0],
-        referenceId: updated.invoiceNumber,
-        notes: `Bank disbursement credited for DO ${updated.doId} (${updated.financeProvider}), UTR: ${transactionRef || "-"}`,
-        type: "received",
-      });
     }
 
     return NextResponse.json({ success: true, data: updated });
