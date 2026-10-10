@@ -7,6 +7,7 @@ import { useSession, signOut } from "next-auth/react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { panelForRole } from "@/lib/role-routes";
 import { NAV_GROUPS, UserRole } from "@/constants/navigation";
 import { useBranch } from "@/context/BranchContext";
 import { 
@@ -90,7 +91,7 @@ const ROLE_DISPLAY_NAMES: Record<string, { label: string; bg: string; text: stri
 };
 
 export function Sidebar() {
-  const pathname = usePathname();
+  const rawPathname = usePathname();
   const router = useRouter();
   const { data: session, status } = useSession();
   const { activeLocation, locations, setActiveLocation, isGodown } = useBranch();
@@ -99,6 +100,12 @@ export function Sidebar() {
   const rawRole = (session?.user as any)?.role;
   const userRole: UserRole = (rawRole ? rawRole.toLowerCase() : (isSessionLoading ? "loading" : "salesman")) as any;
   const userName = session?.user?.name || (isSessionLoading ? "Loading..." : "Staff User");
+  // On the role's own panel URL (/salesman, /driver …) the middleware shows that
+  // panel's home page, so the menu treats the address as that page.
+  const ownPanel = panelForRole(userRole);
+  const pathname = ownPanel && rawPathname === `/${ownPanel.slug}` ? ownPanel.home : rawPathname;
+  const logoutUrl = ownPanel ? `/login?panel=${ownPanel.slug}` : "/login";
+
   const userDesignation = (session?.user as any)?.designation || "Staff Member";
   const roleConfig = ROLE_DISPLAY_NAMES[userRole] || { label: "AUTHENTICATING", bg: "bg-white/10 border-white/20", text: "text-white/80" };
 
@@ -331,7 +338,7 @@ export function Sidebar() {
             </div>
           </div>
           <button
-            onClick={() => signOut({ callbackUrl: "/login" })}
+            onClick={() => signOut({ callbackUrl: logoutUrl })}
             className="p-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 hover:text-rose-100 border border-rose-500/30 transition-colors shrink-0"
             title="Log out of Value Plus"
           >

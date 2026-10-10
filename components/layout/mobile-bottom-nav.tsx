@@ -34,12 +34,13 @@ import {
   Truck
 } from "lucide-react";
 import { NAV_GROUPS, UserRole } from "@/constants/navigation";
+import { panelForRole } from "@/lib/role-routes";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
 export function MobileBottomNav() {
-  const pathname = usePathname();
+  const rawPathname = usePathname();
   const router = useRouter();
   const { data: session, status } = useSession();
   const { activeLocation, locations, setActiveLocation, isGodown } = useBranch();
@@ -55,6 +56,12 @@ export function MobileBottomNav() {
       : (isSessionLoading ? "loading" : "salesman")
   ) as UserRole;
   const userName = session?.user?.name || (isSessionLoading ? "Loading..." : "Staff");
+  // On the role's own panel URL (/salesman, /driver …) the middleware shows that
+  // panel's home page, so the menu treats the address as that page.
+  const ownPanel = panelForRole(userRole);
+  const pathname = ownPanel && rawPathname === `/${ownPanel.slug}` ? ownPanel.home : rawPathname;
+  const logoutUrl = ownPanel ? `/login?panel=${ownPanel.slug}` : "/login";
+
 
   // Role-customized bottom tabs
   const getNavTabs = () => {
@@ -483,7 +490,7 @@ export function MobileBottomNav() {
           {/* Drawer Footer */}
           <div className="p-3 border-t border-white/10 bg-black/30 flex items-center justify-between">
             <button
-              onClick={() => signOut({ callbackUrl: "/login" })}
+              onClick={() => signOut({ callbackUrl: logoutUrl })}
               className="flex items-center gap-2 px-3 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-xs font-bold transition-colors"
             >
               <LogOut className="w-4 h-4" />

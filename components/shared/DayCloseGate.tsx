@@ -46,7 +46,9 @@ export function DayCloseGate() {
   });
 
   const pendingDate = isExemptRole ? null : data?.pendingDate || null;
-  const isBlockedRoute = BLOCKED_PREFIXES.some((p) => pathname?.startsWith(p));
+  // Matched as a whole path segment: a bare startsWith("/sales") also caught the
+  // /salesman panel URL and locked the salesman's home screen.
+  const isBlockedRoute = BLOCKED_PREFIXES.some((p) => pathname === p || pathname?.startsWith(`${p}/`));
   // No dismiss, no close button — the only way off this screen is actually
   // submitting the audit. Cancelling out of it is not an option by design:
   // the cashier cannot start the next day's billing without it.

@@ -3025,7 +3025,7 @@ export function InvoiceCreationModal({
               <span className="text-xs text-slate-500 font-medium">
                 * Generates commercial Value Plus Tax Invoice matching official layout with dynamic multi-page rendering
               </span>
-              <div className="flex justify-end gap-3">
+              <div className="flex flex-wrap justify-end gap-2 sm:gap-3">
                 <Button type="button" variant="ghost" onClick={onClose} className="text-slate-600">Cancel</Button>
                 <Button 
                   type="submit" 

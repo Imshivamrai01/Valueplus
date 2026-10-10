@@ -1,21 +1,50 @@
 import { withAuth } from "next-auth/middleware";
 import { NextResponse } from "next/server";
+import { panelForSlug, panelPathForRole } from "@/lib/role-routes";
 
 export default withAuth(
   function middleware(req) {
     const token = req.nextauth.token;
     const isAuth = !!token;
-    const isAuthPage = req.nextUrl.pathname.startsWith("/login");
+    const pathname = req.nextUrl.pathname;
+    const isAuthPage = pathname.startsWith("/login");
+    const role = (token as any)?.role as string | undefined;
 
     if (isAuthPage) {
       if (isAuth) {
-        return NextResponse.redirect(new URL("/dashboard", req.url));
+        return NextResponse.redirect(new URL(panelPathForRole(role), req.url));
       }
       return null;
     }
 
+    // The site root (and so the installed app's start screen) opens the signed-in
+    // user's own panel, or the common login for everyone else.
+    if (pathname === "/") {
+      return NextResponse.redirect(new URL(isAuth ? panelPathForRole(role) : "/login", req.url));
+    }
+
+    // A role's panel URL: /admin, /salesman, /driver …
+    const panel = panelForSlug(pathname);
+    if (panel) {
+      if (!isAuth) {
+        return NextResponse.redirect(new URL(`/login?panel=${panel.slug}`, req.url));
+      }
+      // /warehouse is a real page that other roles (admin) also use from the menu,
+      // so it is simply served; only the alias panels below are role-bound.
+      if (panel.home === pathname) {
+        return null;
+      }
+      const ownPanelPath = panelPathForRole(role);
+      // Someone else's panel — send them to their own instead.
+      if (ownPanelPath !== `/${panel.slug}`) {
+        return NextResponse.redirect(new URL(ownPanelPath, req.url));
+      }
+      // Show the panel's page while the address stays on the panel URL.
+      return NextResponse.rewrite(new URL(panel.home, req.url));
+    }
+
     if (!isAuth) {
-      let from = req.nextUrl.pathname;
+      let from = pathname;
       if (req.nextUrl.search) {
         from += req.nextUrl.search;
       }
@@ -34,6 +63,18 @@ export default withAuth(
 
 export const config = {
   matcher: [
+    "/",
+    // Role panel URLs — keep in step with ROLE_PANELS in lib/role-routes.ts.
+    // Listed without `:path*` so sub-pages such as /admin/approvals are untouched
+    // by the panel logic and fall through to the plain signed-in check below.
+    "/admin",
+    "/manager",
+    "/cashier",
+    "/accounts",
+    "/hr",
+    "/salesman",
+    "/driver",
+    "/supplier",
     "/dashboard/:path*",
     "/warehouse/:path*",
     "/sales/:path*",
@@ -41,14 +82,19 @@ export const config = {
     "/inventory/:path*",
     "/masters/:path*",
     "/vendors/:path*",
+    "/suppliers/:path*",
     "/finance/:path*",
     "/staff/:path*",
+    "/driver/:path*",
+    "/admin/:path*",
     "/marketing/:path*",
     "/banking/:path*",
     "/accounting/:path*",
     "/gst/:path*",
     "/reports/:path*",
     "/settings/:path*",
+    "/profile/:path*",
+    "/external/:path*",
     "/login",
   ],
 };

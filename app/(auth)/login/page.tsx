@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { signIn } from "next-auth/react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { signIn, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Eye, EyeOff, ArrowRight, Shield, Zap, BarChart2, Lock } from "lucide-react";
@@ -9,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ROLE_PANELS, panelForRole, panelForSlug, panelPathForRole, type RolePanel } from "@/lib/role-routes";
 
 function ValuePlusBrand({ dark = false, size = "large" }: { dark?: boolean; size?: "small" | "large" }) {
   return (
@@ -40,6 +42,19 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  // Which role's login this is (/salesman → /login?panel=salesman), and the page
+  // the visitor was trying to reach. Read from the address on mount rather than
+  // through useSearchParams, which would force a Suspense boundary at build time.
+  const [panel, setPanel] = useState<RolePanel | undefined>(undefined);
+  const [returnTo, setReturnTo] = useState("");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setPanel(panelForSlug(params.get("panel")));
+    const from = params.get("from") || "";
+    // Same-site paths only — never follow an absolute URL handed in the query.
+    setReturnTo(from.startsWith("/") && !from.startsWith("//") ? from : "");
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,16 +71,22 @@ export default function LoginPage() {
       if (res?.error) {
         setError("Login failed: " + res.error);
       } else if (res?.ok) {
-        const u = username.toLowerCase();
-        if (u.includes("driver")) {
-          window.location.href = "/driver/deliveries";
-        } else if (u.includes("warehouse")) {
-          window.location.href = "/warehouse";
-        } else if (u.includes("supplier")) {
-          window.location.href = "/purchase/orders";
-        } else {
-          window.location.href = "/dashboard";
+        // The role comes from the account that just signed in, not from what was
+        // typed in the username box.
+        const session = await fetch("/api/auth/session").then((r) => r.json()).catch(() => null);
+        const role = session?.user?.role as string | undefined;
+
+        // Each panel has its own login: a salesman cannot sign in on the admin one.
+        if (panel && panelForRole(role)?.slug !== panel.slug) {
+          await signOut({ redirect: false });
+          const own = panelForRole(role);
+          setError(
+            `Yeh login sirf ${panel.label} panel ke liye hai.${own ? ` Aapka panel: /${own.slug}` : ""}`
+          );
+          return;
         }
+
+        window.location.href = returnTo || panelPathForRole(role);
       } else {
         setError("Invalid credentials");
       }
@@ -167,8 +188,17 @@ export default function LoginPage() {
 
           <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xl p-5 sm:p-8">
             <div className="mb-6 text-center sm:text-left">
-              <h2 className="text-2xl font-black text-slate-900 tracking-tight">Welcome back</h2>
-              <p className="text-xs sm:text-sm text-slate-500 mt-1">Sign in to your Value Plus account</p>
+              {panel && (
+                <span className="inline-flex items-center gap-1.5 mb-2 px-2.5 py-1 rounded-full bg-[#30539C]/10 text-[#30539C] text-[10px] font-black uppercase tracking-wide">
+                  <Lock className="w-3 h-3" /> {panel.label} Panel
+                </span>
+              )}
+              <h2 className="text-2xl font-black text-slate-900 tracking-tight">
+                {panel ? `${panel.label} Login` : "Welcome back"}
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                {panel ? `Sign in with your ${panel.label} account` : "Sign in to your Value Plus account"}
+              </p>
             </div>
 
             <form onSubmit={handleLogin} className="space-y-4">
@@ -177,7 +207,7 @@ export default function LoginPage() {
                 <Input
                   id="username"
                   type="text"
-                  placeholder="e.g. driver@valueplus.in or 9876543210"
+                  placeholder="Email, username or mobile number"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
@@ -258,47 +288,25 @@ export default function LoginPage() {
               </Button>
             </form>
 
-            {/* 1-Click Role Quick Login */}
-            <div className="mt-5 p-3.5 bg-slate-50/80 rounded-2xl border border-slate-200">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-1.5">
-                  <Lock className="w-3.5 h-3.5 text-[#3F63AD]" />
-                  <p className="text-[11px] font-black text-slate-800 uppercase tracking-wide">Quick Role Login</p>
+            {/* A panel's own login lists the other panels instead of the quick-fill box */}
+            {panel && (
+              <div className="mt-5 pt-4 border-t border-slate-100">
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-wide mb-2">Other panels</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {ROLE_PANELS.filter((p) => p.slug !== panel.slug).map((p) => (
+                    <Link
+                      key={p.slug}
+                      href={`/login?panel=${p.slug}`}
+                      onClick={() => { setPanel(p); setError(""); }}
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-[#3F63AD] text-[10.5px] font-bold text-slate-700 hover:text-[#3F63AD] transition-colors"
+                    >
+                      {p.label}
+                    </Link>
+                  ))}
                 </div>
-                <span className="text-[9.5px] text-slate-400 font-medium">Click to autofill</span>
               </div>
+            )}
 
-              <div className="grid grid-cols-2 sm:grid-cols-2 gap-1.5">
-                {[
-                  { role: "👑 Super Admin", id: "admin@valueplus.in", pass: "admin123" },
-                  { role: "🏬 Store Incharge", id: "storeincharge@valueplus.in", pass: "store123" },
-                  { role: "🚚 Delivery Boy", id: "driver@valueplus.in", pass: "driver123" },
-                  { role: "👔 Sales Executive", id: "salesman@valueplus.in", pass: "salesman123" },
-                  { role: "💳 POS Cashier", id: "cashier@valueplus.in", pass: "cashier123" },
-                  { role: "🏢 Godown Manager", id: "warehouse@valueplus.in", pass: "warehouse123" },
-                  { role: "📊 Chief Accountant", id: "accounts@valueplus.in", pass: "accounts123" },
-                  { role: "👥 HR & Payroll", id: "hr@valueplus.in", pass: "hr123" },
-                  { role: "🏭 Supplier Portal", id: "supplier@valueplus.in", pass: "supplier123" },
-                ].map((item) => (
-                  <button
-                    key={item.role}
-                    type="button"
-                    onClick={() => {
-                      setUsername(item.id);
-                      setPassword(item.pass);
-                    }}
-                    className="w-full overflow-hidden text-left p-2 rounded-xl bg-white hover:bg-blue-50 border border-slate-200/90 hover:border-[#3F63AD] transition-all shadow-2xs group"
-                  >
-                    <span className="text-[10.5px] font-bold text-slate-800 group-hover:text-[#3F63AD] truncate block leading-tight">
-                      {item.role}
-                    </span>
-                    <span className="text-[9px] text-slate-400 font-mono truncate block mt-0.5">
-                      {item.id}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
           </div>
 
           <div className="mt-6 flex flex-col items-center gap-3 text-center">

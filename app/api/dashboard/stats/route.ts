@@ -1064,9 +1064,52 @@ export async function GET(request: Request) {
     const shiftedCount = shiftedInvoices.length;
     const shiftedAmount = shiftedInvoices.reduce((sum: number, inv: any) => sum + (Number(inv.total) || 0), 0);
 
-    const billsModifiedInvoices = filteredInvoices.filter((inv: any) => Number(inv.discount) > 0 && inv.status !== "cancelled");
+    const discountedInvoices = filteredInvoices.filter((inv: any) => Number(inv.discount) > 0 && inv.status !== "cancelled");
+
+    // ─── BACK-DATED ENTRIES ─────────────────────────────────────────────────
+    // A bill punched today but dated earlier. It is matched on WHEN it was entered
+    // (createdAt), not on its own date — otherwise it would only ever show up under
+    // the past day it claims to belong to, where nobody is looking for it. The
+    // entry day is taken in IST so a bill made late in the evening is not compared
+    // against the UTC calendar day.
+    const istDay = (d: Date) => new Date(d.getTime() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const backDatedInvoices = allInvoices.filter((inv: any) => {
+      if (!inv.createdAt || !inv.date || inv.status === "cancelled") return false;
+      const enteredAt = new Date(inv.createdAt);
+      if (isNaN(enteredAt.getTime()) || enteredAt < rangeStart || enteredAt > rangeEnd) return false;
+      const billDay = String(inv.date).slice(0, 10);
+      return /^d{4}-d{2}-d{2}$/.test(billDay) && billDay < istDay(enteredAt);
+    });
+
+    const billsModifiedByNumber = new Map<string, any>();
+    for (const inv of discountedInvoices as any[]) {
+      billsModifiedByNumber.set(inv.invoiceNumber, {
+        ...inv,
+        auditReason: `Discount of ₹${(Number(inv.discount) || 0).toLocaleString("en-IN")} given`,
+        auditBy: inv.createdBy || inv.salesExecutive || "",
+        auditAt: inv.createdAt || "",
+      });
+    }
+    for (const inv of backDatedInvoices as any[]) {
+      const reason = `Back-dated entry: bill dated ${String(inv.date).slice(0, 10)}, entered on ${istDay(new Date(inv.createdAt))}`;
+      const existing = billsModifiedByNumber.get(inv.invoiceNumber);
+      billsModifiedByNumber.set(inv.invoiceNumber, {
+        ...(existing || inv),
+        isBackDated: true,
+        auditReason: existing ? `${reason} · ${existing.auditReason}` : reason,
+        auditBy: inv.createdBy || inv.salesExecutive || "",
+        auditAt: inv.createdAt || "",
+      });
+    }
+    // Back-dated bills first: they are the ones someone has to look into.
+    const billsModifiedInvoices = Array.from(billsModifiedByNumber.values()).sort(
+      (a: any, b: any) => Number(Boolean(b.isBackDated)) - Number(Boolean(a.isBackDated))
+    );
     const billsModifiedCount = billsModifiedInvoices.length;
-    const billsModifiedAmount = billsModifiedInvoices.reduce((sum: number, inv: any) => sum + (Number(inv.discount) || 0), 0);
+    // The card's amount stays the discount total ("price diff"); a back-dated bill
+    // adds to the count, not to that figure.
+    const billsModifiedAmount = discountedInvoices.reduce((sum: number, inv: any) => sum + (Number(inv.discount) || 0), 0);
+    const backDatedCount = backDatedInvoices.length;
 
     // Reprints are matched against the active range by WHEN the print happened,
     // not the invoice's original creation date — an old bill reprinted today must
@@ -1155,7 +1198,7 @@ export async function GET(request: Request) {
       deleted: deletedBucket,
       modified: { count: modifiedCount, amount: modifiedAmount, invoices: modifiedInvoices.slice(0, 10) },
       shifted: { count: shiftedCount, amount: shiftedAmount, invoices: shiftedInvoices.slice(0, 10) },
-      billsModified: { count: billsModifiedCount, amount: billsModifiedAmount, invoices: billsModifiedInvoices.slice(0, 10) },
+      billsModified: { count: billsModifiedCount, amount: billsModifiedAmount, backDatedCount, invoices: billsModifiedInvoices.slice(0, 25) },
       reprinted: { count: reprintedCount, totalPrints: totalReprintTimes, amount: reprintedAmount, invoices: reprintedInvoices.slice(0, 10) },
       waivedOff: { count: waivedCount, amount: waivedAmount, invoices: waivedInvoices.slice(0, 10) },
     };

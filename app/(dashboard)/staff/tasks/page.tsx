@@ -327,8 +327,8 @@ export default function StaffTasksPage() {
       </div>
 
       {/* ─── TASKS TABLE ──────────────── */}
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-        <table className="w-full text-xs text-left">
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-x-auto">
+        <table className="w-full min-w-[720px] text-xs text-left">
           <thead className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 uppercase font-bold text-[10.5px]">
             <tr>
               <th className="p-3 w-10 text-center">Done</th>

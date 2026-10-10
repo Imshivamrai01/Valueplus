@@ -220,7 +220,8 @@ export default function GSTReportsPage() {
               <h3 className="font-semibold text-lg">Tax Computation Summary</h3>
               <Button size="sm" className="bg-[#3F63AD] hover:bg-[#2E4F95]">File GSTR-3B</Button>
             </div>
-            <div className="divide-y text-sm">
+            {/* Six columns do not fit a phone, so the summary scrolls sideways there. */}
+            <div className="divide-y text-sm overflow-x-auto [&>div]:min-w-[680px] [&>div]:gap-4">
               <div className="flex justify-between p-4 bg-slate-50 font-medium text-muted-foreground">
                 <span>Description</span>
                 <span>Taxable Value</span>

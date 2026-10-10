@@ -1198,7 +1198,9 @@ export default function DashboardPage() {
   // Cancelled and deleted bills carry a reason and an authoriser. The other
   // leakage buckets are derived signals (a discount, a reprint) with nobody to
   // attribute them to, so those two columns would be blank for every row.
-  const showsAudit = leakageModal?.type === "cancelled" || leakageModal?.type === "deleted";
+  // Bills Modified rows also say why they are listed (a discount, a back-dated
+  // entry) and who punched the bill.
+  const showsAudit = leakageModal?.type === "cancelled" || leakageModal?.type === "deleted" || leakageModal?.type === "billsModified";
 
   const vendorSupplier = data?.vendorSupplier || {
     vendorCollections: { total: 0, count: 0, byMode: {}, recent: [] },
@@ -2015,7 +2017,7 @@ export default function DashboardPage() {
                 onClick={() => setLeakageModal({
                   type: "billsModified",
                   title: "Bills Modified Post-Punching",
-                  description: "Invoices where rates, discounts or quantities were altered",
+                  description: "Invoices with a discount, and bills entered with a back date",
                   invoices: leakage.billsModified?.invoices || [],
                   color: "#F97316"
                 })}
@@ -2031,7 +2033,11 @@ export default function DashboardPage() {
                   {formatCurrency(leakage.billsModified?.amount || 0)}
                 </p>
                 <span className="text-xs text-orange-800 font-semibold flex items-center justify-between pt-1.5 border-t border-orange-200/60">
-                  <span>Price diff</span> <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                  <span>
+                    Price diff
+                    {(leakage.billsModified?.backDatedCount || 0) > 0 && ` · ${leakage.billsModified.backDatedCount} back-dated`}
+                  </span>{" "}
+                  <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
                 </span>
               </div>
 
@@ -4286,7 +4292,7 @@ export default function DashboardPage() {
                       <th className="p-3">Payment Mode</th>
                       <th className="p-3 text-right">Amount</th>
                       {showsAudit && <th className="p-3">Reason</th>}
-                      {showsAudit && <th className="p-3">Authorised By</th>}
+                      {showsAudit && <th className="p-3">{leakageModal?.type === "billsModified" ? "Entered By" : "Authorised By"}</th>}
                       <th className="p-3 text-center">Status</th>
                       <th className="p-3 text-center">Action</th>
                     </tr>

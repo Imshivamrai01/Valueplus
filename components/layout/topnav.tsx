@@ -1,5 +1,6 @@
 "use client";
 
+import { panelForRole } from "@/lib/role-routes";
 import { Bell, Search, Settings, Sun, Moon, ChevronDown, User, LogOut, Sparkles, Wifi, WifiOff, RefreshCw, CloudUpload, CheckCircle2, Power } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useSession, signOut } from "next-auth/react";
@@ -28,6 +29,9 @@ export function Topnav() {
   const userEmail = session?.user?.email || "admin@valueplus.in";
   const userRole = (((session?.user as any)?.role || "superadmin") as string).toUpperCase();
   const initialLetter = (userName[0] || "A").toUpperCase();
+  // Logging out returns to this role's own panel login.
+  const ownPanel = panelForRole((session?.user as any)?.role);
+  const logoutUrl = ownPanel ? `/login?panel=${ownPanel.slug}` : "/login";
 
   const { isOnline, pendingCount, isSyncing, syncNow } = useOfflineSync();
   const [approvalsList, setApprovalsList] = useState<any[]>([]);
@@ -139,7 +143,7 @@ export function Topnav() {
       </div>
 
       {/* Omni Search Bar */}
-      <div className="relative flex-1 max-w-md mr-2 sm:mr-4">
+      <div className="relative flex-1 min-w-0 max-w-md mr-2 sm:mr-4">
         <div className="relative">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
@@ -194,8 +198,9 @@ export function Topnav() {
         )}
       </div>
 
-      {/* Right Actions */}
-      <div className="flex items-center gap-3">
+      {/* Right Actions — tighter on phones, where the name block is dropped so the
+          bell, logout and avatar all stay inside the screen. */}
+      <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
 
         {/* Real-time Network & Cloud Sync Status Badge */}
         {!isOnline ? (
@@ -310,13 +315,13 @@ export function Topnav() {
           <Settings className="w-5 h-5" />
         </button> */}
 
-        <div className="w-px h-6 bg-slate-200 mx-1"></div>
+        <div className="hidden sm:block w-px h-6 bg-slate-200 mx-1"></div>
 
         {/* Direct 1-Click Logout Button */}
         <Button
           variant="outline"
           size="sm"
-          onClick={() => signOut({ callbackUrl: "/login" })}
+          onClick={() => signOut({ callbackUrl: logoutUrl })}
           className="h-8 px-2.5 text-xs font-bold text-rose-600 border-rose-200 bg-rose-50 hover:bg-rose-100 hover:text-rose-700 transition-all flex items-center gap-1.5 shadow-2xs"
           title="Sign out / Logout of Value Plus ERP"
         >
@@ -327,8 +332,8 @@ export function Topnav() {
         {/* Profile */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-2.5 pl-2 pr-1 py-1 rounded-full hover:bg-slate-100 transition-colors text-left border border-transparent hover:border-slate-200">
-              <div className="flex flex-col items-end">
+            <button className="flex items-center gap-2.5 pl-1 sm:pl-2 pr-1 py-1 rounded-full hover:bg-slate-100 transition-colors text-left border border-transparent hover:border-slate-200">
+              <div className="hidden sm:flex flex-col items-end">
                 <span className="text-xs font-bold text-slate-800 leading-none truncate max-w-[120px]">{userName}</span>
                 <span className="text-[9.5px] text-[#30539C] font-semibold mt-0.5">{userRole}</span>
               </div>
@@ -355,7 +360,7 @@ export function Topnav() {
               </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => signOut({ callbackUrl: '/login' })} className="cursor-pointer py-2 text-rose-600 focus:text-rose-700 focus:bg-rose-50 font-semibold">
+            <DropdownMenuItem onClick={() => signOut({ callbackUrl: logoutUrl })} className="cursor-pointer py-2 text-rose-600 focus:text-rose-700 focus:bg-rose-50 font-semibold">
               <LogOut className="mr-2 h-4 w-4" />
               <span>Log out</span>
             </DropdownMenuItem>

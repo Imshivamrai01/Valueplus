@@ -195,12 +195,12 @@ export default function CategoriesPage() {
             filtered.map((cat: any) => (
               <div
                 key={cat._id || cat.id}
-                className="flex items-center gap-4 px-4 py-3.5 hover:bg-slate-50 transition-colors"
+                className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3.5 hover:bg-slate-50 transition-colors"
               >
                 <div className="w-10 h-10 rounded-xl bg-[#3F63AD]/10 flex items-center justify-center flex-shrink-0">
                   <Tag className="w-5 h-5 text-[#3F63AD]" />
                 </div>
-                <div className="flex-1">
+                <div className="flex-1 min-w-[140px]">
                   <p className="font-semibold text-foreground">{cat.name}</p>
                   <p className="text-xs text-muted-foreground">{cat.description}</p>
                 </div>
@@ -208,7 +208,7 @@ export default function CategoriesPage() {
                 <Badge variant={cat.status === "active" ? "success" : "secondary"}>
                   {cat.status === "active" ? "Active" : "Inactive"}
                 </Badge>
-                <div className="flex gap-1">
+                <div className="flex gap-1 ml-auto">
                   <Button variant="ghost" size="sm" onClick={() => openEdit(cat)}>
                     <Edit className="w-4 h-4 mr-1" /> Edit
                   </Button>
