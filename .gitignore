@@ -41,3 +41,8 @@ next-env.d.ts
 .next-verify/
 .next-isolated/
 .next-smoke/
+
+# Android APK build output — contains the app signing key, never commit
+/android-apk/
+*.keystore
+*.jks
