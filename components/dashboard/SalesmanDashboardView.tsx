@@ -510,7 +510,7 @@ export function SalesmanDashboardView({ session }: { session: any }) {
                           <Phone className="w-3.5 h-3.5" />
                         </a>
                         <a
-                          href={`https://wa.me/91${lead.phone.replace(/[^0-9]/g, "")}?text=Namaste%20${encodeURIComponent(lead.customerName || "Sir")},%20Value%20Plus%20se%20sampark%20karne%20ke%20liye%20dhanyawad.`}
+                          href={`https://wa.me/91${lead.phone.replace(/[^0-9]/g, "")}?text=Hello%20${encodeURIComponent(lead.customerName || "Sir")},%20thank%20you%20for%20contacting%20Value%20Plus.`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center hover:bg-emerald-700 transition-colors shadow-xs"

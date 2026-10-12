@@ -551,6 +551,25 @@ export default function DashboardPage() {
   const [clearDueBankId, setClearDueBankId] = useState<string>("");
   // Invoice whose payment breakdown popup is open.
   const [paymentDetailId, setPaymentDetailId] = useState<string | null>(null);
+  // Old stock: products still on hand whose last purchase was 6+ months / 1+ year ago.
+  const [agedStock, setAgedStock] = useState<{ summary: any; items: any[] }>({
+    summary: { sixMonths: { products: 0, qty: 0, value: 0 }, oneYear: { products: 0, qty: 0, value: 0 } },
+    items: [],
+  });
+  const [agedStockLoaded, setAgedStockLoaded] = useState(false);
+  const [agedBucket, setAgedBucket] = useState<"all" | "sixMonths" | "oneYear">("all");
+  const [openAgedStockModal, setOpenAgedStockModal] = useState(false);
+  const [agedStockSearch, setAgedStockSearch] = useState("");
+
+  useEffect(() => {
+    fetch("/api/reports/aged-stock")
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && json.data) setAgedStock(json.data);
+      })
+      .catch((e) => console.warn("Notice loading old stock:", e))
+      .finally(() => setAgedStockLoaded(true));
+  }, []);
 
   useEffect(() => {
     if (!selectedDueInvoice || bankAccounts.length > 0) return;
@@ -567,7 +586,8 @@ export default function DashboardPage() {
       const res = await fetch("/api/invoices");
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
-        setDueInvoices(json.data);
+        // Estimates (proforma) are quotations — their amount is never a pending due.
+        setDueInvoices(json.data.filter((inv: any) => inv.type !== "proforma"));
       }
     } catch (e) {
       console.warn("Notice loading invoices for due tracking:", e);
@@ -667,7 +687,8 @@ export default function DashboardPage() {
       if (invoicesRes.status === "fulfilled" && invoicesRes.value.ok) {
         const json = await invoicesRes.value.json();
         if (json.success && Array.isArray(json.data)) {
-          setDueInvoices(json.data);
+          // Same rule as fetchDueInvoices: an estimate is a quotation, never a due.
+          setDueInvoices(json.data.filter((inv: any) => inv.type !== "proforma"));
         }
       }
     } catch (e) {
@@ -2831,9 +2852,16 @@ export default function DashboardPage() {
                 <span className="text-[11px] font-black text-slate-500 uppercase tracking-wider">
                   Top Stocked Products
                 </span>
-                <span className="text-[11px] font-bold text-slate-400">
-                  {stockBreakdown.totalItemsCount || stockItems.length} items in catalog
-                </span>
+                {/* The three rows below are only the highest-value products; this
+                    opens the full stock list they are taken from. */}
+                <button
+                  type="button"
+                  onClick={() => { setStockGroupFilter("all"); setStockCategoryFilter("all"); setOpenStockModal(true); }}
+                  className="text-[11px] font-bold text-[#3F63AD] hover:underline flex items-center gap-0.5"
+                  title="Open the full stock list, highest value first"
+                >
+                  View total stock ({stockBreakdown.totalItemsCount || stockItems.length} items) <ArrowRight className="w-3 h-3" />
+                </button>
               </div>
 
               {stockItems.length === 0 ? (
@@ -3438,86 +3466,99 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* CARD 2 (RIGHT): TODAY'S SALES REPORT / RECENT INVOICES */}
+          {/* CARD 2: OLD STOCK — products still on hand that were last bought in 6+ months
+              or 1+ year ago. Replaces the Recent Invoices list. */}
           <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-3 flex flex-col justify-between hover:shadow-md transition-all">
             <div className="pb-2.5 border-b border-slate-100 space-y-2">
               <div className="flex items-center gap-3 min-w-0">
-                <div className="w-7 h-7 rounded-lg bg-blue-50 border border-blue-200/60 flex items-center justify-center text-[#3F63AD] shrink-0">
-                  <FileText className="w-5 h-5" />
+                <div className="w-7 h-7 rounded-lg bg-amber-50 border border-amber-200/60 flex items-center justify-center text-amber-700 shrink-0">
+                  <Clock className="w-5 h-5" />
                 </div>
                 <div className="min-w-0">
-                  <h3 className="text-sm font-black text-slate-900 tracking-tight truncate">Recent Invoices & Bills</h3>
-                  <p className="text-xs text-slate-500 font-medium truncate">1-click official GST tax invoice print and status overview</p>
+                  <h3 className="text-sm font-black text-slate-900 tracking-tight truncate">Old Stock (Not Cleared)</h3>
+                  <p className="text-xs text-slate-500 font-medium truncate">In stock, last purchased 6+ months or 1+ year ago</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <DateRangeFilter
-                  value={widgetFilters.recent}
-                  onChange={(val, start, end) => handleWidgetFilterChange('recent', val, start, end)}
-                  className="flex-1 min-w-0 h-8 text-xs font-semibold"
-                />
-                <Button
-                  size="sm"
-                  onClick={handleOpenInvoiceModal}
-                  className="bg-[#76C043] hover:bg-[#60a82c] text-white border-none text-xs h-8 px-3 rounded-lg font-bold shrink-0"
-                >
-                  + New Bill
-                </Button>
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  { key: "sixMonths", label: "6+ months", tone: "amber" },
+                  { key: "oneYear", label: "1+ year", tone: "rose" },
+                ] as const).map((b) => {
+                  const sum = agedStock.summary?.[b.key] || { products: 0, qty: 0, value: 0 };
+                  const active = agedBucket === b.key;
+                  return (
+                    <button
+                      key={b.key}
+                      type="button"
+                      onClick={() => setAgedBucket(active ? "all" : b.key)}
+                      title={`${sum.products} products, ${sum.qty} units`}
+                      className={cn(
+                        "text-left rounded-lg border px-2.5 py-1.5 transition-all",
+                        b.tone === "amber"
+                          ? (active ? "bg-amber-100 border-amber-400" : "bg-amber-50/60 border-amber-200 hover:border-amber-400")
+                          : (active ? "bg-rose-100 border-rose-400" : "bg-rose-50/60 border-rose-200 hover:border-rose-400")
+                      )}
+                    >
+                      <p className={cn("text-[10px] font-black uppercase tracking-wide", b.tone === "amber" ? "text-amber-800" : "text-rose-800")}>
+                        {b.label}
+                      </p>
+                      <p className="text-xs font-black text-slate-900 font-mono">{formatCurrency(sum.value)}</p>
+                      <p className="text-[10px] text-slate-500 font-semibold">{sum.products} products · {sum.qty} units</p>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            {/* No max-h/scroll — hard-capped to 5 rows via `.slice(0, 5)`
-                below, same as Detailed Payment Log, so a fixed scroll height
-                just reserved blank space under a shorter list. */}
-            <div className="divide-y divide-slate-100 my-2.5">
-              {(widgetData.recent?.recentInvoices || []).slice(0, 5).map((inv: any) => (
-                <div
-                  key={inv._id || inv.invoiceNumber}
-                  onClick={() => handlePrintTrigger(inv)}
-                  className="flex items-center justify-between gap-2 p-2 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer group"
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div className="w-6 h-6 rounded-lg bg-[#3F63AD]/10 flex items-center justify-center text-[#3F63AD] group-hover:bg-[#3F63AD] group-hover:text-white transition-colors shrink-0">
-                      <Printer className="w-3.5 h-3.5" />
+            <div className="space-y-1.5 my-2.5">
+              {(() => {
+                const rows = agedStock.items.filter((it: any) => agedBucket === "all" || it.bucket === agedBucket);
+                if (!agedStockLoaded) {
+                  return <p className="py-6 text-center text-xs text-slate-400 font-medium">Loading old stock...</p>;
+                }
+                if (rows.length === 0) {
+                  return (
+                    <div className="py-6 flex flex-col items-center justify-center text-center border border-dashed border-slate-200 rounded-xl">
+                      <CheckCircle2 className="w-6 h-6 text-emerald-500 mb-1.5" />
+                      <p className="text-xs font-bold text-slate-600">No old stock</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">Nothing in stock was last purchased more than 6 months ago.</p>
                     </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <p className="text-xs font-bold text-slate-900 group-hover:text-[#3F63AD] transition-colors truncate">{inv.invoiceNumber}</p>
-                        {(inv.reprintCount || 0) > 0 && (
-                          <span className="font-mono text-[9px] font-bold px-1 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-300 shrink-0">
-                            🖨️ {inv.reprintCount}x
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-slate-400 truncate">{inv.customerName} · {inv.date}</p>
+                  );
+                }
+                return rows.slice(0, 5).map((it: any) => (
+                  <div
+                    key={it._id}
+                    onClick={() => openProductLedger(it)}
+                    title="Open product ledger"
+                    className="flex items-center justify-between gap-2 p-2 rounded-lg border border-slate-100 bg-slate-50/70 hover:bg-white hover:border-amber-200 transition-all cursor-pointer"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-bold text-slate-900 truncate">{it.name}</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5 truncate">
+                        <span className="font-semibold text-slate-600">{it.brand}</span>
+                        {it.vpCode ? ` • ${it.vpCode}` : ""} • last in {it.lastInwardDate}
+                      </p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <span className={cn("text-[10px] font-black px-1.5 py-0.5 rounded", it.bucket === "oneYear" ? "bg-rose-100 text-rose-800" : "bg-amber-100 text-amber-800")}>
+                        {it.ageDays} days
+                      </span>
+                      <p className="text-[10px] font-mono font-bold text-slate-700 mt-1">{it.qty} units · {formatCurrency(it.stockValue)}</p>
                     </div>
                   </div>
-
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <div className="text-right">
-                      <p className="text-xs font-black text-slate-900 font-mono">{formatCurrency(inv.total)}</p>
-                      <p className="text-[9px] text-slate-400 font-semibold">{inv.paymentMode || "Cash"}</p>
-                    </div>
-                    <StatusBadge status={inv.status} className="text-[10px] px-1.5 py-0.5 whitespace-nowrap" />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handlePrintTrigger(inv);
-                      }}
-                      className="h-6 px-1.5 text-[10px] font-bold border-[#3F63AD] text-[#3F63AD] hover:bg-[#3F63AD] hover:text-white"
-                    >
-                      Print
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                ));
+              })()}
             </div>
 
             <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-medium">
-              <span>Official GST Invoices</span>
-              <span className="font-bold text-slate-700">Value Plus Format</span>
+              <span>{agedStock.items.length} old products in stock</span>
+              <button
+                type="button"
+                onClick={() => setOpenAgedStockModal(true)}
+                className="font-bold text-[#3F63AD] hover:underline flex items-center gap-0.5"
+              >
+                View all <ArrowRight className="w-3 h-3" />
+              </button>
             </div>
           </div>
 
@@ -3947,6 +3988,10 @@ export default function DashboardPage() {
 
         // Total outstanding across every pending due in the selected date scope
         const totalPendingAmount = pendingDues.reduce((sum, inv) => sum + (Number(inv.balanceAmount) || 0), 0);
+        // Loans billed but not yet paid out by the finance company. Shown beside the
+        // khata figures, never inside "Total Pending" — it is the financier's money
+        // to send, not the customer's due.
+        const financePendingAmount = financeDues.reduce((sum, inv) => sum + (Number(inv.balanceAmount) || 0), 0);
 
         const todayDueAmount = todayDues.reduce((sum, inv) => sum + (Number(inv.balanceAmount) || 0), 0);
         const overdueAmount = overdueDues.reduce((sum, inv) => sum + (Number(inv.balanceAmount) || 0), 0);
@@ -4042,16 +4087,18 @@ export default function DashboardPage() {
                 </div>
 
                 {/* ROW 2: UNIFIED KPI STRIP (equal cells, always one line) */}
-                <div className="grid grid-cols-3 rounded-xl border border-slate-200 bg-slate-50/70 overflow-hidden divide-x divide-slate-200">
+                <div className="grid grid-cols-2 sm:grid-cols-4 rounded-xl border border-slate-200 bg-slate-50/70 overflow-hidden divide-x divide-slate-200">
                   {[
                     { label: "Today's Due", amount: todayDueAmount, dot: "bg-rose-500", text: "text-rose-700" },
                     { label: "Overdue", amount: overdueAmount, dot: "bg-amber-500", text: "text-amber-700" },
                     { label: "Cleared Today", amount: clearedTodayAmount, dot: "bg-emerald-500", text: "text-emerald-700" },
-                  ].map((kpi) => (
+                    { label: "Finance Pending", amount: financePendingAmount, dot: "bg-blue-500", text: "text-blue-700", tab: "finance" as const },
+                  ].map((kpi: { label: string; amount: number; dot: string; text: string; tab?: "finance" }) => (
                     <div
                       key={kpi.label}
-                      title={`${kpi.label}: ${formatCurrency(kpi.amount)}`}
-                      className="px-3.5 py-2 min-w-[110px]"
+                      title={kpi.tab ? `${kpi.label}: ${formatCurrency(kpi.amount)} from ${financeDues.length} finance bills — click to list them` : `${kpi.label}: ${formatCurrency(kpi.amount)}`}
+                      onClick={kpi.tab ? () => setDueTabFilter(kpi.tab!) : undefined}
+                      className={cn("px-3.5 py-2 min-w-[110px]", kpi.tab && "cursor-pointer hover:bg-blue-50/60")}
                     >
                       <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
                         <span className={cn("w-1.5 h-1.5 rounded-full", kpi.dot)} />
@@ -5756,6 +5803,116 @@ export default function DashboardPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── OLD STOCK — FULL LIST ─────────────────────────────────── */}
+      <Dialog open={openAgedStockModal} onOpenChange={setOpenAgedStockModal}>
+        <DialogContent className="max-w-4xl p-0 rounded-2xl overflow-hidden border-none shadow-2xl">
+          <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-5">
+            <DialogTitle className="text-lg font-black tracking-tight flex items-center gap-2">
+              <Clock className="w-5 h-5 text-amber-400" /> Old Stock (Not Cleared)
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-300 mt-1">
+              Products still in stock whose last purchase was more than 6 months ago. Age is counted from the last
+              purchase bill; a product with no purchase bill uses the date it was added.
+            </DialogDescription>
+          </div>
+          <div className="p-4 bg-slate-50 max-h-[62vh] overflow-y-auto space-y-3">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Input
+                  placeholder="Search product, brand, VP code..."
+                  value={agedStockSearch}
+                  onChange={(e) => setAgedStockSearch(e.target.value)}
+                  className="pl-9 bg-white text-xs h-9"
+                />
+              </div>
+              <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-1">
+                {([
+                  { key: "all", label: "All" },
+                  { key: "sixMonths", label: "6+ months" },
+                  { key: "oneYear", label: "1+ year" },
+                ] as const).map((b) => (
+                  <button
+                    key={b.key}
+                    type="button"
+                    onClick={() => setAgedBucket(b.key)}
+                    className={cn(
+                      "px-3 py-1 rounded-md text-[11px] font-bold transition-colors",
+                      agedBucket === b.key ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100"
+                    )}
+                  >
+                    {b.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {(() => {
+              const q = agedStockSearch.trim().toLowerCase();
+              const rows = agedStock.items
+                .filter((it: any) => agedBucket === "all" || it.bucket === agedBucket)
+                .filter((it: any) =>
+                  !q ||
+                  (it.name || "").toLowerCase().includes(q) ||
+                  (it.brand || "").toLowerCase().includes(q) ||
+                  (it.vpCode || "").toLowerCase().includes(q) ||
+                  (it.category || "").toLowerCase().includes(q)
+                );
+              if (rows.length === 0) {
+                return (
+                  <div className="py-12 text-center text-slate-400 text-xs font-medium bg-white rounded-xl border border-slate-200">
+                    <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2 opacity-80" />
+                    No old stock found for this filter.
+                  </div>
+                );
+              }
+              return (
+                <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+                  <table className="w-full min-w-[640px] text-xs text-left">
+                    <thead className="bg-slate-50 text-slate-600 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">
+                      <tr>
+                        <th className="p-3">Product</th>
+                        <th className="p-3">Brand / Category</th>
+                        <th className="p-3">Last Purchased</th>
+                        <th className="p-3 text-right">Age</th>
+                        <th className="p-3 text-right">Qty</th>
+                        <th className="p-3 text-right">Stock Value</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium">
+                      {rows.map((it: any) => (
+                        <tr
+                          key={it._id}
+                          onClick={() => openProductLedger(it)}
+                          title="Open product ledger"
+                          className="hover:bg-slate-50/80 transition-colors cursor-pointer"
+                        >
+                          <td className="p-3">
+                            <p className="font-bold text-slate-900">{it.name}</p>
+                            {it.vpCode && <p className="text-[10px] font-mono text-slate-400">{it.vpCode}</p>}
+                          </td>
+                          <td className="p-3 text-slate-600">{[it.brand, it.category].filter(Boolean).join(" · ")}</td>
+                          <td className="p-3 text-slate-600">
+                            {it.lastInwardDate}
+                            {it.dateSource === "catalog" && <span className="block text-[9px] text-slate-400">date added (no purchase bill)</span>}
+                          </td>
+                          <td className="p-3 text-right">
+                            <span className={cn("text-[10px] font-black px-1.5 py-0.5 rounded", it.bucket === "oneYear" ? "bg-rose-100 text-rose-800" : "bg-amber-100 text-amber-800")}>
+                              {it.ageDays} days
+                            </span>
+                          </td>
+                          <td className="p-3 text-right font-mono font-bold text-slate-800">{it.qty}</td>
+                          <td className="p-3 text-right font-mono font-black text-slate-900">{formatCurrency(it.stockValue)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()}
+          </div>
         </DialogContent>
       </Dialog>
 

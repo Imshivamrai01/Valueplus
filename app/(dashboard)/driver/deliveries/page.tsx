@@ -261,7 +261,7 @@ export default function DriverDeliveriesPage() {
               <h3 className="text-sm font-bold text-slate-700">No {activeTab} Deliveries</h3>
               <p className="text-xs text-slate-400 max-w-sm mx-auto">
                 {activeTab === "pending" 
-                  ? "Aapke paas abhi koi pending delivery nahi hai. Central godown se naye orders assign hone par yahan dikhenge."
+                  ? "You have no pending deliveries right now. New orders assigned from the central godown will appear here."
                   : "No delivery records found matching this view."}
               </p>
             </div>
@@ -321,7 +321,7 @@ export default function DriverDeliveriesPage() {
 
                         {rawPhone && (
                           <a
-                            href={`https://api.whatsapp.com/send?phone=91${rawPhone}&text=${encodeURIComponent(`Namaste ${inv.customerName}, main Value Plus delivery partner Ramesh Yadav aapke address par order deliver karne pahunch raha hoon.`)}`}
+                            href={`https://api.whatsapp.com/send?phone=91${rawPhone}&text=${encodeURIComponent(`Hello ${inv.customerName}, this is your Value Plus delivery partner. I am on my way to deliver your order to your address.`)}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex items-center gap-1 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-xs transition-all active:scale-95"
@@ -431,7 +431,7 @@ export default function DriverDeliveriesPage() {
 
             <div className="p-5 space-y-4 bg-white text-center">
               <p className="text-xs text-slate-600 leading-relaxed">
-                Customer se unke WhatsApp / Tracking link par aaya hua **4-Digit OTP** maangkar enter karein:
+                Ask the customer for the **4-Digit OTP** sent to their WhatsApp / tracking link and enter it:
               </p>
 
               <div className="space-y-1">

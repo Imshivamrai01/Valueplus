@@ -114,6 +114,35 @@ export default function LeadsPipelinePage() {
     onError: (err: any) => toast.error(err.message),
   });
 
+  // Log a follow-up: when the customer was contacted and when to call next.
+  const [followUpLead, setFollowUpLead] = useState<any | null>(null);
+  const [followUpForm, setFollowUpForm] = useState({ date: "", nextDate: "", notes: "" });
+  const todayStr = new Date().toISOString().split("T")[0];
+
+  const openFollowUp = (lead: any) => {
+    setFollowUpLead(lead);
+    setFollowUpForm({ date: todayStr, nextDate: "", notes: "" });
+  };
+
+  const logFollowUpMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/crm/leads", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: followUpLead._id, followUp: followUpForm }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || "Could not save the follow-up");
+      return json.data;
+    },
+    onSuccess: () => {
+      toast.success("Follow-up saved");
+      setFollowUpLead(null);
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+    },
+    onError: (err: any) => toast.error(err.message),
+  });
+
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status, note }: { id: string; status: string; note?: string }) => {
       const res = await fetch("/api/crm/leads", {
@@ -252,6 +281,7 @@ export default function LeadsPipelinePage() {
                 "VP Code": l.vpCode || "",
                 "Est. Value": Number(l.estimatedValue) || 0,
                 "Assigned Staff": l.assignedStaff || "Sales Team",
+                "Last Follow-up": l.lastFollowUpDate || "",
                 "Next Follow-up": l.followUpDate || "",
                 Status: l.status,
               }))}
@@ -290,6 +320,7 @@ export default function LeadsPipelinePage() {
                 <th className="p-3">Interested Product</th>
                 <th className="p-3">Est. Value</th>
                 <th className="p-3">Assigned Staff</th>
+                <th className="p-3">Last Follow-up</th>
                 <th className="p-3">Next Follow-up</th>
                 <th className="p-3">Status</th>
                 <th className="p-3 text-right">Actions</th>
@@ -297,9 +328,9 @@ export default function LeadsPipelinePage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {isLoading ? (
-                <tr><td colSpan={8} className="p-8 text-center text-slate-500">Loading live leads from database...</td></tr>
+                <tr><td colSpan={9} className="p-8 text-center text-slate-500">Loading live leads from database...</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={8} className="p-8 text-center text-slate-500 font-medium">No leads found in this pipeline view. Click &quot;+ New Lead&quot; to register a walk-in enquiry.</td></tr>
+                <tr><td colSpan={9} className="p-8 text-center text-slate-500 font-medium">No leads found in this pipeline view. Click &quot;+ New Lead&quot; to register a walk-in enquiry.</td></tr>
               ) : (
                 filtered.map((l: any) => (
                   <tr key={l._id} className="hover:bg-slate-50/80 transition-colors">
@@ -325,9 +356,30 @@ export default function LeadsPipelinePage() {
                     </td>
                     <td className="p-3 text-slate-700 font-medium">{l.assignedStaff || "Sales Team"}</td>
                     <td className="p-3 font-mono text-slate-600 text-[11px]">
-                      {l.followUpDate ? (
+                      {l.lastFollowUpDate ? (
                         <span className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3 text-slate-400" /> {l.followUpDate}
+                          <CheckCircle2 className="w-3 h-3 text-emerald-500" /> {l.lastFollowUpDate}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400">Not yet</span>
+                      )}
+                      {(l.followUps?.length || 0) > 0 && (
+                        <span className="block text-[9px] text-slate-400 font-sans">{l.followUps.length} follow-up{l.followUps.length === 1 ? "" : "s"}</span>
+                      )}
+                    </td>
+                    <td className="p-3 font-mono text-slate-600 text-[11px]">
+                      {l.followUpDate ? (
+                        <span
+                          className={cn(
+                            "flex items-center gap-1",
+                            // Due or missed, and the lead is still open.
+                            l.followUpDate <= todayStr && !["Converted", "Lost"].includes(l.status) && "text-rose-700 font-bold"
+                          )}
+                        >
+                          <Calendar className="w-3 h-3" /> {l.followUpDate}
+                          {l.followUpDate < todayStr && !["Converted", "Lost"].includes(l.status) && (
+                            <span className="text-[9px] font-sans font-bold uppercase">overdue</span>
+                          )}
                         </span>
                       ) : (
                         <span className="text-slate-400">None</span>
@@ -374,6 +426,17 @@ export default function LeadsPipelinePage() {
                         >
                           <MessageSquare className="w-3.5 h-3.5 mr-1" /> WhatsApp
                         </Button>
+                        {!["Converted", "Lost"].includes(l.status) && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openFollowUp(l)}
+                            className="h-7 text-xs text-amber-800 border-amber-300 hover:bg-amber-50 font-bold"
+                            title="Record a follow-up and set the next one"
+                          >
+                            <Clock className="w-3.5 h-3.5 mr-1" /> Follow-up
+                          </Button>
+                        )}
                         {l.status !== "Converted" && (
                           <Button
                             size="sm"
@@ -523,7 +586,7 @@ export default function LeadsPipelinePage() {
               </div>
 
               <div>
-                <Label className="text-xs font-bold text-slate-700">Follow-up Date</Label>
+                <Label className="text-xs font-bold text-slate-700">Next Follow-up Date</Label>
                 <Input
                   type="date"
                   value={leadForm.followUpDate}
@@ -550,6 +613,94 @@ export default function LeadsPipelinePage() {
               </Button>
               <Button type="submit" size="sm" className="bg-[#76C043] hover:bg-[#60a82c] text-white font-bold px-4">
                 Register Lead
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── LOG A FOLLOW-UP ─── */}
+      <Dialog open={!!followUpLead} onOpenChange={() => setFollowUpLead(null)}>
+        <DialogContent className="max-w-md p-0 rounded-2xl overflow-hidden border-none shadow-2xl">
+          <div className="bg-gradient-to-r from-[#1B2537] via-[#243753] to-[#1B2537] text-white p-5">
+            <DialogTitle className="text-base font-bold tracking-tight flex items-center gap-2">
+              <Clock className="w-4 h-4 text-amber-400" /> Record Follow-up
+            </DialogTitle>
+            <p className="text-xs text-slate-300 mt-0.5">
+              {followUpLead?.customerName} • {followUpLead?.mobile} • {followUpLead?.assignedStaff || "Sales Team"}
+            </p>
+          </div>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!followUpForm.date) return toast.error("Enter the follow-up date.");
+              if (followUpForm.nextDate && followUpForm.nextDate < followUpForm.date) {
+                return toast.error("The next follow-up date cannot be before the follow-up date.");
+              }
+              logFollowUpMutation.mutate();
+            }}
+            className="p-5 space-y-3.5 bg-slate-50"
+          >
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs font-bold text-slate-700">Follow-up Done On *</Label>
+                <Input
+                  type="date"
+                  max={todayStr}
+                  value={followUpForm.date}
+                  onChange={(e) => setFollowUpForm({ ...followUpForm, date: e.target.value })}
+                  className="mt-1 bg-white text-xs h-9 font-medium"
+                  required
+                />
+              </div>
+              <div>
+                <Label className="text-xs font-bold text-slate-700">Next Follow-up Date</Label>
+                <Input
+                  type="date"
+                  min={followUpForm.date || todayStr}
+                  value={followUpForm.nextDate}
+                  onChange={(e) => setFollowUpForm({ ...followUpForm, nextDate: e.target.value })}
+                  className="mt-1 bg-white text-xs h-9 font-medium"
+                />
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs font-bold text-slate-700">What was discussed</Label>
+              <Input
+                placeholder="e.g. Customer asked for the EMI scheme, will visit on Sunday"
+                value={followUpForm.notes}
+                onChange={(e) => setFollowUpForm({ ...followUpForm, notes: e.target.value })}
+                className="mt-1 bg-white text-xs h-9"
+              />
+            </div>
+
+            {(followUpLead?.followUps?.length || 0) > 0 && (
+              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-wide mb-1">Earlier follow-ups</p>
+                <div className="max-h-28 overflow-y-auto space-y-1">
+                  {[...followUpLead.followUps].reverse().map((f: any, idx: number) => (
+                    <p key={idx} className="text-[11px] text-slate-600">
+                      <span className="font-mono font-bold text-slate-800">{f.date}</span>
+                      {f.nextDate ? ` → next ${f.nextDate}` : ""}
+                      {f.notes ? ` · ${f.notes}` : ""}
+                      {f.staff ? <span className="text-slate-400"> ({f.staff})</span> : null}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <DialogFooter className="pt-1 flex items-center justify-end gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setFollowUpLead(null)}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={logFollowUpMutation.isPending}
+                className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white font-bold"
+              >
+                {logFollowUpMutation.isPending ? "Saving..." : "Save Follow-up"}
               </Button>
             </DialogFooter>
           </form>

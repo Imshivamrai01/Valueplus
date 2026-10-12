@@ -14,8 +14,10 @@ export async function GET(req: Request) {
     await connectToDatabase();
 
     // Find all invoices/orders that contain this item code
+    // Sales history only — an estimate that quoted this item did not sell it.
     const invoices = await Invoice.find({
-      "items.itemCode": code
+      "items.itemCode": code,
+      type: { $ne: "proforma" },
     }).sort({ createdAt: -1 });
 
     // Format the response to return a flattened list of sales history

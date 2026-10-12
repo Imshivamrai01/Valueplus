@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import DayClose from "@/models/DayClose";
 import { getCashRegisterSummary } from "@/lib/cashRegister";
+import { CASH_NOTE_VALUES, denominationTotal } from "@/lib/cashDenominations";
 
 function toDateStr(d: Date): string {
   return d.toISOString().split("T")[0];
@@ -50,10 +51,26 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: "No day-close is pending right now." }, { status: 400 });
     }
 
-    const countedCash = Number(body.countedCash);
-    if (!Number.isFinite(countedCash) || countedCash < 0) {
-      return NextResponse.json({ success: false, error: "A valid counted cash amount is required." }, { status: 400 });
+    // The counted cash is built from the note-wise count, never taken as a typed
+    // total: every note must be counted (0 is a valid count), and the total is
+    // worked out here so it cannot disagree with the breakup that is stored.
+    const submitted: any[] = Array.isArray(body.denominations) ? body.denominations : [];
+    const denominations = CASH_NOTE_VALUES.map((value) => {
+      const row = submitted.find((d) => Number(d?.value) === value);
+      return { value, count: row === undefined || row.count === "" || row.count === null ? NaN : Number(row.count) };
+    });
+    const uncounted = denominations.filter((d) => !Number.isInteger(d.count) || d.count < 0).map((d) => d.value);
+    if (uncounted.length > 0) {
+      return NextResponse.json(
+        { success: false, error: `Enter the number of ₹${uncounted.join(", ₹")} notes (use 0 if there are none).` },
+        { status: 400 }
+      );
     }
+    const coinsAmount = Number(body.coinsAmount) || 0;
+    if (coinsAmount < 0) {
+      return NextResponse.json({ success: false, error: "Coins amount cannot be negative." }, { status: 400 });
+    }
+    const countedCash = denominationTotal(denominations, coinsAmount);
 
     const summary = await getCashRegisterSummary();
     const systemExpectedCash = summary.currentBalance;
@@ -66,6 +83,8 @@ export async function POST(req: Request) {
       openingCash,
       systemExpectedCash,
       countedCash,
+      denominations,
+      coinsAmount,
       difference: countedCash - systemExpectedCash,
       notes: body.notes || "",
       closedBy: body.closedBy || "Admin / Cashier",

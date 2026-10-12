@@ -81,7 +81,7 @@ export default function LoginPage() {
           await signOut({ redirect: false });
           const own = panelForRole(role);
           setError(
-            `Yeh login sirf ${panel.label} panel ke liye hai.${own ? ` Aapka panel: /${own.slug}` : ""}`
+            `This login is only for the ${panel.label} panel.${own ? ` Your panel: /${own.slug}` : ""}`
           );
           return;
         }

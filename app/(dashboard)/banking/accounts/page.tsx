@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ExportMenu } from "@/components/shared/ExportMenu";
+import { describeDenominations } from "@/lib/cashDenominations";
 
 export default function BankAccountsAndCashRegisterPage() {
   const queryClient = useQueryClient();
@@ -404,12 +405,12 @@ export default function BankAccountsAndCashRegisterPage() {
               </div>
               <div>
                 <h3 className="text-base font-bold text-slate-900">Daily Cash Audit History</h3>
-                <p className="text-xs text-slate-500">Jis din jo audit hua, kisne kiya, kitna cash gina gaya aur system se match hua ya nahi.</p>
+                <p className="text-xs text-slate-500">Each day's audit: who did it, how much cash was counted note by note, and whether it matched the system.</p>
               </div>
             </div>
             {auditPendingDate && (
               <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 font-bold text-[11px]">
-                ⚠️ {auditPendingDate} ka audit abhi baaki hai
+                ⚠️ Audit for {auditPendingDate} is still pending
               </Badge>
             )}
           </div>
@@ -421,6 +422,7 @@ export default function BankAccountsAndCashRegisterPage() {
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase">Date</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase">Done By</th>
                   <th className="px-3 py-2.5 text-right text-xs font-semibold text-muted-foreground uppercase">Counted Cash</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase">Note Breakup</th>
                   <th className="px-3 py-2.5 text-right text-xs font-semibold text-muted-foreground uppercase">System Expected</th>
                   <th className="px-3 py-2.5 text-right text-xs font-semibold text-muted-foreground uppercase">Difference</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase">Submitted At</th>
@@ -429,9 +431,9 @@ export default function BankAccountsAndCashRegisterPage() {
               </thead>
               <tbody className="divide-y">
                 {isLoadingAudits ? (
-                  <tr><td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">Loading audit history...</td></tr>
+                  <tr><td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">Loading audit history...</td></tr>
                 ) : auditHistory.length === 0 ? (
-                  <tr><td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">Abhi tak koi daily audit submit nahi hua.</td></tr>
+                  <tr><td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">No daily audit has been submitted yet.</td></tr>
                 ) : (
                   auditHistory.map((a: any) => (
                     <tr key={a._id} className="hover:bg-slate-50 transition-colors">
@@ -441,6 +443,9 @@ export default function BankAccountsAndCashRegisterPage() {
                         {a.closedByRole && <p className="text-[10px] text-slate-400 capitalize">{a.closedByRole}</p>}
                       </td>
                       <td className="px-3 py-2.5 text-right font-mono font-bold">{formatCurrency(a.countedCash)}</td>
+                      <td className="px-3 py-2.5 text-[11px] font-mono text-slate-600 min-w-[180px]">
+                        {describeDenominations(a.denominations, a.coinsAmount) || <span className="text-slate-300">Not recorded</span>}
+                      </td>
                       <td className="px-3 py-2.5 text-right font-mono text-slate-500">{formatCurrency(a.systemExpectedCash)}</td>
                       <td className={`px-3 py-2.5 text-right font-mono font-bold ${Math.abs(a.difference) < 1 ? "text-emerald-600" : "text-rose-600"}`}>
                         {a.difference > 0 ? "+" : ""}{formatCurrency(a.difference)}

@@ -78,7 +78,7 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
       setInvoice(propInvoiceData);
     } else if (billIdFromUrl) {
       setLoading(true);
-      fetch(`/api/invoices`)
+      fetch(`/api/invoices?includeEstimates=true`)
         .then((res) => res.json())
         .then((json) => {
           if (json.success && json.data) {

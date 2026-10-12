@@ -38,6 +38,7 @@ import { useBranch } from "@/context/BranchContext";
 import { Switch } from "@/components/ui/switch";
 import { BulkIncentiveModal } from "@/components/items/BulkIncentiveModal";
 import { ProductReferenceImportModal } from "@/components/masters/ProductReferenceImportModal";
+import { VspSheetImportModal } from "@/components/masters/VspSheetImportModal";
 import { BrandSelect } from "@/components/shared/brand-select";
 import { useSession } from "next-auth/react";
 
@@ -141,6 +142,7 @@ function ItemsPageContent() {
   const [incentiveOpen, setIncentiveOpen] = useState(false);
   const [bulkIncentiveOpen, setBulkIncentiveOpen] = useState(false);
   const [productReferenceOpen, setProductReferenceOpen] = useState(false);
+  const [vspImportOpen, setVspImportOpen] = useState(false);
   const [formSerials, setFormSerials] = useState<FormSerialItem[]>([]);
   const [newSerialInput, setNewSerialInput] = useState("");
   const [batchNoInput, setBatchNoInput] = useState("");
@@ -621,6 +623,15 @@ function ItemsPageContent() {
               className="text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50"
             >
               <Gift className="w-3.5 h-3.5 mr-1.5" /> Bulk Apply Incentive
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setVspImportOpen(true)}
+              className="text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+              title="Upload a brand price list to update the VSP of the products it names"
+            >
+              <UploadCloud className="w-3.5 h-3.5 mr-1.5" /> Update VSP from Sheet
             </Button>
             <Button
               variant="outline"
@@ -1547,7 +1558,7 @@ function ItemsPageContent() {
                   />
                   <p className="text-[10px] text-slate-500">
                     {editingItem
-                      ? "Stock ko yahan se edit nahi karte — Inventory Adjustment use karein."
+                      ? "Stock is not edited here — use Inventory Adjustment."
                       : `Available units in ${activeLocation?.name || "Showroom"}`}
                   </p>
                 </div>
@@ -1566,7 +1577,7 @@ function ItemsPageContent() {
                     className="bg-amber-50/50 border-amber-300 font-bold disabled:opacity-60 disabled:cursor-not-allowed"
                   />
                   <p className="text-[10px] text-slate-500">
-                    {editingItem ? "Stock ko yahan se edit nahi karte — Inventory Adjustment use karein." : "Available units in Central Godown"}
+                    {editingItem ? "Stock is not edited here — use Inventory Adjustment." : "Available units in Central Godown"}
                   </p>
                 </div>
 
@@ -2087,6 +2098,12 @@ function ItemsPageContent() {
       <ProductReferenceImportModal
         open={productReferenceOpen}
         onOpenChange={setProductReferenceOpen}
+      />
+
+      <VspSheetImportModal
+        open={vspImportOpen}
+        onOpenChange={setVspImportOpen}
+        onApplied={() => queryClient.invalidateQueries({ queryKey: ["items"] })}
       />
     </PageShell>
   );

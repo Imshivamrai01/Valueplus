@@ -8,6 +8,10 @@ export interface IDayClose extends Document {
    *  physical count below. */
   systemExpectedCash: number;
   countedCash: number;
+  /** How the counted cash was made up, note by note. Absent on audits recorded
+   *  before the note-wise count existed. */
+  denominations?: { value: number; count: number }[];
+  coinsAmount?: number;
   difference: number;
   notes?: string;
   closedBy: string;
@@ -21,6 +25,11 @@ const DayCloseSchema = new Schema<IDayClose>(
     openingCash: { type: Number, default: 0 },
     systemExpectedCash: { type: Number, required: true },
     countedCash: { type: Number, required: true },
+    denominations: {
+      type: [{ _id: false, value: { type: Number, required: true }, count: { type: Number, required: true } }],
+      default: [],
+    },
+    coinsAmount: { type: Number, default: 0 },
     difference: { type: Number, required: true },
     notes: { type: String, default: "" },
     closedBy: { type: String, required: true },

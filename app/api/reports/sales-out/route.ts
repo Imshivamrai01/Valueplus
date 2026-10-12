@@ -15,8 +15,9 @@ export async function GET(req: Request) {
     
     await connectToDatabase();
     
+    // Sales only: neither a booking (sales order) nor a quotation (estimate).
     const filter: any = {
-      type: { $ne: "sales-order" },
+      type: { $nin: ["sales-order", "proforma"] },
     };
     
     if (startDate && endDate) {

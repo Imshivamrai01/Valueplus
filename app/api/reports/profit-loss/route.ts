@@ -15,7 +15,9 @@ export async function GET(req: Request) {
 
     // Build Invoice filter
     const invoiceQuery: any = {
-      status: { $nin: ["cancelled", "draft"] }
+      status: { $nin: ["cancelled", "draft"] },
+      // An estimate is a quotation — it is neither revenue nor cost of goods sold.
+      type: { $ne: "proforma" },
     };
 
     if (startDate && endDate) {

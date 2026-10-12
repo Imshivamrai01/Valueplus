@@ -52,7 +52,14 @@ export async function GET(req: Request) {
     
     await connectToDatabase();
     
-    const query: any = type ? { type } : { type: { $ne: "sales-order" } };
+    // An estimate is saved beside invoices as type "proforma", but it is a
+    // quotation, not a sale. Every sales screen and report reads this list, so
+    // estimates are left out unless they are asked for by name: they used to show
+    // up as bills in the invoice list, in the reports and in salesman incentives.
+    const includeEstimates = searchParams.get("includeEstimates") === "true";
+    const query: any = type
+      ? { type }
+      : { type: { $nin: includeEstimates ? ["sales-order"] : ["sales-order", "proforma"] } };
 
     // Invoices are not tagged with a warehouse anywhere in the billing flow, so a
     // strict location filter matched nothing and returned an empty list — the branch
@@ -296,8 +303,10 @@ export async function POST(req: Request) {
       }
       
       // 3. Update Customer Balance and Master Data
+      // An estimate (proforma) is a quotation, not a sale: whatever it "leaves
+      // unpaid" is not money the customer owes, so it never touches their balance.
       const updateData: any = {};
-      if (body.balanceAmount > 0) {
+      if (body.balanceAmount > 0 && body.type !== "proforma") {
         updateData.$inc = { 
           outstandingBalance: body.type === "credit-note" ? -body.balanceAmount : body.balanceAmount 
         };
@@ -530,6 +539,15 @@ export async function POST(req: Request) {
           }
 
           const matchedLeads = await Lead.find(leadFilter);
+          // A bill saved without a real salesman on it is credited to whoever has
+          // been working this customer's lead.
+          const leadOwner = matchedLeads
+            .map((l: any) => String(l.assignedStaff || "").trim())
+            .find((name) => name && !/^sales team$/i.test(name));
+          if (leadOwner && (!invoice.salesExecutive || ["Admin", "Store Staff", "Counter Staff"].includes(invoice.salesExecutive))) {
+            invoice.salesExecutive = leadOwner;
+            await invoice.save();
+          }
           for (const lead of matchedLeads) {
             lead.status = "Converted";
             lead.convertedInvoiceNumber = invoice.invoiceNumber;
@@ -842,7 +860,7 @@ export async function PUT(req: Request) {
       }
 
       // Reverse customer's outstanding balance (same logic as hard delete)
-      if (existingInvoice.balanceAmount > 0 && existingInvoice.customerId) {
+      if (existingInvoice.balanceAmount > 0 && existingInvoice.customerId && existingInvoice.type !== "proforma") {
         await Customer.findByIdAndUpdate(existingInvoice.customerId, {
           $inc: { outstandingBalance: existingInvoice.type === "credit-note" ? existingInvoice.balanceAmount : -existingInvoice.balanceAmount }
         });
@@ -985,7 +1003,7 @@ export async function DELETE(req: Request) {
     });
 
     // Reversal logic below is unchanged from before this route required a PIN.
-    if (invoice.balanceAmount > 0) {
+    if (invoice.balanceAmount > 0 && invoice.type !== "proforma") {
       await Customer.findByIdAndUpdate(invoice.customerId, {
         $inc: { outstandingBalance: invoice.type === "credit-note" ? invoice.balanceAmount : -invoice.balanceAmount }
       });

@@ -296,7 +296,10 @@ export async function GET(req: Request) {
     } else if (party === "customer") {
       const [customers, invoices, payments] = await Promise.all([
         id ? Customer.find({ _id: id }).lean() : Customer.find({}).lean(),
-        id ? Invoice.find({ customerId: id }).lean() : Invoice.find({}).lean(),
+        // A quotation is not a bill raised on the customer, so it stays out of their ledger.
+        id
+          ? Invoice.find({ customerId: id, type: { $ne: "proforma" } }).lean()
+          : Invoice.find({ type: { $ne: "proforma" } }).lean(),
         PaymentTransaction.find({ partyType: "Customer" }).lean(),
       ]);
 

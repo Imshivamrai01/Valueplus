@@ -12,7 +12,7 @@ export async function GET(req: Request) {
     
     await connectToDatabase();
     
-    const invoices = await Invoice.find({ type: { $ne: "sales-order" } }).lean();
+    const invoices = await Invoice.find({ type: { $nin: ["sales-order", "proforma"] } }).lean();
     
     let filteredInvoices = invoices;
     if (startDate && endDate) {
@@ -54,6 +54,9 @@ export async function GET(req: Request) {
         return d >= start && d <= end;
       });
     } else if (range === "month" || range === "this month" || range === "last 30 days") {
+      // `now` was never declared here, so this branch threw and the whole report
+      // failed whenever it was asked for the current month.
+      const now = new Date();
       const start = new Date(now.getFullYear(), now.getMonth(), 1);
       start.setHours(0, 0, 0, 0);
       const end = new Date();

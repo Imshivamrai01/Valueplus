@@ -69,7 +69,8 @@ export async function GET(req: Request) {
     }
 
     // 2. Mark any serial numbers that have already been billed in active Invoices as SOLD
-    const activeInvoices = await Invoice.find({ status: { $ne: "cancelled" } }).lean();
+    // A serial number written on an estimate has not been sold.
+    const activeInvoices = await Invoice.find({ status: { $ne: "cancelled" }, type: { $ne: "proforma" } }).lean();
     const soldSerialsSet = new Set<string>();
     for (const inv of activeInvoices) {
       if (Array.isArray(inv.items)) {

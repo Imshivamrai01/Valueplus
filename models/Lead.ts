@@ -20,7 +20,12 @@ export interface ILead extends Document {
   estimatedValue: number;
   priority: "Low" | "Medium" | "High" | "Urgent";
   status: "New" | "Contacted" | "Interested" | "Follow-up" | "Converted" | "Lost";
+  /** The NEXT follow-up that is due. */
   followUpDate?: string;
+  /** When this lead was last actually followed up. */
+  lastFollowUpDate?: string;
+  /** Every follow-up logged against the lead, oldest first. */
+  followUps?: { date: string; nextDate?: string; notes?: string; staff?: string; loggedAt?: Date }[];
   notes?: string;
   convertedInvoiceNumber?: string;
   timeline: ILeadTimeline[];
@@ -57,6 +62,20 @@ const LeadSchema = new Schema<ILead>(
       index: true,
     },
     followUpDate: { type: String },
+    lastFollowUpDate: { type: String, default: "" },
+    followUps: {
+      type: [
+        {
+          _id: false,
+          date: { type: String, required: true },
+          nextDate: { type: String, default: "" },
+          notes: { type: String, default: "" },
+          staff: { type: String, default: "" },
+          loggedAt: { type: Date, default: Date.now },
+        },
+      ],
+      default: [],
+    },
     notes: { type: String, default: "" },
     estimateNumber: { type: String, index: true },
     estimateId: { type: String },

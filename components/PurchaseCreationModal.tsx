@@ -57,7 +57,8 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
   // whenever nobody touched the amount field, which meant the supplier's
   // payable balance almost never actually recorded a pending amount. Forcing
   // an explicit Yes/No here closes that gap.
-  const [paymentMadeChoice, setPaymentMadeChoice] = useState<"yes" | "no" | null>(null);
+  // Starts as "no": a bill is pending until someone records what was paid.
+  const [paymentMadeChoice, setPaymentMadeChoice] = useState<"yes" | "no" | null>("no");
   const [amountPaidNow, setAmountPaidNow] = useState<string>("");
   const [purchaseDueDate, setPurchaseDueDate] = useState<string>("");
 
@@ -126,7 +127,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
   useEffect(() => {
     if (isOpen && !prevIsOpenRef.current) {
       setCurrentMode(mode);
-      setPaymentMadeChoice(null);
+      setPaymentMadeChoice("no");
       setAmountPaidNow("");
       setPurchaseDueDate("");
       const defaultWh = userAssignedBranch || "Ashoka Enterprises (Kunraghat Showroom)";
@@ -550,10 +551,12 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
   // amount field, so there's no way to end up fully-paid by accident.
   const paidAmount = paymentMadeChoice !== "yes"
     ? 0
-    : (amountPaidNow === "" ? totals.total : Math.max(0, Math.min(totals.total, Number(amountPaidNow) || 0)));
+    : Math.max(0, Math.min(totals.total, Number(amountPaidNow) || 0));
   const balanceAmount = Math.max(0, totals.total - paidAmount);
   const entryPaymentStatus: "paid" | "partial" | "pending" =
-    balanceAmount <= 0 ? "paid" : (paidAmount > 0 ? "partial" : "pending");
+    // Nothing paid is always pending — an empty bill (total 0) has no balance
+    // either, and used to read as "paid" before a single rupee was entered.
+    paidAmount <= 0 ? "pending" : (balanceAmount <= 0 ? "paid" : "partial");
 
   const saveMutation = useMutation({
     networkMode: "always",
@@ -649,7 +652,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
         items: [],
       });
       setSupplierLookupStatus("idle");
-      setPaymentMadeChoice(null);
+      setPaymentMadeChoice("no");
       setAmountPaidNow("");
       setPurchaseDueDate("");
     },
@@ -678,8 +681,10 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
       return;
     }
 
-    if (currentMode === "entry" && !paymentMadeChoice) {
-      toast.error("Supplier ko payment hua ya nahi, yeh batana zaroori hai.");
+    // "Paid" with no amount used to mean fully paid, which is how bills ended up
+    // marked paid by accident. A payment now has to be typed in to count.
+    if (currentMode === "entry" && paymentMadeChoice === "yes" && !(Number(amountPaidNow) > 0)) {
+      toast.error("Enter the amount paid to the supplier, or choose Pending.");
       return;
     }
 
@@ -1317,7 +1322,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
           {isEntry && (
             <div className="bg-white p-4 rounded-xl border border-slate-200 flex flex-wrap items-end gap-4">
               <div>
-                <Label className="text-xs font-bold text-slate-700">Supplier ko payment hua?</Label>
+                <Label className="text-xs font-bold text-slate-700">Has the supplier been paid?</Label>
                 <div className="flex gap-2 mt-1">
                   <Button
                     type="button"
@@ -1325,7 +1330,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
                     className="h-9 px-4 text-sm"
                     onClick={() => setPaymentMadeChoice("yes")}
                   >
-                    Haan, Paid
+                    Yes, Paid
                   </Button>
                   <Button
                     type="button"
@@ -1333,7 +1338,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
                     className={`h-9 px-4 text-sm ${paymentMadeChoice === "no" ? "bg-rose-600 hover:bg-rose-700" : ""}`}
                     onClick={() => setPaymentMadeChoice("no")}
                   >
-                    Nahi, Pending
+                    No, Pending
                   </Button>
                 </div>
               </div>
@@ -1349,7 +1354,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
                     onChange={(e) => setAmountPaidNow(e.target.value)}
                     className="h-9 w-40 text-sm font-bold mt-1"
                   />
-                  <p className="text-[10px] text-slate-400 mt-0.5">Blank = fully paid now. Lower it if payment is partial.</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Enter what was paid. Less than the bill total is recorded as partial.</p>
                 </div>
               )}
               {paymentMadeChoice && (

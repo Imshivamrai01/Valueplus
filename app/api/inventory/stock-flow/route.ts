@@ -62,7 +62,8 @@ export async function GET(req: Request) {
     // 2. Fetch all related transactions concurrently
     const [purchaseEntries, invoices, stockTransfers] = await Promise.all([
       PurchaseEntry.find({}).sort({ billDate: -1, createdAt: -1 }).lean(),
-      Invoice.find({}).sort({ date: -1, createdAt: -1 }).lean(),
+      // Estimates never take stock out, so they are not a stock movement.
+      Invoice.find({ type: { $ne: "proforma" } }).sort({ date: -1, createdAt: -1 }).lean(),
       StockTransfer.find({}).sort({ date: -1, createdAt: -1 }).lean(),
     ]);
 

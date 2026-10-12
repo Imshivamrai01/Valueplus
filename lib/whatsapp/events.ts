@@ -106,11 +106,11 @@ export function buildMessages(
           line("Assigned to", entity.assignedTo) +
           by,
         customer:
-          `Namaste ${entity.customerName},\n\n` +
-          `Aapki complaint ${biz} me register ho gayi hai.\n\n` +
+          `Hello ${entity.customerName},\n\n` +
+          `Your complaint has been registered with ${biz}.\n\n` +
           `Ticket No: *${entity.ticketNumber}*\n` +
           line("Issue", entity.issueTitle) +
-          `\nHamari team jald hi aapse sampark karegi. Is ticket number ko sambhal kar rakhein.\n\n` +
+          `\nOur team will contact you shortly. Please keep this ticket number for reference.\n\n` +
           `- ${biz}`,
       };
 
@@ -122,9 +122,9 @@ export function buildMessages(
       // internal hops between them are noise on their phone.
       const customerWorthy = ["Action Taken", "Resolved", "Closed"].includes(entity.status);
       const friendly: Record<string, string> = {
-        "Action Taken": "Aapki complaint par action le liya gaya hai.",
-        Resolved: "Aapki complaint resolve ho gayi hai.",
-        Closed: "Aapki complaint close kar di gayi hai.",
+        "Action Taken": "Action has been taken on your complaint.",
+        Resolved: "Your complaint has been resolved.",
+        Closed: "Your complaint has been closed.",
       };
 
       return {
@@ -138,12 +138,12 @@ export function buildMessages(
           line("Notes", entity.resolutionNotes) +
           by,
         customer: customerWorthy
-          ? `Namaste ${entity.customerName},\n\n` +
+          ? `Hello ${entity.customerName},\n\n` +
             `${friendly[entity.status]}\n\n` +
             `Ticket No: *${entity.ticketNumber}*\n` +
             line("Issue", entity.issueTitle) +
             (entity.actionTaken ? `Action: ${entity.actionTaken}\n` : "") +
-            `\nKoi aur sawal ho to hume batayein.\n\n- ${biz}`
+            `\nPlease let us know if you have any other questions.\n\n- ${biz}`
           : null,
       };
     }
@@ -162,10 +162,10 @@ export function buildMessages(
           line("Notes", entity.notes) +
           by,
         customer:
-          `Namaste ${entity.customerName},\n\n` +
-          `${biz} showroom visit karne ke liye dhanyawad.\n\n` +
-          line("Aapki enquiry", entity.interestedProduct) +
-          `\nHamari team jald hi aapse sampark karegi.\n\n- ${biz}`,
+          `Hello ${entity.customerName},\n\n` +
+          `Thank you for visiting the ${biz} showroom.\n\n` +
+          line("Your enquiry", entity.interestedProduct) +
+          `\nOur team will contact you shortly.\n\n- ${biz}`,
       };
 
     case "walkin.status":
@@ -209,8 +209,8 @@ export function buildMessages(
           line("Assigned", entity.assignedStaff) +
           by,
         customer: converted
-          ? `Namaste ${entity.customerName},\n\n` +
-            `${biz} ko chunne ke liye dhanyawad. Aapki purchase confirm ho gayi hai.\n\n- ${biz}`
+          ? `Hello ${entity.customerName},\n\n` +
+            `Thank you for choosing ${biz}. Your purchase is confirmed.\n\n- ${biz}`
           : null,
       };
     }

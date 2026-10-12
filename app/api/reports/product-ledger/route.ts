@@ -77,7 +77,9 @@ export async function GET(req: Request) {
 
     // 2. Fetch Invoices containing this product
     const invoiceQuery: any = {
-      status: { $nin: ["cancelled", "draft"] }
+      status: { $nin: ["cancelled", "draft"] },
+      // An estimate moves no stock, so it is not part of a product's ledger.
+      type: { $ne: "proforma" },
     };
     if (startDate && endDate) {
       invoiceQuery.date = { $gte: startDate, $lte: endDate };

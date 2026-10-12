@@ -94,6 +94,7 @@ export const config = {
     "/reports/:path*",
     "/settings/:path*",
     "/profile/:path*",
+    "/documents/:path*",
     "/external/:path*",
     "/login",
   ],

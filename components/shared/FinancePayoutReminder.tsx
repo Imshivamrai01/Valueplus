@@ -50,17 +50,17 @@ export function FinancePayoutReminder() {
     const remind = () => {
       const first = pending[0];
       const what = first.missingBankAccount && first.missingUtr
-        ? "bank account aur UTR"
+        ? "bank account and UTR"
         : first.missingBankAccount
           ? "bank account"
           : "UTR";
-      const more = pending.length > 1 ? ` (+${pending.length - 1} aur payout)` : "";
+      const more = pending.length > 1 ? ` (+${pending.length - 1} more)` : "";
       toast.warning(
-        `${first.payoutDate || "Is date"} ke finance payout ₹${Number(first.amount || 0).toLocaleString("en-IN")} (${first.customerName}, #${first.invoiceNumber}) ka ${what} daalna baaki hai${more}.`,
+        `Finance payout of ₹${Number(first.amount || 0).toLocaleString("en-IN")}${first.payoutDate ? ` dated ${first.payoutDate}` : ""} (${first.customerName}, #${first.invoiceNumber}) still needs its ${what}${more}.`,
         {
           id: "finance-payout-reminder",
           duration: 10000,
-          action: { label: "Abhi bharein", onClick: () => router.push("/finance/disbursements") },
+          action: { label: "Fill now", onClick: () => router.push("/finance/disbursements") },
         }
       );
     };

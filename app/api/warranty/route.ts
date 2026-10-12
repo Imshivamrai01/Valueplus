@@ -29,7 +29,7 @@ export async function GET(req: Request) {
     let totalRevenue = totalRevenueResult[0]?.total || 0;
     
     // Also check Invoices for any extended warranty sold directly on invoices
-    const allInvoices = await Invoice.find({}).lean();
+    const allInvoices = await Invoice.find({ type: { $ne: "proforma" } }).lean();
     let invoiceWarrantyRevenue = 0;
     let invoiceWarrantyCount = 0;
 

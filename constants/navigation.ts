@@ -178,6 +178,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { title: "GST Reports (GSTR 1/2/3B)", href: "/gst/reports", icon: Percent, roles: ["admin", "accounts", "manager"] },
       { title: "Sales Out Report", href: "/reports/sales-out", icon: Receipt, roles: ["admin", "accounts", "manager"] },
       { title: "All Reports & Analytics", href: "/reports", icon: BarChart, roles: ["admin", "accounts", "manager"] },
+      { title: "Documents", href: "/documents", icon: FileText, roles: ["admin", "accounts"] },
     ],
   },
   {

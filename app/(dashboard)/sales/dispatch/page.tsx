@@ -169,7 +169,7 @@ export default function OrderDispatchHubPage() {
         // Trigger WhatsApp Notification to Customer
         const custPhone = (activeDispatchItem.customerPhone || "").replace(/\D/g, "");
         const trackUrl = `${window.location.origin}/track/${activeDispatchItem.invoiceNumber}`;
-        const msg = `🚚 *VALUE PLUS - Out For Delivery Notification*\n\nNamaste *${activeDispatchItem.customerName}*,\nAapka Value Plus order *#${activeDispatchItem.invoiceNumber}* delivery ke liye nikal chuka hai.\n\n👤 *Driver*: ${json.data.driverName}\n📞 *Driver Mobile*: ${json.data.driverPhone}\n🚗 *Vehicle No*: ${json.data.vehicleNo}\n\n🔑 *Delivery OTP*: *${json.data.otp}*\n*(Saman inspect karne ke baad hi delivery boy ko batayein)*\n\n🌐 *Live Status Track Karein*:\n${trackUrl}\n\n— *VALUE PLUS* (रिश्ता विश्वास का)`;
+        const msg = `🚚 *VALUE PLUS - Out For Delivery Notification*\n\nHello *${activeDispatchItem.customerName}*,\nYour Value Plus order *#${activeDispatchItem.invoiceNumber}* is out for delivery.\n\n👤 *Driver*: ${json.data.driverName}\n📞 *Driver Mobile*: ${json.data.driverPhone}\n🚗 *Vehicle No*: ${json.data.vehicleNo}\n\n🔑 *Delivery OTP*: *${json.data.otp}*\n*(Share it with the delivery person only after you have inspected the goods)*\n\n🌐 *Track Live Status*:\n${trackUrl}\n\n— *VALUE PLUS* (रिश्ता विश्वास का)`;
 
         if (custPhone.length === 10) {
           window.open(`https://api.whatsapp.com/send?phone=91${custPhone}&text=${encodeURIComponent(msg)}`, "_blank");
@@ -409,7 +409,7 @@ export default function OrderDispatchHubPage() {
                         <Truck className="w-8 h-8 text-slate-300 mx-auto" />
                         <p className="font-bold text-slate-700 text-xs">No Delayed Home Deliveries Found</p>
                         <p className="text-[11px] text-slate-400">
-                          Billing karte waqt jab Cashier **"Delayed Home Delivery / Godown Dispatch"** choose karega, sirf wahi orders is dispatch list me aayenge.
+                          Only orders billed with **"Delayed Home Delivery / Godown Dispatch"** selected by the cashier appear in this dispatch list.
                         </p>
                       </div>
                     </td>

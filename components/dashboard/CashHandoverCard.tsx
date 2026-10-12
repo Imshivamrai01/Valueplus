@@ -83,21 +83,21 @@ export function CashHandoverCard({ cashierName }: { cashierName: string }) {
       return json.data;
     },
     onSuccess: () => {
-      toast.success("Handover record ho gaya — Admin ko dikh jaega.");
+      toast.success("Handover recorded — the Admin can now see it.");
       setIsOpen(false);
       queryClient.invalidateQueries({ queryKey: ["cash-register"] });
     },
-    onError: (err: any) => toast.error(err.message || "Handover record nahi ho paya"),
+    onError: (err: any) => toast.error(err.message || "The handover could not be recorded"),
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!amount || Number(amount) <= 0) {
-      toast.error("Valid amount daalein.");
+      toast.error("Enter a valid amount.");
       return;
     }
     if (!time) {
-      toast.error("Handover ka time daalein.");
+      toast.error("Enter the handover time.");
       return;
     }
     handoverMutation.mutate();
@@ -111,13 +111,13 @@ export function CashHandoverCard({ cashierName }: { cashierName: string }) {
             <CheckCircle2 className="w-5 h-5" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-black text-slate-900">Aaj ka cash Admin ko de diya gaya hai</p>
+            <p className="text-sm font-black text-slate-900">Today's cash has been handed over to the Admin</p>
             <p className="text-xs text-slate-500">
-              {formatCurrency(todaysHandover.amount)} · {todaysHandover.time} baje
+              {formatCurrency(todaysHandover.amount)} · at {todaysHandover.time}
             </p>
           </div>
           <Button variant="outline" size="sm" onClick={openDialog} className="h-8 text-xs shrink-0">
-            Ek aur handover karo
+            Record another handover
           </Button>
         </div>
       ) : (
@@ -126,8 +126,8 @@ export function CashHandoverCard({ cashierName }: { cashierName: string }) {
             <HandCoins className="w-5 h-5" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-black text-slate-900">Cash Admin ko hand over karna hai?</p>
-            <p className="text-xs text-slate-500">Aaj ka cash: {formatCurrency(todaysNetCash)}</p>
+            <p className="text-sm font-black text-slate-900">Hand over cash to the Admin?</p>
+            <p className="text-xs text-slate-500">Today's cash: {formatCurrency(todaysNetCash)}</p>
           </div>
           <Button size="sm" onClick={openDialog} className="h-8 text-xs shrink-0 bg-[#3F63AD] hover:bg-[#2E4F95]">
             Transfer to Admin
@@ -139,7 +139,7 @@ export function CashHandoverCard({ cashierName }: { cashierName: string }) {
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Cash Handover to Admin</DialogTitle>
-            <DialogDescription>Jo amount aur jis time par cash diya, wahi yahan daalein.</DialogDescription>
+            <DialogDescription>Enter the amount handed over and the time it was given.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
@@ -170,7 +170,7 @@ export function CashHandoverCard({ cashierName }: { cashierName: string }) {
                 id="handoverNotes"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Koi note ho to likhein"
+                placeholder="Add a note, if any"
               />
             </div>
             <DialogFooter>

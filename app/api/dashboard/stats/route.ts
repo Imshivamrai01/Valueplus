@@ -73,7 +73,10 @@ export async function GET(request: Request) {
       PurchaseOrder.find({}).sort({ createdAt: -1 }).lean(),
     ]);
 
-    let allInvoices = allInvoicesRaw;
+    // Estimates are stored beside invoices as type "proforma". They are quotations:
+    // counting them made a quote look like a credit sale and put its amount in the
+    // pending dues. A token advance taken on one still counts, through its receipt.
+    let allInvoices = allInvoicesRaw.filter((inv: any) => inv.type !== "proforma");
     let allCustomers = allCustomersRaw;
     let allItems = allItemsRaw;
     let allSuppliers = allSuppliersRaw;

@@ -456,6 +456,38 @@ export function InvoiceCreationModal({
 
   // Customer Pre-Booking / Advance Token Query
   const cleanPhoneForAdvance = (billingForm.customerPhone || "").replace(/\D/g, "");
+
+  // ─── LEAD → SALESMAN ────────────────────────────────────────────────────
+  // If this customer has an open lead, the bill belongs to the salesman who has
+  // been working it. Looked up by mobile as soon as all ten digits are typed.
+  const { data: customerLead = null } = useQuery({
+    queryKey: ["customer-open-lead", cleanPhoneForAdvance],
+    queryFn: async () => {
+      const res = await fetch(`/api/crm/leads?mobile=${cleanPhoneForAdvance}`);
+      const json = await res.json();
+      const leads: any[] = json.success && Array.isArray(json.data) ? json.data : [];
+      return leads.find((l) => !["Converted", "Lost"].includes(l.status)) || null;
+    },
+    enabled: Boolean(isOpen && cleanPhoneForAdvance && cleanPhoneForAdvance.length === 10),
+  });
+  // Set once the cashier picks a salesman by hand; from then on the lead no
+  // longer overrides their choice for this bill.
+  const salesExecutivePickedByHand = useRef(false);
+  const leadSalesman = (() => {
+    const staff = String((customerLead as any)?.assignedStaff || "").trim();
+    if (!staff || /^sales team$/i.test(staff)) return "";
+    const user = (usersList as any[]).find((u) => String(u.name || "").trim().toLowerCase() === staff.toLowerCase());
+    return user?.name || staff;
+  })();
+
+  useEffect(() => {
+    if (!isOpen) {
+      salesExecutivePickedByHand.current = false;
+      return;
+    }
+    if (!leadSalesman || isIndividualStaff || salesExecutivePickedByHand.current) return;
+    setBillingForm((prev) => (prev.salesExecutive === leadSalesman ? prev : { ...prev, salesExecutive: leadSalesman }));
+  }, [isOpen, leadSalesman, isIndividualStaff]);
   const { data: customerAdvances = [] } = useQuery({
     queryKey: ["customer-advances", cleanPhoneForAdvance],
     queryFn: async () => {
@@ -987,7 +1019,7 @@ export function InvoiceCreationModal({
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
-      toast.error("File 10 MB se chhoti honi chahiye.");
+      toast.error("The file must be smaller than 10 MB.");
       return;
     }
 
@@ -1000,9 +1032,9 @@ export function InvoiceCreationModal({
       const json = await res.json();
       if (!json.success) throw new Error(json.error || "Upload failed");
       setBillingForm((f: any) => ({ ...f, financePdfUrl: json.data.url }));
-      toast.success("DO attachment upload ho gaya.");
+      toast.success("DO attachment uploaded.");
     } catch (err: any) {
-      toast.error(err.message || "Upload failed, dobara try karein.");
+      toast.error(err.message || "Upload failed, please try again.");
     } finally {
       setIsUploadingFinanceDoc(false);
     }
@@ -1028,8 +1060,11 @@ export function InvoiceCreationModal({
       toast.error("Please add at least 1 product item to the bill.");
       return;
     }
-    if (!isSplitPayment && !billingForm.paymentMode) {
-      toast.error("Payment mode select karna zaroori hai — Cash/UPI/Card me se koi ek chunein.");
+    // A plain quotation takes no money, so it has no payment mode to pick. Only an
+    // estimate with a token advance (and every real bill) needs one.
+    const needsPaymentMode = !(mode === "estimate" && !estimateIncludesAdvance);
+    if (needsPaymentMode && !isSplitPayment && !billingForm.paymentMode) {
+      toast.error("Select a payment mode — Cash, UPI or Card.");
       return;
     }
 
@@ -1683,7 +1718,10 @@ export function InvoiceCreationModal({
                   ) : (
                     <Select
                       value={billingForm.salesExecutive}
-                      onValueChange={(v) => setBillingForm({ ...billingForm, salesExecutive: v })}
+                      onValueChange={(v) => {
+                        salesExecutivePickedByHand.current = true;
+                        setBillingForm({ ...billingForm, salesExecutive: v });
+                      }}
                     >
                       <SelectTrigger className="bg-blue-50/50 border-blue-200 font-bold text-[#3F63AD]">
                         <SelectValue />
@@ -1694,7 +1732,17 @@ export function InvoiceCreationModal({
                             <SelectItem key={u._id || u.email} value={u.name}>
                               {u.name} {u.assignedBrand ? `(🏷️ ${u.assignedBrand} Rep)` : `(${u.role?.toUpperCase() || "STAFF"})`}
                             </SelectItem>
-                          ))
+                          )).concat(
+                            // A lead can name someone who is not in the user list; keep
+                            // that name selectable rather than showing an empty box.
+                            billingForm.salesExecutive && !usersList.some((u: any) => u.name === billingForm.salesExecutive)
+                              ? [
+                                  <SelectItem key="lead-salesman" value={billingForm.salesExecutive}>
+                                    {billingForm.salesExecutive}
+                                  </SelectItem>,
+                                ]
+                              : []
+                          )
                         ) : (
                           <>
                             <SelectItem value="AMIT SINGH">AMIT SINGH (Head Store Exec)</SelectItem>
