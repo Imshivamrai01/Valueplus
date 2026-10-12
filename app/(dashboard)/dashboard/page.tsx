@@ -3081,7 +3081,10 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className={cn("grid gap-3 pt-3", topSellingCategoryTab === "all" ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1")}>
+          {/* Side by side only when each card gets at least 230px. The old rule went by
+              the screen width, but this widget sits in a narrow dashboard column, so on
+              a desktop the two cards were squeezed to about 160px each. */}
+          <div className={cn("grid gap-3 pt-3", topSellingCategoryTab === "all" ? "grid-cols-[repeat(auto-fit,minmax(230px,1fr))]" : "grid-cols-1")}>
             {/* 📱 CARD 1: TOP SELLING MOBILES (COMPACT) */}
             {(topSellingCategoryTab === "all" || topSellingCategoryTab === "mobiles") && (() => {
               const mobilesList: any[] = (widgetData.products?.topMobiles ?? data?.topMobiles ?? []).slice(0, 4);
@@ -3092,27 +3095,25 @@ export default function DashboardPage() {
               return (
                 <div className="bg-slate-50/60 rounded-xl border border-slate-200/80 p-3 flex flex-col justify-between">
                   <div>
-                    <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-lg bg-purple-50 border border-purple-200/60 flex items-center justify-center text-purple-600 flex-shrink-0">
-                          <Smartphone className="w-3.5 h-3.5" />
-                        </div>
-                        <div>
-                          <h4 className="text-xs font-black text-slate-900 tracking-tight flex items-center gap-1.5">
-                            Top Mobiles
-                            <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200">
-                              {totalMobileUnits} Units
-                            </span>
-                          </h4>
+                    <div className="flex items-center gap-2 pb-2.5 border-b border-slate-100">
+                      <div className="w-7 h-7 rounded-lg bg-purple-50 border border-purple-200/60 flex items-center justify-center text-purple-600 flex-shrink-0">
+                        <Smartphone className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-xs font-black text-slate-900 tracking-tight truncate">Top Mobiles</h4>
+                        <div className="flex items-center justify-between gap-2 mt-0.5">
+                          <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-1.5 rounded border border-purple-200 whitespace-nowrap">
+                            {totalMobileUnits} Units
+                          </span>
+                          <span className="font-mono font-black text-xs text-purple-700 whitespace-nowrap">{formatCurrency(totalMobileRev)}</span>
                         </div>
                       </div>
-                      <span className="font-mono font-black text-xs text-purple-700">{formatCurrency(totalMobileRev)}</span>
                     </div>
 
                     {/* COMPACT LIST */}
                     <div className="space-y-1.5 py-2.5">
                       {mobilesList.length === 0 && (
-                        <div className="py-8 flex flex-col items-center justify-center text-center">
+                        <div className="py-8 px-1 flex flex-col items-center justify-center text-center">
                           <Smartphone className="w-7 h-7 text-slate-300 mb-2" />
                           <p className="text-xs font-bold text-slate-500">No mobiles sold in this period</p>
                           <p className="text-[11px] text-slate-400 mt-0.5">Try a wider date range from the filter above.</p>
@@ -3133,33 +3134,22 @@ export default function DashboardPage() {
                             onClick={() => router.push(`/masters/items?search=${encodeURIComponent(m.brand || m.name)}`)}
                             className="p-2 rounded-lg border border-slate-100 bg-slate-50/70 hover:bg-purple-50/40 hover:border-purple-200 transition-all cursor-pointer group text-xs"
                           >
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span className={cn("w-4.5 h-4.5 rounded text-[10px] flex items-center justify-center flex-shrink-0", rankColors[idx] || "bg-slate-100 text-slate-600")}>
-                                  #{idx + 1}
-                                </span>
-                                <div className="min-w-0">
-                                  <p className="font-bold text-xs text-slate-900 truncate group-hover:text-purple-900">
-                                    {m.name}
-                                  </p>
-                                  <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mt-0.2">
-                                    <span className="font-semibold text-purple-700">{m.brand}</span>
-                                    <span>•</span>
-                                    <span>{m.sales} Sold</span>
-                                    <span>•</span>
-                                    <span className="text-emerald-600 font-bold">+{m.growth || 18}%</span>
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="text-right flex-shrink-0">
-                                <span className="font-mono font-bold text-xs text-slate-900 block">
-                                  {formatCurrency(m.revenue)}
-                                </span>
-                                <span className="text-[9px] font-mono text-slate-400 block">
-                                  {indianNumberFormat(m.avgPrice)}/u
-                                </span>
-                              </div>
+                            <div className="flex items-center gap-2">
+                              <span className={cn("w-5 h-5 rounded text-[10px] flex items-center justify-center flex-shrink-0", rankColors[idx] || "bg-slate-100 text-slate-600")}>
+                                #{idx + 1}
+                              </span>
+                              <p className="flex-1 min-w-0 font-bold text-xs text-slate-900 truncate group-hover:text-purple-900" title={m.name}>
+                                {m.name}
+                              </p>
+                              <span className="font-mono font-bold text-xs text-slate-900 flex-shrink-0 whitespace-nowrap">
+                                {formatCurrency(m.revenue)}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mt-1 pl-7">
+                              <span className="font-semibold text-purple-700 truncate min-w-0">{m.brand}</span>
+                              <span className="flex-shrink-0 whitespace-nowrap">• {m.sales} Sold</span>
+                              <span className="text-emerald-600 font-bold flex-shrink-0 whitespace-nowrap">+{m.growth || 18}%</span>
+                              <span className="ml-auto font-mono flex-shrink-0 whitespace-nowrap">{indianNumberFormat(m.avgPrice)}/u</span>
                             </div>
 
                             <div className="w-full bg-slate-200/60 h-1 rounded-full overflow-hidden mt-1.5">
@@ -3174,11 +3164,11 @@ export default function DashboardPage() {
                     </div>
                   </div>
 
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-                    <span>Ranked by revenue</span>
+                  <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[11px] text-slate-500">
+                    <span className="whitespace-nowrap">Ranked by revenue</span>
                     <span 
                       onClick={() => router.push("/masters/items?category=Mobile")}
-                      className="text-purple-700 font-bold hover:underline cursor-pointer flex items-center gap-0.5 text-[11px]"
+                      className="text-purple-700 font-bold hover:underline cursor-pointer flex items-center gap-0.5 text-[11px] whitespace-nowrap"
                     >
                       All Mobiles <ArrowRight className="w-2.5 h-2.5" />
                     </span>
@@ -3197,21 +3187,19 @@ export default function DashboardPage() {
               return (
                 <div className="bg-slate-50/60 rounded-xl border border-slate-200/80 p-3 flex flex-col justify-between">
                   <div>
-                    <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-lg bg-blue-50 border border-blue-200/60 flex items-center justify-center text-[#3F63AD] flex-shrink-0">
-                          <Tv className="w-3.5 h-3.5" />
-                        </div>
-                        <div>
-                          <h4 className="text-xs font-black text-slate-900 tracking-tight flex items-center gap-1.5">
-                            Top Electronics
-                            <span className="text-[10px] font-bold text-[#3F63AD] bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200">
-                              {totalElecUnits} Units
-                            </span>
-                          </h4>
+                    <div className="flex items-center gap-2 pb-2.5 border-b border-slate-100">
+                      <div className="w-7 h-7 rounded-lg bg-blue-50 border border-blue-200/60 flex items-center justify-center text-[#3F63AD] flex-shrink-0">
+                        <Tv className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-xs font-black text-slate-900 tracking-tight truncate">Top Electronics</h4>
+                        <div className="flex items-center justify-between gap-2 mt-0.5">
+                          <span className="text-[10px] font-bold text-[#3F63AD] bg-blue-50 px-1.5 rounded border border-blue-200 whitespace-nowrap">
+                            {totalElecUnits} Units
+                          </span>
+                          <span className="font-mono font-black text-xs text-[#3F63AD] whitespace-nowrap">{formatCurrency(totalElecRev)}</span>
                         </div>
                       </div>
-                      <span className="font-mono font-black text-xs text-[#3F63AD]">{formatCurrency(totalElecRev)}</span>
                     </div>
 
                     {/* COMPACT LIST */}
@@ -3238,33 +3226,22 @@ export default function DashboardPage() {
                             onClick={() => router.push(`/masters/items?search=${encodeURIComponent(e.brand || e.name)}`)}
                             className="p-2 rounded-lg border border-slate-100 bg-slate-50/70 hover:bg-blue-50/40 hover:border-blue-200 transition-all cursor-pointer group text-xs"
                           >
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span className={cn("w-4.5 h-4.5 rounded text-[10px] flex items-center justify-center flex-shrink-0", rankColors[idx] || "bg-slate-100 text-slate-600")}>
-                                  #{idx + 1}
-                                </span>
-                                <div className="min-w-0">
-                                  <p className="font-bold text-xs text-slate-900 truncate group-hover:text-[#3F63AD]">
-                                    {e.name}
-                                  </p>
-                                  <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mt-0.2">
-                                    <span className="font-semibold text-[#3F63AD]">{e.brand}</span>
-                                    <span>•</span>
-                                    <span>{e.sales} Sold</span>
-                                    <span>•</span>
-                                    <span className="text-emerald-600 font-bold">+{e.growth || 16}%</span>
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="text-right flex-shrink-0">
-                                <span className="font-mono font-bold text-xs text-slate-900 block">
-                                  {formatCurrency(e.revenue)}
-                                </span>
-                                <span className="text-[9px] font-mono text-slate-400 block">
-                                  {indianNumberFormat(e.avgPrice)}/u
-                                </span>
-                              </div>
+                            <div className="flex items-center gap-2">
+                              <span className={cn("w-5 h-5 rounded text-[10px] flex items-center justify-center flex-shrink-0", rankColors[idx] || "bg-slate-100 text-slate-600")}>
+                                #{idx + 1}
+                              </span>
+                              <p className="flex-1 min-w-0 font-bold text-xs text-slate-900 truncate group-hover:text-[#3F63AD]" title={e.name}>
+                                {e.name}
+                              </p>
+                              <span className="font-mono font-bold text-xs text-slate-900 flex-shrink-0 whitespace-nowrap">
+                                {formatCurrency(e.revenue)}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mt-1 pl-7">
+                              <span className="font-semibold text-[#3F63AD] truncate min-w-0">{e.brand}</span>
+                              <span className="flex-shrink-0 whitespace-nowrap">• {e.sales} Sold</span>
+                              <span className="text-emerald-600 font-bold flex-shrink-0 whitespace-nowrap">+{e.growth || 16}%</span>
+                              <span className="ml-auto font-mono flex-shrink-0 whitespace-nowrap">{indianNumberFormat(e.avgPrice)}/u</span>
                             </div>
 
                             <div className="w-full bg-slate-200/60 h-1 rounded-full overflow-hidden mt-1.5">
@@ -3279,11 +3256,11 @@ export default function DashboardPage() {
                     </div>
                   </div>
 
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-                    <span>Ranked by revenue</span>
+                  <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[11px] text-slate-500">
+                    <span className="whitespace-nowrap">Ranked by revenue</span>
                     <span 
                       onClick={() => router.push("/masters/items?category=Electronics")}
-                      className="text-[#3F63AD] font-bold hover:underline cursor-pointer flex items-center gap-0.5 text-[11px]"
+                      className="text-[#3F63AD] font-bold hover:underline cursor-pointer flex items-center gap-0.5 text-[11px] whitespace-nowrap"
                     >
                       All Electronics <ArrowRight className="w-2.5 h-2.5" />
                     </span>
@@ -3337,21 +3314,11 @@ export default function DashboardPage() {
                 max-height tall enough for a scrollbar just reserved blank
                 space under a shorter list. */}
             <div className="p-0 my-2.5">
-              <table className="w-full text-xs sm:text-sm text-left table-fixed">
-                <thead className="bg-slate-50 text-slate-500 font-bold text-[10px] uppercase tracking-wider border-b border-slate-200">
-                  <tr>
-                    {/* Action column widened to fit both icon buttons — at
-                        narrow (single-column, mobile) widths the old 10%
-                        wasn't enough room for two 24px buttons, so they spilled
-                        left on top of the Amount column's digits. */}
-                    <th className="px-2 py-2.5 w-[16%]">Time</th>
-                    <th className="px-2 py-2.5 w-[21%]">Invoice #</th>
-                    <th className="px-2 py-2.5 w-[18%] text-center">Mode</th>
-                    <th className="px-2 py-2.5 w-[25%] text-right">Amount</th>
-                    <th className="px-1.5 py-2.5 w-[20%] text-center"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
+              {/* A list, not a table: this card is only about 190px wide on a desktop,
+                  where five columns left the date wrapping over four lines and the
+                  amount sitting under the action buttons. Each bill is two lines —
+                  number and amount, then time, mode and actions. */}
+              <div className="divide-y divide-slate-100">
                   {(() => {
                     const txns = widgetData.logs?.transactions || { cash: [], upi: [], online: [], card: [], finance: [] };
                     // A split-payment bill (₹13,000 Cash + ₹14,996 UPI) has one row per
@@ -3388,76 +3355,75 @@ export default function DashboardPage() {
 
                     if (combined.length === 0) {
                       return (
-                        <tr>
-                          <td colSpan={5} className="px-3 py-8 text-center text-slate-400 text-xs font-medium">
-                            No payment transactions recorded for this period
-                          </td>
-                        </tr>
+                        <div className="px-3 py-8 text-center text-slate-400 text-xs font-medium">
+                          No payment transactions recorded for this period
+                        </div>
                       );
                     }
 
                     return combined.map((txn: any, i) => {
                       const timeMatch = (txn.time || "").match(/(\d{1,2}:\d{2}\s*(?:AM|PM|am|pm))/i);
-                      const displayTime = timeMatch ? timeMatch[1] : (txn.time || "Today");
+                      // A receipt carries only a date ("2026-10-12 (Receipt)"); shown as "12 Oct".
+                      const dateMatch = (txn.time || "").match(/(\d{4})-(\d{2})-(\d{2})/);
+                      const displayTime = timeMatch
+                        ? timeMatch[1]
+                        : dateMatch
+                          ? `${Number(dateMatch[3])} ${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][Number(dateMatch[2]) - 1] || ""}`
+                          : (txn.time || "Today");
 
                       return (
-                        <tr key={i} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="px-2.5 py-2.5 text-left font-medium text-slate-600 text-xs">
-                            {displayTime}
-                          </td>
-                          <td className="px-2.5 py-2.5 text-left font-mono font-bold text-slate-800 text-xs truncate">
+                        <div key={i} className="px-1.5 py-2 hover:bg-slate-50/80 transition-colors">
+                          <div className="flex items-center justify-between gap-2">
                             <span
-                              className="cursor-pointer hover:text-[#3F63AD] hover:underline"
-                              title="View how this bill was paid"
+                              className="min-w-0 truncate font-mono font-bold text-slate-800 text-xs cursor-pointer hover:text-[#3F63AD] hover:underline"
+                              title={`${txn.id} — view how this bill was paid`}
                               onClick={() => setPaymentDetailId(String(txn.id))}
                             >
                               {txn.id}
                             </span>
-                          </td>
-                          <td className="px-2.5 py-2.5 text-center">
-                            <span
-                              className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase bg-slate-100 text-slate-700 cursor-pointer hover:bg-slate-200"
-                              title="View how this bill was paid"
-                              onClick={() => setPaymentDetailId(String(txn.id))}
-                            >
-                              {/* mode is already the clean, pre-joined label ("Cash" or
-                                  "Cash + UPI" for a split bill) from the grouping above —
-                                  re-splitting it here would cut a split bill back down to
-                                  just its first mode. */}
-                              {txn.mode || "Cash"}
+                            <span className="flex-shrink-0 whitespace-nowrap font-black text-slate-900 font-mono text-xs">
+                              {formatCurrency(txn.amount)}
                             </span>
-                          </td>
-                          <td className="px-2.5 py-2.5 text-right font-black text-slate-900 font-mono text-xs sm:text-sm">
-                            {formatCurrency(txn.amount)}
-                          </td>
-                          <td className="px-1.5 py-2.5 text-center">
-                            <div className="flex items-center justify-center gap-1">
-                              <Button 
-                                size="icon" 
-                                variant="ghost" 
-                                className="h-6 w-6 text-slate-400 hover:text-[#3F63AD]" 
+                          </div>
+                          <div className="flex items-center justify-between gap-2 mt-1">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="flex-shrink-0 whitespace-nowrap text-[10px] font-medium text-slate-500">{displayTime}</span>
+                              {/* mode is already the clean, pre-joined label ("Cash" or
+                                  "Cash + UPI" for a split bill) from the grouping above. */}
+                              <span
+                                className="min-w-0 truncate px-1.5 py-0.5 rounded-md text-[10px] font-bold uppercase bg-slate-100 text-slate-700 cursor-pointer hover:bg-slate-200"
+                                title={`${txn.mode || "Cash"} — view how this bill was paid`}
+                                onClick={() => setPaymentDetailId(String(txn.id))}
+                              >
+                                {txn.mode || "Cash"}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-0.5 flex-shrink-0">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6 text-slate-400 hover:text-[#3F63AD]"
                                 onClick={() => handlePrintTrigger(txn)}
                                 title="Print Invoice"
                               >
                                 <Printer className="w-3.5 h-3.5" />
                               </Button>
-                              <Button 
-                                size="icon" 
-                                variant="ghost" 
-                                className="h-6 w-6 text-slate-400 hover:text-emerald-600" 
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6 text-slate-400 hover:text-emerald-600"
                                 onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(`Dear ${txn.customer}, your payment of ${formatCurrency(txn.amount)} has been received. Invoice: ${txn.id}. Thank you!`)}`, '_blank')}
                                 title="WhatsApp"
                               >
                                 <MessageCircle className="w-3.5 h-3.5" />
                               </Button>
                             </div>
-                          </td>
-                        </tr>
+                          </div>
+                        </div>
                       );
                     });
                   })()}
-                </tbody>
-              </table>
+              </div>
             </div>
 
             <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-medium">
