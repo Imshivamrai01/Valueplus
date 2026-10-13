@@ -11,6 +11,8 @@ import {
   XCircle, Phone, UserCheck, UserPlus, X, Shield, AlertTriangle, FileText, CheckCircle2, Truck, Clock, ChevronsDownUp, Wallet, Upload
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { BillingEntityPicker } from "@/components/shared/BillingEntityPicker";
+import { BILLING_ENTITIES, entityOf, entityLabel, type BillingEntity } from "@/lib/billing-entity";
 import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { INDIA_STATES, INDIA_STATES_AND_DISTRICTS, normalizeStateName, normalizeCityName } from "@/lib/data/locations";
@@ -271,6 +273,13 @@ export function InvoiceCreationModal({
   const [preBookingPaymentMode, setPreBookingPaymentMode] = useState<string>("UPI");
   const [preBookingTransactionRef, setPreBookingTransactionRef] = useState<string>("");
 
+  // ─── VALUE PLUS OR ASHOKA ENTERPRISES ───────────────────────────────────
+  // Asked first, before anything else on the bill: it decides which products the
+  // list offers and which number series the bill is drawn from. Never assumed —
+  // it stays empty until someone picks it (or a product already on the bill,
+  // e.g. from "Bill Now", settles it).
+  const [billingEntity, setBillingEntity] = useState<BillingEntity | "">("");
+
   /**
    * Local placeholder only — shown for the instant before the server responds.
    *
@@ -301,7 +310,7 @@ export function InvoiceCreationModal({
       : docMode === "credit-note" ? "credit-note"
       : "tax-invoice";
     try {
-      const res = await fetch(`/api/invoices/next-number?type=${apiType}`);
+      const res = await fetch(`/api/invoices/next-number?type=${apiType}&entity=${billingEntity || "valueplus"}`);
       const json = await res.json();
       if (json.success && json.number) return json.number;
     } catch (e) {
@@ -313,6 +322,7 @@ export function InvoiceCreationModal({
   useEffect(() => {
     if (!isOpen) {
       setBillingForm(INITIAL_BILLING_FORM);
+      setBillingEntity("");
       setEstimateIncludesAdvance(false);
     } else {
       if (isIndividualStaff && currentUserName) {
@@ -322,7 +332,8 @@ export function InvoiceCreationModal({
   }, [isOpen, isIndividualStaff, currentUserName]);
 
   useEffect(() => {
-    if (!isOpen || billingForm.invoiceNo) return;
+    // No number until the company is known — each has its own series.
+    if (!isOpen || billingForm.invoiceNo || !billingEntity) return;
     let cancelled = false;
     (async () => {
       const number = await fetchNextDocNumber(mode);
@@ -338,7 +349,40 @@ export function InvoiceCreationModal({
       ));
     })();
     return () => { cancelled = true; };
-  }, [isOpen, billingForm.invoiceNo, mode, isIndividualStaff, currentUserName]);
+  }, [isOpen, billingForm.invoiceNo, mode, isIndividualStaff, currentUserName, billingEntity]);
+
+  // Picking (or changing) the company. Products of the other company cannot stay
+  // on the bill, and the number has to come from the new company's series.
+  const chooseBillingEntity = (next: BillingEntity) => {
+    if (next === billingEntity) return;
+    const belongsToNext = (line: any) => {
+      const product = catalogItems.find(
+        (cat: any) => cat._id === line.itemId || (line.itemCode && cat.code === line.itemCode)
+      );
+      return !product || entityOf(product) === next;
+    };
+    const dropped = billingForm.lineItems.filter((line: any) => !belongsToNext(line));
+    if (
+      dropped.length > 0 &&
+      !window.confirm(
+        `Switching to ${entityLabel(next)} will remove ${dropped.length} product${dropped.length === 1 ? "" : "s"} that belong${dropped.length === 1 ? "s" : ""} to ${entityLabel(billingEntity || "valueplus")}. Continue?`
+      )
+    ) {
+      return;
+    }
+    setBillingEntity(next);
+    setBillingForm((prev) => ({ ...prev, invoiceNo: "", lineItems: prev.lineItems.filter(belongsToNext) }));
+  };
+
+  // A bill opened with a product already on it ("Bill Now", a converted estimate
+  // or lead) takes that product's company, so the question is not asked twice.
+  useEffect(() => {
+    if (!isOpen || billingEntity) return;
+    const firstLine = billingForm.lineItems.find((line: any) => line.itemId);
+    if (!firstLine) return;
+    const product = catalogItems.find((cat: any) => cat._id === firstLine.itemId);
+    if (product) setBillingEntity(entityOf(product));
+  }, [isOpen, billingEntity, billingForm.lineItems, catalogItems]);
 
   const [activeSuggestRow, setActiveSuggestRow] = useState<number | null>(null);
 
@@ -1056,6 +1100,10 @@ export function InvoiceCreationModal({
       toast.error("Valid 10-digit Customer Mobile number is mandatory.");
       return;
     }
+    if (!billingEntity) {
+      toast.error("Choose whether this bill is for Value Plus or Ashoka Enterprises.");
+      return;
+    }
     if (billingForm.lineItems.length === 0) {
       toast.error("Please add at least 1 product item to the bill.");
       return;
@@ -1264,6 +1312,7 @@ export function InvoiceCreationModal({
       warehouseId: activeLocation?.id,
       warehouse: activeLocation?.name,
       type: mode === "credit-note" ? "credit-note" : (mode === "sales-order" ? "sales-order" : (mode === "estimate" ? "proforma" : "tax-invoice")),
+      billingEntity,
       salesExecutive: isIndividualStaff ? currentUserName : (billingForm.salesExecutive || currentUserName),
       salesperson: isIndividualStaff ? currentUserName : (billingForm.salesExecutive || currentUserName),
       createdBy: currentUserName,
@@ -1367,19 +1416,37 @@ export function InvoiceCreationModal({
               </div>
               <div>
                 <h3 className="text-lg font-bold tracking-tight flex items-center gap-2">
-                  {mode === "estimate" ? "Create Commercial Estimate" : mode === "sales-order" ? "Sales Order Booking" : mode === "credit-note" ? "Issue Credit Note" : "Value Plus Tax Invoice Billing"}
+                  {mode === "estimate" ? "Create Commercial Estimate" : mode === "sales-order" ? "Sales Order Booking" : mode === "credit-note" ? "Issue Credit Note" : `${billingEntity ? entityLabel(billingEntity) : "New"} Tax Invoice Billing`}
                   <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#76C043]/20 text-[#76C043] border border-[#76C043]/30 font-mono font-bold">
                     {mode === "credit-note" ? "CREDIT NOTE" : mode === "estimate" ? "COMMERCIAL ESTIMATE" : mode === "sales-order" ? "SALES ORDER" : "TAX INVOICE (ORIGINAL)"}
                   </span>
                 </h3>
                 <p className="text-xs text-slate-300 mt-0.5">
-                  M/S ASHOKA ENTERPRISES • Gorakhpur, Uttar Pradesh • GSTIN: 09ANHPJ7242D1Z2
+                  {billingEntity
+                    ? `Billing for: ${entityLabel(billingEntity)} • ${BILLING_ENTITIES[billingEntity].printName} • GSTIN: 09ANHPJ7242D1Z2`
+                    : "Choose Value Plus or Ashoka Enterprises to start the bill"}
                 </p>
               </div>
             </div>
           </div>
 
           <form onSubmit={handleFinalSubmit} className="p-6 space-y-6 bg-slate-50/70">
+            <BillingEntityPicker
+              value={billingEntity}
+              onChange={chooseBillingEntity}
+              question="Is this bill for Value Plus or Ashoka Enterprises?"
+              hint={
+                billingEntity
+                  ? `Only ${entityLabel(billingEntity)} products are listed below. Changing this removes the other company's products from the bill.`
+                  : "Choose one to start. The product list will show only that company's products."
+              }
+            />
+
+            {/* Everything below stays locked until the company is chosen. */}
+            <div
+              className={cn("space-y-6", !billingEntity && "opacity-40 pointer-events-none select-none")}
+              aria-disabled={!billingEntity}
+            >
             {/* SECTION 1: CUSTOMER-FIRST BILLING FORM */}
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
               <div className="flex items-center justify-between border-b pb-3">
@@ -1822,9 +1889,13 @@ export function InvoiceCreationModal({
                   const lineTotal = lineTaxable + lineGst + warrantyAmt;
 
                   const query = (item.name || "").toLowerCase().trim();
+                  // The product list is limited to the company this bill is for.
+                  const entityProducts = billingEntity
+                    ? catalogItems.filter((p: any) => entityOf(p) === billingEntity)
+                    : [];
                   const suggestions = query === ""
-                    ? catalogItems
-                    : catalogItems.filter(
+                    ? entityProducts
+                    : entityProducts.filter(
                         (p: any) => p.name.toLowerCase().includes(query) || (p.code || "").toLowerCase().includes(query) || (p.vpCode || "").toLowerCase().includes(query)
                       );
 
@@ -3102,6 +3173,7 @@ export function InvoiceCreationModal({
                 </Button>
               </div>
             </DialogFooter>
+            </div>
           </form>
         </DialogContent>
       </Dialog>

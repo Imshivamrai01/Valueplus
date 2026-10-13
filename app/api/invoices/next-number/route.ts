@@ -3,6 +3,7 @@ import connectToDatabase from "@/lib/db";
 import Invoice from "@/models/Invoice";
 import Estimate from "@/models/Estimate";
 import DeletedInvoice from "@/models/DeletedInvoice";
+import { BILLING_ENTITIES, entityOf } from "@/lib/billing-entity";
 
 /**
  * Allocates the next document number from what is actually stored.
@@ -42,7 +43,13 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const type = (searchParams.get("type") || "tax-invoice") as keyof typeof PREFIXES;
-    const cfg = PREFIXES[type] || PREFIXES["tax-invoice"];
+    // Tax invoices are numbered separately for Value Plus and Ashoka Enterprises;
+    // estimates, orders and credit notes share one series.
+    const entity = BILLING_ENTITIES[entityOf(searchParams.get("entity"))];
+    const cfg =
+      type === "tax-invoice" || !PREFIXES[type]
+        ? { prefix: entity.invoicePrefix, pad: entity.invoicePad }
+        : PREFIXES[type];
 
     await connectToDatabase();
 
@@ -78,7 +85,7 @@ export async function GET(req: Request) {
     const suffix = type === "tax-invoice" ? "" : `-${Math.floor(1000 + Math.random() * 9000)}`;
     const number = `${cfg.prefix}${padded}${suffix}`;
 
-    return NextResponse.json({ success: true, number, next, type });
+    return NextResponse.json({ success: true, number, next, type, entity: entity.key });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

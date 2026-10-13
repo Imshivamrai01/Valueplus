@@ -33,6 +33,8 @@ import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 import { WifiOff, RefreshCw, CloudUpload } from "lucide-react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
+import { BillingEntityBadge } from "@/components/shared/BillingEntityPicker";
+import { BILLING_ENTITY_LIST, entityOf } from "@/lib/billing-entity";
 
 const STATUSES = ["paid", "pending", "overdue", "partial", "cancelled", "draft", "offline"] as const;
 
@@ -71,6 +73,8 @@ function SalesInvoicesContent() {
   
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  // Value Plus / Ashoka Enterprises — which company's bills to list.
+  const [entityFilter, setEntityFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("This Month");
   const [dateRange, setDateRange] = useState(() => resolveDateRange("This Month"));
   const [page, setPage] = useState(1);
@@ -142,15 +146,16 @@ function SalesInvoicesContent() {
         inv.customerName?.toLowerCase().includes(q);
       const matchesStatus = statusFilter === "all" || inv.status === statusFilter;
       const matchesDate = isDateInRange(inv.date || inv.createdAt, dateRange.start, dateRange.end);
-      return matchesSearch && matchesStatus && matchesDate;
+      const matchesEntity = entityFilter === "all" || entityOf(inv) === entityFilter;
+      return matchesSearch && matchesStatus && matchesDate && matchesEntity;
     });
-  }, [allInvoices, search, statusFilter, dateRange.start, dateRange.end]);
+  }, [allInvoices, search, statusFilter, entityFilter, dateRange.start, dateRange.end]);
 
   // A filter change can leave `page` past the end of the new result set, which renders
   // an empty table with no way back except paging backwards.
   useEffect(() => {
     setPage(1);
-  }, [search, statusFilter, dateRange.start, dateRange.end]);
+  }, [search, statusFilter, entityFilter, dateRange.start, dateRange.end]);
 
   const { data: customers = [] } = useQuery({
     queryKey: ["customers"],
@@ -405,6 +410,13 @@ function SalesInvoicesContent() {
             onSearchChange={(val) => { setSearch(val); setPage(1); }}
             className="flex-1 min-w-48"
           />
+          <Select value={entityFilter} onValueChange={(v) => { setEntityFilter(v); setPage(1); }}>
+            <SelectTrigger className="w-44"><SelectValue placeholder="Company" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Companies</SelectItem>
+              {BILLING_ENTITY_LIST.map((e) => <SelectItem key={e.key} value={e.key}>{e.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
           <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
             <SelectTrigger className="w-40"><SelectValue placeholder="Status" /></SelectTrigger>
             <SelectContent>
@@ -496,6 +508,7 @@ function SalesInvoicesContent() {
                               {inv.invoiceNumber}
                               <FileText className="w-3 h-3 text-muted-foreground" />
                             </button>
+                            <BillingEntityBadge entity={entityOf(inv)} className="ml-1" />
                             {(inv.reprintCount || 0) > 0 ? (
                               <span 
                                 className="font-mono text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-50 text-amber-800 border border-amber-300"

@@ -23,6 +23,9 @@ export interface IItem extends Document {
    *  doesn't constrain it (unlike minSellingPrice). Defaults to sellingPrice
    *  when not explicitly set, but is independently editable from there. */
   vsp?: number;
+  /** Which of the store's two billing names this product is sold under. Set when
+   *  the product is purchased; absent on older products, which are Value Plus. */
+  billingEntity?: "valueplus" | "ashoka";
   minSellingPrice?: number;
   maxDiscountPercent?: number;
   maxDiscountAmount?: number;
@@ -100,6 +103,7 @@ const ItemSchema = new Schema<IItem>(
     warehouse: { type: String, default: "" },
     mergedIntoItemId: { type: Schema.Types.ObjectId, ref: "Item" },
     status: { type: String, enum: ["active", "inactive"], default: "active" },
+    billingEntity: { type: String, enum: ["valueplus", "ashoka"], default: "valueplus", index: true },
     imageUrl: { type: String },
     isSerialized: { type: Boolean, default: false },
     isBatchTracked: { type: Boolean, default: false },

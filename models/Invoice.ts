@@ -83,6 +83,8 @@ export interface IInvoice extends Document {
    *  they're allowed to switch) so edits/cancellations reverse the same real
    *  warehouse rather than re-guessing it later. */
   warehouseId?: mongoose.Types.ObjectId;
+  /** The name this bill was raised under: Value Plus or Ashoka Enterprises. */
+  billingEntity?: "valueplus" | "ashoka";
   date: string;
   dueDate: string;
   status: "draft" | "sent" | "paid" | "partial" | "overdue" | "cancelled" | "pending";
@@ -267,6 +269,7 @@ const InvoiceSchema = new Schema<IInvoice>(
     vehicleNumber: { type: String, default: "" },
     shippingAddress: String,
     warehouseId: { type: Schema.Types.ObjectId, ref: "Warehouse" },
+    billingEntity: { type: String, enum: ["valueplus", "ashoka"], default: "valueplus", index: true },
     date: { type: String, required: true, index: true },
     dueDate: { type: String, required: true, index: true },
     status: { type: String, enum: ["draft", "sent", "paid", "partial", "overdue", "cancelled", "pending"], default: "sent", index: true },

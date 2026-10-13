@@ -14,6 +14,22 @@ import { getActor } from "@/lib/requirePermission";
 import { authoriseDestructiveAction } from "@/lib/destructiveAction";
 import { applyStockMovement } from "@/lib/stock";
 import authOptions from "@/lib/authOptions";
+import Item from "@/models/Item";
+import { BILLING_ENTITIES, entityOf, entityLabel, invoiceSeriesOf } from "@/lib/billing-entity";
+
+/** The next unused number in a series, read from what is actually stored. */
+async function nextNumberInSeries(prefix: string, width: number): Promise<string> {
+  const siblings = await Invoice.find(
+    { invoiceNumber: { $regex: `^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\d+` } },
+    { invoiceNumber: 1 }
+  ).lean();
+  let max = 0;
+  for (const s of siblings as any[]) {
+    const d = String(s.invoiceNumber).slice(prefix.length).match(/^\d+/);
+    if (d) max = Math.max(max, parseInt(d[0], 10) || 0);
+  }
+  return `${prefix}${String(max + 1).padStart(width, "0")}`;
+}
 
 /**
  * Which warehouse a sale's stock comes out of. A role without switch rights
@@ -106,6 +122,30 @@ export async function POST(req: Request) {
     const body = await req.json();
     await connectToDatabase();
     
+    // 0. Billing entity. A bill is raised under Value Plus or Ashoka Enterprises
+    // and may only carry that one's products — the form filters the product list,
+    // and this is what actually enforces it.
+    const entity = entityOf(body.billingEntity);
+    body.billingEntity = entity;
+    const lineItemIds = (Array.isArray(body.items) ? body.items : [])
+      .map((it: any) => it?.itemId)
+      .filter((id: any) => mongoose.isValidObjectId(id));
+    if (lineItemIds.length > 0) {
+      const products = await Item.find({ _id: { $in: lineItemIds } }, { name: 1, billingEntity: 1 }).lean();
+      const others = (products as any[]).filter((p) => entityOf(p) !== entity);
+      if (others.length > 0) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `This bill is for ${entityLabel(entity)}, but these products belong to ${entityLabel(others[0])}: ${others
+              .map((p) => p.name)
+              .join(", ")}. Remove them or bill them separately.`,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     // 1. Customer Auto-Add Logic & Offline Sync Reconciliation
     //
     // A problem here must never lose the bill. Previously an exception thrown while
@@ -171,25 +211,31 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: true, data: existingInvoice, message: "Invoice already synced" });
       }
 
-      // Collision: allocate the next free number from the database.
+      // Collision: allocate the next free number from the database. A known
+      // series is recognised by its prefix; guessing the prefix from the shape of
+      // the number would read "INV2026-0001" as prefix "INV" + number 2026.
+      const series = invoiceSeriesOf(body.invoiceNumber);
       const prefixMatch = String(body.invoiceNumber || "").match(/^([A-Za-z0-9-]*?)(\d+)(-\d+)?$/);
-      const prefix = prefixMatch ? prefixMatch[1] : "SVAK2026RI";
-      const width = prefixMatch ? prefixMatch[2].length : 5;
-      const siblings = await Invoice.find(
-        { invoiceNumber: { $regex: `^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\d+` } },
-        { invoiceNumber: 1 }
-      ).lean();
-      let max = 0;
-      for (const s of siblings as any[]) {
-        const d = String(s.invoiceNumber).slice(prefix.length).match(/^\d+/);
-        if (d) max = Math.max(max, parseInt(d[0], 10) || 0);
-      }
-      const reassigned = `${prefix}${String(max + 1).padStart(width, "0")}`;
+      const prefix = series ? series.invoicePrefix : prefixMatch ? prefixMatch[1] : "SVAK2026RI";
+      const width = series ? series.invoicePad : prefixMatch ? prefixMatch[2].length : 5;
+      const reassigned = await nextNumberInSeries(prefix, width);
       console.warn(
         `Invoice number ${body.invoiceNumber} already belongs to a different bill; reassigned to ${reassigned}`
       );
       numberReassignedFrom = body.invoiceNumber;
       body.invoiceNumber = reassigned;
+    }
+
+    // A tax invoice must be numbered in its own entity's series. If the number
+    // sent belongs to the other one (the entity was switched after the form had
+    // already fetched a number), it is replaced rather than saved in the wrong book.
+    if ((body.type || "tax-invoice") === "tax-invoice") {
+      const numberSeries = invoiceSeriesOf(body.invoiceNumber);
+      if (numberSeries && numberSeries.key !== entity) {
+        const own = BILLING_ENTITIES[entity];
+        numberReassignedFrom = numberReassignedFrom || body.invoiceNumber;
+        body.invoiceNumber = await nextNumberInSeries(own.invoicePrefix, own.invoicePad);
+      }
     }
 
     // Generate 4-digit Delivery OTP if delayed delivery is chosen

@@ -20,6 +20,8 @@ import { useSession } from "next-auth/react";
 import { useBranch } from "@/context/BranchContext";
 import { PurchaseBillPrintModal } from "@/components/PurchaseBillPrintModal";
 import { QuickAddItemModal } from "@/components/QuickAddItemModal";
+import { BillingEntityPicker } from "@/components/shared/BillingEntityPicker";
+import { entityOf, entityLabel, type BillingEntity } from "@/lib/billing-entity";
 
 // Stable reference for useQuery fallbacks — `= []` inline would create a brand-new
 // array on every render while data is loading, which can make effects that depend on
@@ -59,6 +61,10 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
   // an explicit Yes/No here closes that gap.
   // Starts as "no": a bill is pending until someone records what was paid.
   const [paymentMadeChoice, setPaymentMadeChoice] = useState<"yes" | "no" | null>("no");
+  // Whose stock this purchase is — Value Plus or Ashoka Enterprises. Empty until
+  // answered: it is never assumed, because it decides which bills the products
+  // can later be sold on.
+  const [billingEntity, setBillingEntity] = useState<BillingEntity | "">("");
   const [amountPaidNow, setAmountPaidNow] = useState<string>("");
   const [purchaseDueDate, setPurchaseDueDate] = useState<string>("");
 
@@ -127,6 +133,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
   useEffect(() => {
     if (isOpen && !prevIsOpenRef.current) {
       setCurrentMode(mode);
+      setBillingEntity("");
       setPaymentMadeChoice("no");
       setAmountPaidNow("");
       setPurchaseDueDate("");
@@ -264,9 +271,11 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
     const q = query.trim().toLowerCase();
     if (!q) return [];
     const byNameCode = catalogItems.filter((c: any) =>
-      (c.name || "").toLowerCase().includes(q) ||
-      (c.code || "").toLowerCase().includes(q) ||
-      (c.vpCode || "").toLowerCase().includes(q)
+      // A purchase only offers the products of the company it is for.
+      (!billingEntity || entityOf(c) === billingEntity) &&
+      ((c.name || "").toLowerCase().includes(q) ||
+        (c.code || "").toLowerCase().includes(q) ||
+        (c.vpCode || "").toLowerCase().includes(q))
     );
     const matchedIds = new Set(byNameCode.map((c: any) => c._id));
     const bySerial = allSerials
@@ -591,6 +600,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
             serialNumbers: i.serialNumbers || [],
           };
         }),
+        billingEntity: billingEntity || undefined,
         subtotal: totals.subtotal,
         gst: totals.gst,
         total: totals.total,
@@ -652,6 +662,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
         items: [],
       });
       setSupplierLookupStatus("idle");
+      setBillingEntity("");
       setPaymentMadeChoice("no");
       setAmountPaidNow("");
       setPurchaseDueDate("");
@@ -679,6 +690,24 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
     if (form.items.length === 0) {
       toast.error("Please add or load at least one product item");
       return;
+    }
+
+    if (currentMode === "entry") {
+      if (!billingEntity) {
+        toast.error("Choose whether this purchase is for Value Plus or Ashoka Enterprises.");
+        return;
+      }
+      // Rows added before the company was chosen (a preloaded product, an imported
+      // sheet) can belong to the other one — caught here rather than on save.
+      const others = form.items
+        .map((row: any) => catalogItems.find((c: any) => c._id === row.itemId))
+        .filter((c: any) => c && entityOf(c) !== billingEntity);
+      if (others.length > 0) {
+        toast.error(
+          `${others.map((c: any) => c.name).join(", ")} belong${others.length === 1 ? "s" : ""} to ${entityLabel(others[0])}, not ${entityLabel(billingEntity)}. Remove ${others.length === 1 ? "it" : "them"} or change the company.`
+        );
+        return;
+      }
     }
 
     // "Paid" with no amount used to mean fully paid, which is how bills ended up
@@ -828,6 +857,15 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
 
         {/* Scrollable Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {isEntry && (
+            <BillingEntityPicker
+              value={billingEntity}
+              onChange={setBillingEntity}
+              question="Is this purchase for Value Plus or Ashoka Enterprises?"
+              hint="The products on this bill will belong to the company you choose, and can only be sold on its bills."
+            />
+          )}
+
           {/* Supplier Details */}
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
             <h4 className="text-sm font-semibold text-slate-800 flex items-center justify-between">
@@ -1428,6 +1466,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
       isOpen={!!quickAddContext}
       onClose={() => setQuickAddContext(null)}
       initialName={quickAddContext?.initialName || ""}
+      billingEntity={billingEntity}
       onCreated={(newItem) => {
         if (quickAddContext) applyItemToRow(quickAddContext.rowId, newItem);
         setQuickAddContext(null);

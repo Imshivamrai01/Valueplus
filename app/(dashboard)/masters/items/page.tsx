@@ -39,6 +39,8 @@ import { Switch } from "@/components/ui/switch";
 import { BulkIncentiveModal } from "@/components/items/BulkIncentiveModal";
 import { ProductReferenceImportModal } from "@/components/masters/ProductReferenceImportModal";
 import { VspSheetImportModal } from "@/components/masters/VspSheetImportModal";
+import { BillingEntityBadge } from "@/components/shared/BillingEntityPicker";
+import { BILLING_ENTITY_LIST, entityOf } from "@/lib/billing-entity";
 import { BrandSelect } from "@/components/shared/brand-select";
 import { useSession } from "next-auth/react";
 
@@ -53,6 +55,7 @@ interface ItemFormData {
   purchasePrice: string;
   sellingPrice: string;
   vsp: string;
+  billingEntity: string;
   minSellingPrice: string;
   maxDiscountPercent: string;
   maxDiscountAmount: string;
@@ -80,6 +83,7 @@ const EMPTY_FORM: ItemFormData = {
   purchasePrice: "",
   sellingPrice: "",
   vsp: "",
+  billingEntity: "valueplus",
   minSellingPrice: "",
   maxDiscountPercent: "",
   maxDiscountAmount: "",
@@ -110,6 +114,8 @@ function ItemsPageContent() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState(queryCategory || "all");
+  // Value Plus / Ashoka Enterprises — which company's products to list.
+  const [entityFilter, setEntityFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [stockLocationFilter, setStockLocationFilter] = useState<"all" | "in_showroom" | "in_godown">("all");
   const [stockViewDisplay, setStockViewDisplay] = useState<"both" | "showroom" | "godown">("both");
@@ -284,9 +290,11 @@ function ItemsPageContent() {
         matchStatus = item.status === "inactive";
       }
 
-      return matchSearch && matchCategory && matchLocation && matchStatus;
+      const matchEntity = entityFilter === "all" || entityOf(item) === entityFilter;
+
+      return matchSearch && matchCategory && matchLocation && matchStatus && matchEntity;
     });
-  }, [items, search, categoryFilter, stockLocationFilter, statusFilter]);
+  }, [items, search, categoryFilter, stockLocationFilter, statusFilter, entityFilter]);
 
   const paginated = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
   const totalPages = Math.ceil(filtered.length / PER_PAGE);
@@ -342,6 +350,7 @@ function ItemsPageContent() {
       purchasePrice: String(item.purchasePrice || ""),
       sellingPrice: String(item.sellingPrice || ""),
       vsp: String(item.vsp || item.sellingPrice || ""),
+      billingEntity: entityOf(item),
       minSellingPrice: String(item.minSellingPrice || item.purchasePrice || ""),
       maxDiscountPercent: String(item.maxDiscountPercent || ""),
       maxDiscountAmount: String(item.maxDiscountAmount || ""),
@@ -501,6 +510,7 @@ function ItemsPageContent() {
       // Untouched, this mirrors Selling Price — editing it independently is what
       // lets VSP diverge from whatever the actual billing price ends up being.
       vsp: Number(formData.vsp) || Number(formData.sellingPrice) || 0,
+      billingEntity: entityOf(formData.billingEntity),
       minSellingPrice: Number(formData.minSellingPrice) || Number(formData.purchasePrice) || 0,
       maxDiscountPercent: Number(formData.maxDiscountPercent) || 0,
       maxDiscountAmount: Number(formData.maxDiscountAmount) || 0,
@@ -795,6 +805,17 @@ function ItemsPageContent() {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Company Filter */}
+            <Select value={entityFilter} onValueChange={(v) => { setEntityFilter(v); setPage(1); }}>
+              <SelectTrigger className="w-44 bg-white">
+                <SelectValue placeholder="Company" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Companies</SelectItem>
+                {BILLING_ENTITY_LIST.map((e) => <SelectItem key={e.key} value={e.key}>{e.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+
             {/* Category Filter */}
             <Select value={categoryFilter} onValueChange={(v) => { setCategoryFilter(v); setPage(1); }}>
               <SelectTrigger className="w-40 bg-white">
@@ -995,6 +1016,7 @@ function ItemsPageContent() {
                           <div>
                             <p className="font-medium text-foreground">{item.name}</p>
                             <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                              <BillingEntityBadge entity={entityOf(item)} />
                               <span className="font-mono text-blue-600 font-bold bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200">
                                 VP: {item.vpCode || item.code}
                               </span>
@@ -1313,6 +1335,19 @@ function ItemsPageContent() {
                     onChange={(e) => setFormData((f) => ({ ...f, hsn: e.target.value }))}
                     className="bg-slate-50 border-slate-300 font-mono"
                   />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">Billing Company *</Label>
+                  <select
+                    value={entityOf(formData.billingEntity)}
+                    onChange={(e) => setFormData((f) => ({ ...f, billingEntity: e.target.value }))}
+                    className="w-full h-9 rounded-md border border-slate-300 bg-slate-50 px-2 text-sm font-semibold text-slate-800"
+                  >
+                    {BILLING_ENTITY_LIST.map((e) => (
+                      <option key={e.key} value={e.key}>{e.label}</option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-slate-400">This product can only be sold on this company's bills.</p>
                 </div>
               </div>
             </div>

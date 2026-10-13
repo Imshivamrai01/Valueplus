@@ -13,6 +13,25 @@ import DeletedPurchaseEntry from "@/models/DeletedPurchaseEntry";
 import AuditLog from "@/models/AuditLog";
 import StaffTask from "@/models/StaffTask";
 import { authoriseDestructiveAction } from "@/lib/destructiveAction";
+import { entityOf, entityLabel, isBillingEntity } from "@/lib/billing-entity";
+
+const escapeRegex = (text: string) => String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** The catalog product a purchase line refers to: by id, then code, then exact name. */
+async function findProductForLine(line: any) {
+  if (line?.itemId && mongoose.isValidObjectId(line.itemId)) {
+    const byId = await Item.findById(line.itemId);
+    if (byId) return byId;
+  }
+  if (line?.itemCode) {
+    const byCode = await Item.findOne({ code: line.itemCode });
+    if (byCode) return byCode;
+  }
+  if (line?.name) {
+    return Item.findOne({ name: { $regex: new RegExp(`^${escapeRegex(String(line.name).trim())}$`, "i") } });
+  }
+  return null;
+}
 
 /**
  * A bill entered without a linked PO (a direct/walk-in purchase) had no
@@ -78,6 +97,37 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     await connectToDatabase();
+
+    // Whose stock is this: Value Plus or Ashoka Enterprises? A purchase bill has to
+    // say, because that is what decides which bills its products can later be sold
+    // on. (A debit note follows the bill it returns against, so it is not asked.)
+    if (body.type !== "debit-note") {
+      if (!isBillingEntity(body.billingEntity)) {
+        return NextResponse.json(
+          { success: false, error: "Choose whether this purchase is for Value Plus or Ashoka Enterprises." },
+          { status: 400 }
+        );
+      }
+      // A product belongs to one of the two, for good. Buying a Value Plus product
+      // under Ashoka (or the reverse) is stopped here, before anything is saved.
+      const mismatched: string[] = [];
+      for (const line of Array.isArray(body.items) ? body.items : []) {
+        const product: any = await findProductForLine(line);
+        if (product && entityOf(product) !== body.billingEntity) mismatched.push(product.name);
+      }
+      if (mismatched.length > 0) {
+        const owner = entityLabel(body.billingEntity === "ashoka" ? "valueplus" : "ashoka");
+        return NextResponse.json(
+          {
+            success: false,
+            error: `These products belong to ${owner} and cannot be purchased under ${entityLabel(body.billingEntity)}: ${mismatched.join(
+              ", "
+            )}. Change the product's company on the Products page first if that is wrong.`,
+          },
+          { status: 400 }
+        );
+      }
+    }
 
     // Determine sequence number or validate uniqueness
     let newBillNo = body.billNo;
@@ -236,7 +286,9 @@ export async function POST(req: Request) {
               openingStock: 0,
               warehouse: targetWarehouse,
               reorderLevel: 5,
-              status: "active"
+              status: "active",
+              // A product first seen on this bill belongs to the bill's company.
+              billingEntity: entityOf(body.billingEntity),
             });
             await applyStockMovement(String(newItem._id), targetWarehouseId, qtyImpact);
           }

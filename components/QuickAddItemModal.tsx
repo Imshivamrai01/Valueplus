@@ -16,9 +16,11 @@ interface QuickAddItemModalProps {
   onClose: () => void;
   initialName?: string;
   onCreated: (item: any) => void;
+  /** Company the new product belongs to — the one chosen on the form it is added from. */
+  billingEntity?: "valueplus" | "ashoka" | "";
 }
 
-export function QuickAddItemModal({ isOpen, onClose, initialName = "", onCreated }: QuickAddItemModalProps) {
+export function QuickAddItemModal({ isOpen, onClose, initialName = "", onCreated, billingEntity }: QuickAddItemModalProps) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState({
     name: initialName,
@@ -53,7 +55,7 @@ export function QuickAddItemModal({ isOpen, onClose, initialName = "", onCreated
       const res = await fetch("/api/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(billingEntity ? { ...payload, billingEntity } : payload),
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error || "Failed to create item");

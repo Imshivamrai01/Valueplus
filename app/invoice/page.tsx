@@ -10,6 +10,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { printElement } from "@/lib/printUtility";
+import { entityOf } from "@/lib/billing-entity";
 
 // ─── HELPERS ───────────────────────────────────────────────────
 function formatCurrency(amount: number) {
@@ -112,6 +113,8 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
       return {
         isSpecimen: false,
         isEstimate: isEst,
+        // Value Plus or Ashoka Enterprises — decides the masthead below.
+        billingEntity: entityOf(invoice),
         companyName: "M/S ASHOKA ENTERPRISES",
         companyAddress: "H. NO. 116, NEAR SHANTI MARRIAGE HOUSE DEORIA ROAD, KUNRAGHAT GORAKHPUR",
         companyPhone: "9140860604",
@@ -286,6 +289,7 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
     return {
       isSpecimen: true,
       isEstimate: false,
+      billingEntity: "valueplus" as "valueplus" | "ashoka",
       companyName: "M/S ASHOKA ENTERPRISES",
       companyAddress: "H. NO. 116, NEAR SHANTI MARRIAGE HOUSE DEORIA ROAD, KUNRAGHAT GORAKHPUR",
       companyPhone: "9140860604",
@@ -549,18 +553,26 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
       >
         
         {/* TOP HEADER: BRAND LOGO */}
-        <div className="flex flex-col items-center justify-center pb-2 border-b border-slate-300">
-          <div className="flex items-center text-3xl font-black tracking-tight">
-            <span className="text-[#30539C]">VALUE</span>
-            <span className="text-[#76C043]">PLUS</span>
+        {/* An Ashoka Enterprises bill carries its own name, not the Value Plus brand. */}
+        {activeData.billingEntity === "ashoka" ? (
+          <div className="flex flex-col items-center justify-center pb-2 border-b border-slate-300">
+            <div className="text-3xl font-black tracking-tight text-slate-900">ASHOKA ENTERPRISES</div>
+            <p className="text-[10px] text-slate-500 tracking-wider mt-0.5">Kunraghat, Gorakhpur</p>
           </div>
-          <p className="text-[10px] text-slate-500 tracking-wider mt-0.5">plug into great experience |</p>
-          <div className="flex items-center gap-2 mt-1">
-            <span className="h-[1px] w-6 bg-slate-400" />
-            <span className="text-xs font-bold text-slate-800 tracking-wider font-hindi">— रिश्ता विश्वास का —</span>
-            <span className="h-[1px] w-6 bg-slate-400" />
+        ) : (
+          <div className="flex flex-col items-center justify-center pb-2 border-b border-slate-300">
+            <div className="flex items-center text-3xl font-black tracking-tight">
+              <span className="text-[#30539C]">VALUE</span>
+              <span className="text-[#76C043]">PLUS</span>
+            </div>
+            <p className="text-[10px] text-slate-500 tracking-wider mt-0.5">plug into great experience |</p>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="h-[1px] w-6 bg-slate-400" />
+              <span className="text-xs font-bold text-slate-800 tracking-wider font-hindi">— रिश्ता विश्वास का —</span>
+              <span className="h-[1px] w-6 bg-slate-400" />
+            </div>
           </div>
-        </div>
+        )}
 
         {/* INVOICE / ESTIMATE TITLE & META ROW */}
         <div className="flex items-center justify-between py-2 border-b border-slate-400 font-bold">
@@ -595,7 +607,10 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
             <p className="font-black text-xs text-slate-900">{activeData.companyName}</p>
             <p className="text-[10px] text-slate-700 uppercase mt-0.5">{activeData.companyAddress}</p>
             <p className="text-[10px] text-slate-800 mt-1">
-              Ph:<span className="font-mono font-bold">{activeData.companyPhone}</span> Web: <span className="font-mono">{activeData.companyWeb}</span>
+              Ph:<span className="font-mono font-bold">{activeData.companyPhone}</span>
+              {activeData.billingEntity !== "ashoka" && (
+                <> Web: <span className="font-mono">{activeData.companyWeb}</span></>
+              )}
             </p>
           </div>
 
