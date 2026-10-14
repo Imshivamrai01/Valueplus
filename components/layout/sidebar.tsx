@@ -12,7 +12,7 @@ import { NAV_GROUPS, UserRole } from "@/constants/navigation";
 import { useBranch } from "@/context/BranchContext";
 import { 
   ChevronDown, Zap, Sparkles, MapPin, Phone, Building2, 
-  Warehouse, Store, Check, ArrowRightLeft, ShieldCheck, User, LogOut 
+  Warehouse, Store, Check, ArrowRightLeft, ShieldCheck, User, LogOut, ExternalLink
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -286,6 +286,7 @@ export function Sidebar() {
                   <Link
                     key={item.href}
                     href={item.href}
+                    {...(item.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
                     className={cn(
                       "flex items-center gap-3 px-3 py-2 rounded-xl text-[12.5px] font-medium transition-all duration-200 cursor-pointer group relative overflow-hidden",
                       isActive
@@ -306,6 +307,7 @@ export function Sidebar() {
                       )}
                     />
                     <span className="flex-1 truncate tracking-wide">{item.title}</span>
+                    {item.external && <ExternalLink className="w-3 h-3 flex-shrink-0 opacity-60" />}
                     {item.badge !== undefined && (
                       <span
                         className={cn(

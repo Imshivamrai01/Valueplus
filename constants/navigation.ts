@@ -42,6 +42,7 @@ import {
   AlertCircle,
   TrendingUp,
   ExternalLink,
+  Mail,
   type LucideIcon,
 } from "lucide-react";
 
@@ -53,6 +54,8 @@ export interface NavItem {
   icon: LucideIcon;
   badge?: number;
   roles?: UserRole[];
+  /** A site outside the ERP: opened in a new tab (in the app, the phone's browser). */
+  external?: boolean;
 }
 
 export interface NavGroup {
@@ -199,6 +202,9 @@ export const NAV_GROUPS: NavGroup[] = [
     roles: ["admin", "manager", "accounts"],
     items: [
       { title: "Value Plus Retail (CP)", href: "/external/valueplus-retail", icon: ExternalLink, roles: ["admin", "manager", "accounts"] },
+      // Gmail cannot be shown inside another page, so it opens in its own tab. Google
+      // keeps the user signed in there; this app never sees or stores the login.
+      { title: "Mail (Gmail)", href: "https://mail.google.com/mail/u/0/#inbox", icon: Mail, roles: ["admin", "manager", "accounts"], external: true },
     ],
   },
 ];

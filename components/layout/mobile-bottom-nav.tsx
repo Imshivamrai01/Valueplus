@@ -466,6 +466,7 @@ export function MobileBottomNav() {
                       <Link
                         key={item.href}
                         href={item.href}
+                        {...(item.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
                         onClick={() => setIsMenuDrawerOpen(false)}
                         className={cn(
                           "flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all",
