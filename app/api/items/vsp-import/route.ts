@@ -5,14 +5,20 @@ import Item from "@/models/Item";
 import AuditLog from "@/models/AuditLog";
 import { getActor } from "@/lib/requirePermission";
 import { parseVspWorkbook, matchVspRows } from "@/lib/vsp-import";
+import { freezeMissingLineCosts } from "@/lib/sale-cost";
 
 /**
- * Update product VSPs from a brand price-list sheet.
+ * Update product prices from a brand price-list sheet:
+ *   New V+NLC → purchase price, New VSP → VSP.
  *
  * Without `apply` this only reads the sheet and reports what would change, so
- * the result can be reviewed first. With `apply=true` it writes the new VSP on
- * the matched products — the VSP field alone; cost, selling price, floor price
- * and MRP are left exactly as they are.
+ * the result can be reviewed first. With `apply=true` it writes those two
+ * fields on the matched products; selling price, floor price and MRP are left
+ * exactly as they are.
+ *
+ * Before a purchase price changes, every past bill line that has no cost of its
+ * own is given today's purchase price, so the profit of sales already made does
+ * not move with the new price.
  */
 
 export const maxDuration = 60;
@@ -28,7 +34,7 @@ export async function POST(req: Request) {
     }
     if (!["admin", "superadmin", "manager", "accounts"].includes(actor.role)) {
       return NextResponse.json(
-        { success: false, error: "Only an admin, manager or accounts user can update VSP from a sheet." },
+        { success: false, error: "Only an admin, manager or accounts user can update prices from a sheet." },
         { status: 403 }
       );
     }
@@ -52,7 +58,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: 'No VSP rows were found. The sheet needs a "Model" column and a "New VSP" column.',
+          error: 'No price rows were found. The sheet needs a "Model" column and a "New V+NLC" or "New VSP" column.',
           notes,
         },
         { status: 400 }
@@ -60,15 +66,26 @@ export async function POST(req: Request) {
     }
 
     await connectToDatabase();
-    const items = await Item.find({}, { name: 1, code: 1, vpCode: 1, brand: 1, vsp: 1 }).lean();
+    const items = await Item.find({}, { name: 1, code: 1, vpCode: 1, brand: 1, vsp: 1, purchasePrice: 1 }).lean();
     const result = matchVspRows(rows, items);
 
     let applied = 0;
+    let billsCostFrozen = 0;
     if (apply && result.updates.length > 0) {
+      // Must finish before any purchase price changes; if it fails, nothing is updated.
+      if (result.updates.some((u) => u.newCost !== null)) {
+        billsCostFrozen = await freezeMissingLineCosts();
+      }
+
       const write = await Item.bulkWrite(
         result.updates
           .filter((u) => mongoose.isValidObjectId(u.itemId))
-          .map((u) => ({ updateOne: { filter: { _id: u.itemId }, update: { $set: { vsp: u.newVsp } } } }))
+          .map((u) => {
+            const set: Record<string, number> = {};
+            if (u.newCost !== null) set.purchasePrice = u.newCost;
+            if (u.newVsp !== null) set.vsp = u.newVsp;
+            return { updateOne: { filter: { _id: u.itemId }, update: { $set: set } } };
+          })
       );
       applied = write.modifiedCount || 0;
 
@@ -76,19 +93,27 @@ export async function POST(req: Request) {
       // which sheet. Best-effort: the update itself has already succeeded.
       try {
         await AuditLog.create({
-          action: "item.vsp.import",
+          action: "item.price.import",
           entityType: "Item",
           entityRef: file.name,
-          reason: `VSP updated from sheet "${file.name}" for ${applied} products`,
+          reason: `Purchase price / VSP updated from sheet "${file.name}" for ${applied} products`,
           performedBy: actor.name,
           performedByUserId: actor.id,
           performedByRole: actor.role,
           metadata: {
-            updates: result.updates.map((u) => ({ name: u.name, model: u.model, oldVsp: u.oldVsp, newVsp: u.newVsp })),
+            billsCostFrozen,
+            updates: result.updates.map((u) => ({
+              name: u.name,
+              model: u.model,
+              oldCost: u.oldCost,
+              newCost: u.newCost,
+              oldVsp: u.oldVsp,
+              newVsp: u.newVsp,
+            })),
           },
         });
       } catch (logErr) {
-        console.warn("Notice: audit log for VSP import:", logErr);
+        console.warn("Notice: audit log for price sheet import:", logErr);
       }
     }
 
@@ -96,6 +121,7 @@ export async function POST(req: Request) {
       success: true,
       applied: apply,
       appliedCount: applied,
+      billsCostFrozen,
       fileName: file.name,
       sheetRows: rows.length,
       ...result,

@@ -641,7 +641,7 @@ function ItemsPageContent() {
               className="text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50"
               title="Upload a brand price list to update the VSP of the products it names"
             >
-              <UploadCloud className="w-3.5 h-3.5 mr-1.5" /> Update VSP from Sheet
+              <UploadCloud className="w-3.5 h-3.5 mr-1.5" /> Update Prices from Sheet
             </Button>
             <Button
               variant="outline"

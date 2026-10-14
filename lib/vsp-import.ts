@@ -3,8 +3,15 @@ import * as XLSX from "xlsx";
 /**
  * Brand price-list sheets (e.g. "LG Price List_Oct 26.xlsx") carry one tab per
  * product family. Each tab has a header row with a "Sap code" column, one or two
- * "Model" columns and a "New VSP" column. This reads every tab and matches its
- * rows to catalog products so that only their VSP is updated.
+ * "Model" columns, a "New V+NLC" column and a "New VSP" column. This reads every
+ * tab and matches its rows to catalog products so that two prices are updated:
+ *
+ *   New V+NLC → the product's purchase price (its cost)
+ *   New VSP   → the product's VSP
+ *
+ * A tab may carry only one of the two ("LG Panel 2025" has no VSP); then only
+ * that price is updated. MRP, DP, Store Landing and every other field are left
+ * alone.
  *
  * The sheet's Sap code (VP0009918) is the brand's own number and does not match
  * the catalog's generated VP code (VP-DWXD9S7054), so a product is recognised by
@@ -20,7 +27,10 @@ export interface VspSheetRow {
   model: string;
   /** Every base model this row can be recognised by. */
   modelKeys: string[];
-  vsp: number;
+  /** New VSP, or null when the tab or row has none. */
+  vsp: number | null;
+  /** New V+NLC (the purchase price), or null when the tab or row has none. */
+  cost: number | null;
 }
 
 export interface VspSheetNote {
@@ -47,6 +57,14 @@ function toNumber(value: any): number {
   return Number.isFinite(n) ? n : NaN;
 }
 
+/** A positive price rounded to paise, or null for a blank / dash / zero cell. */
+function toPrice(value: any): number | null {
+  const n = toNumber(value);
+  return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : null;
+}
+
+const formatPrice = (n: number | null) => (n === null ? "-" : String(n));
+
 export function parseVspWorkbook(data: Buffer | ArrayBuffer | Uint8Array): { rows: VspSheetRow[]; notes: VspSheetNote[] } {
   const workbook = XLSX.read(data, { type: "buffer" });
   const rows: VspSheetRow[] = [];
@@ -55,8 +73,8 @@ export function parseVspWorkbook(data: Buffer | ArrayBuffer | Uint8Array): { row
   for (const sheet of workbook.SheetNames) {
     const grid: any[][] = XLSX.utils.sheet_to_json(workbook.Sheets[sheet], { header: 1, defval: "", blankrows: false });
 
-    // The header is the first row that names both a model and a VSP column; a tab
-    // without one is reported rather than guessed at.
+    // The header is the first row that names a model column; a tab without one is
+    // reported rather than guessed at.
     const headerIndex = grid.findIndex((r) => r.some((c) => /^model$/i.test(clean(c))));
     if (headerIndex < 0) {
       notes.push({ sheet, message: `Sheet "${sheet}" was skipped: it has no "Model" column.` });
@@ -64,9 +82,16 @@ export function parseVspWorkbook(data: Buffer | ArrayBuffer | Uint8Array): { row
     }
     const header = grid[headerIndex].map(clean);
     const vspIndex = header.findIndex((c) => /\bvsp\b/i.test(c));
-    if (vspIndex < 0) {
-      notes.push({ sheet, message: `Sheet "${sheet}" was skipped: it has no "New VSP" column.` });
+    // "New V+NLC" / "NEW V+NLC" — the store's landing cost from the brand.
+    const costIndex = header.findIndex((c) => /v\s*\+\s*nl/i.test(c));
+    if (vspIndex < 0 && costIndex < 0) {
+      notes.push({ sheet, message: `Sheet "${sheet}" was skipped: it has neither a "New V+NLC" nor a "New VSP" column.` });
       continue;
+    }
+    if (vspIndex < 0) {
+      notes.push({ sheet, message: `Sheet "${sheet}" has no "New VSP" column, so only purchase prices are taken from it.` });
+    } else if (costIndex < 0) {
+      notes.push({ sheet, message: `Sheet "${sheet}" has no "New V+NLC" column, so only VSPs are taken from it.` });
     }
     const modelIndexes = header.map((c, i) => (/^model$/i.test(c) ? i : -1)).filter((i) => i >= 0);
     const sapIndex = header.findIndex((c) => /sap\s*code/i.test(c));
@@ -78,10 +103,11 @@ export function parseVspWorkbook(data: Buffer | ArrayBuffer | Uint8Array): { row
       // A header repeated further down the tab is not a product.
       if (models.every((m) => /^model$/i.test(m))) continue;
 
-      const vsp = toNumber(row[vspIndex]);
+      const vsp = vspIndex >= 0 ? toPrice(row[vspIndex]) : null;
+      const cost = costIndex >= 0 ? toPrice(row[costIndex]) : null;
       const model = models.slice().sort((a, b) => b.length - a.length)[0];
-      if (!Number.isFinite(vsp) || vsp <= 0) {
-        notes.push({ sheet, message: `${model} (sheet "${sheet}", row ${i + 1}) was skipped: it has no VSP value.` });
+      if (vsp === null && cost === null) {
+        notes.push({ sheet, message: `${model} (sheet "${sheet}", row ${i + 1}) was skipped: it has no V+NLC or VSP value.` });
         continue;
       }
 
@@ -95,7 +121,8 @@ export function parseVspWorkbook(data: Buffer | ArrayBuffer | Uint8Array): { row
         sapCode: /^[-–]?$/.test(sapCode) ? "" : sapCode,
         model,
         modelKeys,
-        vsp: Math.round(vsp * 100) / 100,
+        vsp,
+        cost,
       });
     }
   }
@@ -104,15 +131,30 @@ export function parseVspWorkbook(data: Buffer | ArrayBuffer | Uint8Array): { row
 }
 
 export interface VspMatchResult {
-  /** Products whose VSP will change. */
-  updates: { itemId: string; name: string; code: string; model: string; sheet: string; oldVsp: number; newVsp: number }[];
-  /** Products found, already on this VSP. */
-  unchanged: { itemId: string; name: string; model: string; sheet: string; vsp: number }[];
+  /**
+   * Products with at least one price changing. A `new*` value is null when that
+   * price is not changing (not in the sheet, or already the same).
+   */
+  updates: {
+    itemId: string;
+    name: string;
+    code: string;
+    model: string;
+    sheet: string;
+    oldCost: number;
+    newCost: number | null;
+    oldVsp: number;
+    newVsp: number | null;
+  }[];
+  /** Products found, already on these prices. */
+  unchanged: { itemId: string; name: string; model: string; sheet: string; cost: number | null; vsp: number | null }[];
   /** Sheet rows with no product in the catalog. */
-  notAdded: { model: string; sapCode: string; sheet: string; vsp: number; message: string }[];
+  notAdded: { model: string; sapCode: string; sheet: string; cost: number | null; vsp: number | null; message: string }[];
   /** Sheet rows left out, with the reason. */
   skipped: { model: string; sheet: string; message: string }[];
 }
+
+const samePrice = (a: number, b: number) => Math.abs(a - b) < 0.005;
 
 export function matchVspRows(rows: VspSheetRow[], items: any[]): VspMatchResult {
   const itemsByModel = new Map<string, any[]>();
@@ -127,7 +169,7 @@ export function matchVspRows(rows: VspSheetRow[], items: any[]): VspMatchResult 
   }
 
   const result: VspMatchResult = { updates: [], unchanged: [], notAdded: [], skipped: [] };
-  const decided = new Map<string, { vsp: number; sheet: string }>();
+  const decided = new Map<string, { cost: number | null; vsp: number | null; sheet: string }>();
 
   for (const row of rows) {
     const matched = new Map<string, any>();
@@ -142,8 +184,9 @@ export function matchVspRows(rows: VspSheetRow[], items: any[]): VspMatchResult 
         model: row.model,
         sapCode: row.sapCode,
         sheet: row.sheet,
+        cost: row.cost,
         vsp: row.vsp,
-        message: `Product not added: ${row.model} is not in the product list, so its VSP was not updated.`,
+        message: `Product not added: ${row.model} is not in the product list, so its prices were not updated.`,
       });
       continue;
     }
@@ -152,22 +195,28 @@ export function matchVspRows(rows: VspSheetRow[], items: any[]): VspMatchResult 
       const itemId = String(item._id);
       const earlier = decided.get(itemId);
       if (earlier) {
-        // The same product listed twice: the first price in the sheet is kept and
-        // the later one is reported, never silently applied over it.
-        if (earlier.vsp !== row.vsp) {
+        // The same product listed twice: the first prices in the sheet are kept and
+        // a different later price is reported, never silently applied over them.
+        if (earlier.cost !== row.cost || earlier.vsp !== row.vsp) {
           result.skipped.push({
             model: row.model,
             sheet: row.sheet,
-            message: `${row.model} appears again in sheet "${row.sheet}" with VSP ${row.vsp}; the first value (${earlier.vsp}, sheet "${earlier.sheet}") was used.`,
+            message: `${row.model} appears again in sheet "${row.sheet}" (V+NLC ${formatPrice(row.cost)}, VSP ${formatPrice(
+              row.vsp
+            )}); the first values (V+NLC ${formatPrice(earlier.cost)}, VSP ${formatPrice(earlier.vsp)}, sheet "${earlier.sheet}") were used.`,
           });
         }
         continue;
       }
-      decided.set(itemId, { vsp: row.vsp, sheet: row.sheet });
+      decided.set(itemId, { cost: row.cost, vsp: row.vsp, sheet: row.sheet });
 
+      const oldCost = Number(item.purchasePrice) || 0;
       const oldVsp = Number(item.vsp) || 0;
-      if (Math.abs(oldVsp - row.vsp) < 0.005) {
-        result.unchanged.push({ itemId, name: item.name, model: row.model, sheet: row.sheet, vsp: row.vsp });
+      const newCost = row.cost !== null && !samePrice(oldCost, row.cost) ? row.cost : null;
+      const newVsp = row.vsp !== null && !samePrice(oldVsp, row.vsp) ? row.vsp : null;
+
+      if (newCost === null && newVsp === null) {
+        result.unchanged.push({ itemId, name: item.name, model: row.model, sheet: row.sheet, cost: row.cost, vsp: row.vsp });
       } else {
         result.updates.push({
           itemId,
@@ -175,8 +224,10 @@ export function matchVspRows(rows: VspSheetRow[], items: any[]): VspMatchResult 
           code: item.code || item.vpCode || "",
           model: row.model,
           sheet: row.sheet,
+          oldCost,
+          newCost,
           oldVsp,
-          newVsp: row.vsp,
+          newVsp,
         });
       }
     }

@@ -15,6 +15,10 @@ export interface ILineItem {
   unit: string;
   rate: number;
   minSellingPrice?: number;
+  /** The product's purchase price when this line was billed, set by the server.
+   *  The P&L reads cost from here so a later price change (a brand price sheet,
+   *  a new purchase rate) does not rewrite past profit. Absent on older bills. */
+  costPrice?: number;
   adminOverrideRate?: boolean;
   incentiveTargetAmount?: number;
   incentiveAmount?: number;
@@ -214,6 +218,8 @@ const LineItemSchema = new Schema({
   unit: { type: String, required: true, default: "Pcs" },
   rate: { type: Number, required: true },
   minSellingPrice: { type: Number, default: 0 },
+  // No default: a missing value means "billed before cost was kept on the line".
+  costPrice: { type: Number },
   adminOverrideRate: { type: Boolean, default: false },
   incentiveTargetAmount: { type: Number, default: 0 },
   incentiveAmount: { type: Number, default: 0 },

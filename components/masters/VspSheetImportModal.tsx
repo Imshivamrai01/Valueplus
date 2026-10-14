@@ -10,25 +10,51 @@ import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils";
 
 /**
- * Upload a brand price list (one tab per product family, each with a "Model" and
- * a "New VSP" column) and update the VSP of the products it names.
+ * Upload a brand price list (one tab per product family, each with a "Model",
+ * a "New V+NLC" and a "New VSP" column) and update the products it names:
+ * New V+NLC becomes the purchase price and New VSP the VSP.
  *
  * Two steps on purpose: the sheet is read first and the changes are listed —
- * old VSP beside new — and nothing is saved until "Update VSP" is pressed. Only
- * the VSP field changes. A model in the sheet that is not in the product list is
- * reported as "Product not added" and left alone.
+ * old price beside new — and nothing is saved until "Update prices" is pressed.
+ * Only those two fields change. A model in the sheet that is not in the product
+ * list is reported as "Product not added" and left alone.
  */
 
 interface VspReport {
   applied: boolean;
   appliedCount: number;
+  billsCostFrozen?: number;
   fileName: string;
   sheetRows: number;
-  updates: { itemId: string; name: string; code: string; model: string; sheet: string; oldVsp: number; newVsp: number }[];
-  unchanged: { itemId: string; name: string; model: string; sheet: string; vsp: number }[];
-  notAdded: { model: string; sapCode: string; sheet: string; vsp: number; message: string }[];
+  updates: {
+    itemId: string;
+    name: string;
+    code: string;
+    model: string;
+    sheet: string;
+    oldCost: number;
+    newCost: number | null;
+    oldVsp: number;
+    newVsp: number | null;
+  }[];
+  unchanged: { itemId: string; name: string; model: string; sheet: string; cost: number | null; vsp: number | null }[];
+  notAdded: { model: string; sapCode: string; sheet: string; cost: number | null; vsp: number | null; message: string }[];
   skipped: { model: string; sheet: string; message: string }[];
   notes: { sheet: string; message: string }[];
+}
+
+/** Old → new, or the current value in grey when this price is not changing. */
+function PriceChange({ oldValue, newValue }: { oldValue: number; newValue: number | null }) {
+  if (newValue === null) {
+    return <span className="font-mono text-slate-400">{formatCurrency(oldValue)}</span>;
+  }
+  return (
+    <span className="inline-flex flex-wrap items-center justify-end gap-1 font-mono">
+      <span className="text-slate-400 line-through">{formatCurrency(oldValue)}</span>
+      <ArrowRight className="w-3 h-3 text-slate-300" />
+      <span className="font-black text-emerald-700">{formatCurrency(newValue)}</span>
+    </span>
+  );
 }
 
 export function VspSheetImportModal({
@@ -73,10 +99,10 @@ export function VspSheetImportModal({
     mutationFn: () => send(file as File, true),
     onSuccess: (data) => {
       setReport(data);
-      toast.success(`VSP updated for ${data.appliedCount} product${data.appliedCount === 1 ? "" : "s"}.`);
+      toast.success(`Prices updated for ${data.appliedCount} product${data.appliedCount === 1 ? "" : "s"}.`);
       onApplied?.();
     },
-    onError: (err: any) => toast.error(err.message || "VSP update failed"),
+    onError: (err: any) => toast.error(err.message || "Price update failed"),
   });
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -99,10 +125,11 @@ export function VspSheetImportModal({
       <DialogContent className="max-w-3xl p-0 rounded-2xl overflow-hidden border-none shadow-2xl">
         <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-5">
           <DialogTitle className="text-lg font-black tracking-tight flex items-center gap-2">
-            <FileSpreadsheet className="w-5 h-5 text-[#76C043]" /> Update VSP from Sheet
+            <FileSpreadsheet className="w-5 h-5 text-[#76C043]" /> Update Prices from Sheet
           </DialogTitle>
           <DialogDescription className="text-xs text-slate-300 mt-1">
-            Upload the brand price list. Products are matched by model number and only their VSP is changed.
+            Upload the brand price list. Products are matched by model number. New V+NLC becomes the purchase
+            price and New VSP the VSP; nothing else is changed.
           </DialogDescription>
         </div>
 
@@ -127,7 +154,8 @@ export function VspSheetImportModal({
                 {previewMutation.isPending ? "Reading the sheet..." : "Choose the price list Excel sheet"}
               </p>
               <p className="text-xs text-slate-400 mt-1">
-                Each tab needs a "Model" column and a "New VSP" column. Nothing is saved until you confirm.
+                Each tab needs a "Model" column and a "New V+NLC" and/or "New VSP" column. Nothing is saved until you
+                confirm.
               </p>
             </button>
           )}
@@ -146,28 +174,29 @@ export function VspSheetImportModal({
               {report.applied && (
                 <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-xs font-semibold text-emerald-800">
                   <CheckCircle2 className="w-4 h-4 shrink-0" />
-                  VSP updated for {report.appliedCount} product{report.appliedCount === 1 ? "" : "s"}. No other price was changed.
+                  Prices updated for {report.appliedCount} product{report.appliedCount === 1 ? "" : "s"}. MRP, selling
+                  price and floor price were not changed. Past bills keep the cost they were sold at.
                 </div>
               )}
 
-              {/* Products whose VSP changes */}
+              {/* Products whose purchase price or VSP changes */}
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                 <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50/70 text-xs font-black text-slate-700 uppercase tracking-wider">
-                  {report.applied ? "VSP updated" : "VSP will be updated"} ({report.updates.length})
+                  {report.applied ? "Prices updated" : "Prices will be updated"} ({report.updates.length})
                 </div>
                 {report.updates.length === 0 ? (
                   <p className="px-4 py-6 text-center text-xs text-slate-400 font-medium">
-                    No product needs a VSP change from this sheet.
+                    No product needs a price change from this sheet.
                   </p>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[520px] text-xs text-left">
+                    <table className="w-full min-w-[620px] text-xs text-left">
                       <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">
                         <tr>
                           <th className="p-2.5">Product</th>
                           <th className="p-2.5">Sheet</th>
-                          <th className="p-2.5 text-right">Old VSP</th>
-                          <th className="p-2.5 text-right">New VSP</th>
+                          <th className="p-2.5 text-right">Purchase price (V+NLC)</th>
+                          <th className="p-2.5 text-right">VSP</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 font-medium">
@@ -178,12 +207,11 @@ export function VspSheetImportModal({
                               <p className="text-[10px] font-mono text-slate-400">{u.code}</p>
                             </td>
                             <td className="p-2.5 text-slate-500">{u.sheet}</td>
-                            <td className="p-2.5 text-right font-mono text-slate-500">{formatCurrency(u.oldVsp)}</td>
-                            <td className="p-2.5 text-right font-mono font-black text-emerald-700">
-                              <span className="inline-flex items-center gap-1">
-                                <ArrowRight className="w-3 h-3 text-slate-300" />
-                                {formatCurrency(u.newVsp)}
-                              </span>
+                            <td className="p-2.5 text-right">
+                              <PriceChange oldValue={u.oldCost} newValue={u.newCost} />
+                            </td>
+                            <td className="p-2.5 text-right">
+                              <PriceChange oldValue={u.oldVsp} newValue={u.newVsp} />
                             </td>
                           </tr>
                         ))}
@@ -200,8 +228,8 @@ export function VspSheetImportModal({
                     <AlertTriangle className="w-3.5 h-3.5" /> Product not added ({report.notAdded.length})
                   </div>
                   <p className="px-4 pt-2.5 text-[11px] text-slate-500">
-                    These models are in the sheet but not in the product list, so their VSP was not updated. Add the
-                    product first, then upload the sheet again.
+                    These models are in the sheet but not in the product list, so their prices were not updated. Add
+                    the product first, then upload the sheet again.
                   </p>
                   <div className="max-h-48 overflow-y-auto px-4 py-2.5 space-y-1">
                     {report.notAdded.map((n, idx) => (
@@ -211,7 +239,11 @@ export function VspSheetImportModal({
                           <span className="font-mono text-slate-700">{n.model}</span>
                           <span className="text-slate-400"> · {n.sheet}</span>
                         </span>
-                        <span className="font-mono text-slate-400 shrink-0">VSP {formatCurrency(n.vsp)}</span>
+                        <span className="font-mono text-slate-400 shrink-0">
+                          {n.cost !== null && <>V+NLC {formatCurrency(n.cost)}</>}
+                          {n.cost !== null && n.vsp !== null && " · "}
+                          {n.vsp !== null && <>VSP {formatCurrency(n.vsp)}</>}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -247,7 +279,7 @@ export function VspSheetImportModal({
                   onClick={() => applyMutation.mutate()}
                   className="bg-[#3F63AD] hover:bg-[#2E4F95] text-white font-bold"
                 >
-                  {applyMutation.isPending ? "Updating..." : `Update VSP for ${report.updates.length} product${report.updates.length === 1 ? "" : "s"}`}
+                  {applyMutation.isPending ? "Updating..." : `Update prices for ${report.updates.length} product${report.updates.length === 1 ? "" : "s"}`}
                 </Button>
               )}
             </div>

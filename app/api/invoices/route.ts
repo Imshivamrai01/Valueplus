@@ -16,6 +16,7 @@ import { applyStockMovement } from "@/lib/stock";
 import authOptions from "@/lib/authOptions";
 import Item from "@/models/Item";
 import { BILLING_ENTITIES, entityOf, entityLabel, invoiceSeriesOf } from "@/lib/billing-entity";
+import { stampLineCosts } from "@/lib/sale-cost";
 
 /** The next unused number in a series, read from what is actually stored. */
 async function nextNumberInSeries(prefix: string, width: number): Promise<string> {
@@ -320,6 +321,9 @@ export async function POST(req: Request) {
     const resolvedWarehouseId = await resolveSaleWarehouseId(body);
     if (resolvedWarehouseId) body.warehouseId = resolvedWarehouseId;
     else delete body.warehouseId;
+
+    // Each line keeps the product's purchase price as of today, for the P&L.
+    if (Array.isArray(body.items)) body.items = await stampLineCosts(body.items);
 
     const invoice = await Invoice.create(body);
 
@@ -983,6 +987,9 @@ export async function PUT(req: Request) {
         }
       }
     }
+
+    // Products already on the bill keep the cost they were first sold at.
+    if (Array.isArray(body.items)) body.items = await stampLineCosts(body.items, existingInvoice.items as any[]);
 
     const updatedInvoice = await Invoice.findOneAndUpdate(
       { invoiceNumber: body.invoiceNumber },

@@ -4,6 +4,7 @@ import Invoice from "@/models/Invoice";
 import Item from "@/models/Item";
 import Expense from "@/models/Expense";
 import PurchaseEntry from "@/models/PurchaseEntry";
+import { buildCatalogLookup, lineUnitCost } from "@/lib/sale-cost";
 
 export async function GET(req: Request) {
   try {
@@ -64,17 +65,7 @@ export async function GET(req: Request) {
       PurchaseEntry.find(purchaseQuery).lean(),
     ]);
 
-    // Create fast lookup maps for catalog items
-    const itemById = new Map<string, any>();
-    const itemByCode = new Map<string, any>();
-    const itemByName = new Map<string, any>();
-
-    for (const it of catalogItems) {
-      if (it._id) itemById.set(String(it._id), it);
-      if (it.code) itemByCode.set(String(it.code).toUpperCase(), it);
-      if (it.vpCode) itemByCode.set(String(it.vpCode).toUpperCase(), it);
-      if (it.name) itemByName.set(String(it.name).trim().toLowerCase(), it);
-    }
+    const findCatalogItem = buildCatalogLookup(catalogItems as any[]);
 
     let totalRevenue = 0;
     let totalCOGS = 0;
@@ -102,19 +93,9 @@ export async function GET(req: Request) {
         const qty = Math.max(1, Number(line.quantity) || 1);
         totalUnitsSold += qty;
 
-        // Try resolving matched item in catalog to obtain actual purchase price
-        let matched = null;
-        if (line.itemId && itemById.has(String(line.itemId))) {
-          matched = itemById.get(String(line.itemId));
-        } else if (line.vpCode && itemByCode.has(String(line.vpCode).toUpperCase())) {
-          matched = itemByCode.get(String(line.vpCode).toUpperCase());
-        } else if (line.itemCode && itemByCode.has(String(line.itemCode).toUpperCase())) {
-          matched = itemByCode.get(String(line.itemCode).toUpperCase());
-        } else if (line.itemName && itemByName.has(String(line.itemName).trim().toLowerCase())) {
-          matched = itemByName.get(String(line.itemName).trim().toLowerCase());
-        }
-
-        const purchaseRate = Number(matched?.purchasePrice || (matched?.sellingPrice ? matched.sellingPrice * 0.80 : 0));
+        const matched = findCatalogItem(line);
+        // The cost the line was billed at; older bills fall back to the catalog's.
+        const purchaseRate = lineUnitCost(line, matched);
         const lineTaxable = Number(line.taxableAmount) || Number(line.amount) || (Number(line.rate || 0) * qty);
         const lineCost = purchaseRate * qty;
         const lineProfit = lineTaxable - lineCost;
