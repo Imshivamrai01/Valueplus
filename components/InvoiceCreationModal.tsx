@@ -579,7 +579,19 @@ export function InvoiceCreationModal({
     .filter((r) => !/finance|due|credit bill/i.test(r.mode) || /credit card/i.test(r.mode))
     .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
 
+  // A split with a Finance row is a finance sale too: which company financed it
+  // (and its DO) has to be asked here just as in single Finance mode.
+  const splitHasFinance = isSplitPayment && splitRows.some((r) => r.mode === "Finance");
+  const splitFinanceAmount = splitRows
+    .filter((r) => r.mode === "Finance")
+    .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+
   const updateSplitRow = (idx: number, patch: Partial<{ mode: string; amount: string; txnId: string }>) => {
+    // Choosing Finance on a row clears the pre-filled company, so it is picked
+    // on purpose rather than saved as the default without anyone asking.
+    if (patch.mode === "Finance" && !splitRows.some((r) => r.mode === "Finance")) {
+      setBillingForm((f: any) => ({ ...f, financeProvider: "" }));
+    }
     setSplitRows((rows) => rows.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
   };
   const addSplitRow = () => setSplitRows((rows) => [...rows, { mode: "Cash", amount: "", txnId: "" }]);
@@ -1115,6 +1127,10 @@ export function InvoiceCreationModal({
       toast.error("Select a payment mode — Cash, UPI or Card.");
       return;
     }
+    if (splitHasFinance && mode !== "estimate" && !String(billingForm.financeProvider || "").trim()) {
+      toast.error("Select the finance company (Bajaj, HDB, …) for the Finance part of this split payment.");
+      return;
+    }
 
     if (mode === "invoice") {
       for (const it of billingForm.lineItems) {
@@ -1389,13 +1405,29 @@ export function InvoiceCreationModal({
       cardMdrAmount: isCard ? billCalculations.cardMdrAmount : 0,
       cardNetSettlement: isCard ? billCalculations.cardNetSettlement : 0,
       
-      financeProvider: isFinance ? billingForm.financeProvider : "",
-      financeDoId: isFinance ? billingForm.financeDoId : "",
-      financeAppId: isFinance ? billingForm.financeAppId : "",
-      financeDownPayment: isFinance ? (Number(billingForm.financeDownPayment) || 0) : 0,
-      financeDownPaymentMode: isFinance ? (billingForm.financeDownPaymentMode || "Cash") : "",
-      financeGrossLoan: isFinance ? (billCalculations.grandTotal - downPay) : 0,
-      financeNetLoan: isFinance ? (billCalculations.grandTotal - downPay) : 0,
+      // A split bill with a Finance row carries the same finance details: the
+      // Finance row is the loan, the other rows are what the customer paid.
+      ...(splitHasFinance && splitPaymentsPayload
+        ? {
+            financeProvider: billingForm.financeProvider,
+            financeDoId: billingForm.financeDoId || "",
+            financeAppId: billingForm.financeAppId || "",
+            financeApprovalStatus: billingForm.financeApprovalStatus,
+            financePdfUrl: billingForm.financePdfUrl || "",
+            financeDownPayment: paidAmt,
+            financeDownPaymentMode: "Split",
+            financeGrossLoan: splitFinanceAmount,
+            financeNetLoan: splitFinanceAmount,
+          }
+        : {
+            financeProvider: isFinance ? billingForm.financeProvider : "",
+            financeDoId: isFinance ? billingForm.financeDoId : "",
+            financeAppId: isFinance ? billingForm.financeAppId : "",
+            financeDownPayment: isFinance ? (Number(billingForm.financeDownPayment) || 0) : 0,
+            financeDownPaymentMode: isFinance ? (billingForm.financeDownPaymentMode || "Cash") : "",
+            financeGrossLoan: isFinance ? (billCalculations.grandTotal - downPay) : 0,
+            financeNetLoan: isFinance ? (billCalculations.grandTotal - downPay) : 0,
+          }),
 
       // Due specifics
       dueAdvanceAmount: isDueCredit ? (Number(billingForm.advanceAmount || billingForm.dueAdvanceAmount) || 0) : 0,
@@ -2592,6 +2624,76 @@ export function InvoiceCreationModal({
                           )}
                         </p>
                       </div>
+
+                      {splitHasFinance && (
+                        <div className="p-3 bg-orange-50/70 rounded-xl border border-orange-200 space-y-2">
+                          <p className="text-xs font-black text-orange-950 flex items-center gap-1.5">
+                            <Sparkles className="w-3.5 h-3.5 text-orange-600" /> Finance details for the{" "}
+                            {formatCurrency(splitFinanceAmount)} Finance part
+                          </p>
+                          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
+                            <div>
+                              <Label className="font-bold text-orange-950">Finance Company *</Label>
+                              <Select
+                                value={billingForm.financeProvider || undefined}
+                                onValueChange={(v) => setBillingForm({ ...billingForm, financeProvider: v })}
+                              >
+                                <SelectTrigger
+                                  className={cn(
+                                    "bg-white border-orange-300 font-bold text-orange-900 mt-1",
+                                    !billingForm.financeProvider && "border-rose-400 bg-rose-50"
+                                  )}
+                                >
+                                  <SelectValue placeholder="Select finance company" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="Bajaj Finance Limited">Bajaj Finance Limited</SelectItem>
+                                  <SelectItem value="HDB Financial Services">HDB Financial Services</SelectItem>
+                                  <SelectItem value="IDFC First Bank">IDFC First Bank</SelectItem>
+                                  <SelectItem value="TVS Credit">TVS Credit</SelectItem>
+                                  <SelectItem value="Kotak Mahindra Prime">Kotak Mahindra Prime</SelectItem>
+                                  <SelectItem value="Home Credit India">Home Credit India</SelectItem>
+                                  <SelectItem value="Other Finance">Other Finance Company</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label className="font-bold text-orange-950">Finance DO / Sanction ID</Label>
+                              <Input
+                                placeholder="e.g. B432262868"
+                                value={billingForm.financeDoId}
+                                onChange={(e) => setBillingForm({ ...billingForm, financeDoId: e.target.value })}
+                                className="bg-white border-orange-300 font-mono font-bold mt-1"
+                              />
+                            </div>
+                            <div>
+                              <Label className="font-bold text-orange-950">Application / Deal ID</Label>
+                              <Input
+                                placeholder="e.g. CS289666676227"
+                                value={billingForm.financeAppId}
+                                onChange={(e) => setBillingForm({ ...billingForm, financeAppId: e.target.value })}
+                                className="bg-white border-orange-300 font-mono mt-1"
+                              />
+                            </div>
+                            <div>
+                              <Label className="font-bold text-orange-950">Approval Status</Label>
+                              <Select
+                                value={billingForm.financeApprovalStatus}
+                                onValueChange={(v: any) => setBillingForm({ ...billingForm, financeApprovalStatus: v })}
+                              >
+                                <SelectTrigger className="bg-white border-orange-300 font-bold text-slate-800 mt-1"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="Pending">Pending</SelectItem>
+                                  <SelectItem value="Under Review">Under Review</SelectItem>
+                                  <SelectItem value="Approved">Approved</SelectItem>
+                                  <SelectItem value="Disbursed">Disbursed</SelectItem>
+                                  <SelectItem value="Reconciled">Reconciled</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
                       {!isSplitBalanced && (
                         <p className="text-[11px] font-bold text-rose-700">

@@ -44,7 +44,20 @@ function getISTDateString() {
   }
 }
 
+// Not shown on Admin / Super Admin panels. The check sits in this small wrapper
+// so it runs before any of the widget's own hooks: returning early from inside
+// the widget changed its hook count once the session loaded (role "salesman"
+// while loading, then "admin"), which crashed every page that shows it.
 export function AttendancePunchWidget() {
+  const { data: session } = useSession();
+  const roleLower = String((session?.user as any)?.role || "salesman").toLowerCase();
+  if (roleLower.includes("admin") || roleLower === "super admin") {
+    return null;
+  }
+  return <AttendancePunchWidgetBody />;
+}
+
+function AttendancePunchWidgetBody() {
   const queryClient = useQueryClient();
   const { data: session } = useSession();
   const { activeLocation } = useBranch();
@@ -52,12 +65,6 @@ export function AttendancePunchWidget() {
   const userName = session?.user?.name || "Staff Member";
   const userEmail = session?.user?.email || "";
   const userRole = ((session?.user as any)?.role || "salesman").toUpperCase();
-
-  // Do not render attendance widget for Super Admin / Admin panels
-  const roleLower = userRole.toLowerCase();
-  if (roleLower.includes("admin") || roleLower === "superadmin" || roleLower === "super admin") {
-    return null;
-  }
 
   const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
   const [isAdvanceModalOpen, setIsAdvanceModalOpen] = useState(false);

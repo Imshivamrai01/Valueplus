@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import StoreActivityApproval from "@/models/StoreActivityApproval";
+import { notifyAdmins, notifyEmail } from "@/lib/notify";
 
 export async function GET(req: Request) {
   try {
@@ -45,6 +46,14 @@ export async function POST(req: Request) {
       amount: Number(body.amount) || 0,
       payload: body.payload || {},
       status: "pending",
+    });
+
+    await notifyAdmins({
+      type: "approval_request",
+      title: `🔔 Approval needed: ${newApproval.title}`,
+      message: `${newApproval.storeInchargeName} · ${newApproval.description}`,
+      link: "/admin/approvals",
+      createdBy: newApproval.storeInchargeName,
     });
 
     return NextResponse.json({
@@ -97,6 +106,14 @@ export async function PUT(req: Request) {
         console.error("Auto expense error:", err);
       }
     }
+
+    await notifyEmail(existing.storeInchargeEmail, {
+      type: "approval_result",
+      title: `${existing.status === "approved" ? "✅ Approved" : "❌ Rejected"}: ${existing.title}`,
+      message: existing.superAdminNotes || "",
+      link: "/admin/approvals",
+      createdBy: "Admin",
+    });
 
     return NextResponse.json({
       success: true,

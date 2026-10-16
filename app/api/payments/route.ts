@@ -1,6 +1,20 @@
 import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import PaymentTransaction from "@/models/PaymentTransaction";
+import { purchasePaymentState, round2 } from "@/lib/purchase-payments";
+
+/** The purchase bill a supplier payment is made against, if it names one. */
+async function purchaseBillFor(referenceId: any) {
+  const ref = String(referenceId || "").trim();
+  if (!ref) return null;
+  const PurchaseEntry = (await import("@/models/PurchaseEntry")).default;
+  const escaped = ref.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return PurchaseEntry.findOne({
+    billNo: { $regex: new RegExp(`^${escaped}$`, "i") },
+    type: { $ne: "debit-note" },
+    status: { $ne: "cancelled" },
+  });
+}
 
 export async function GET(request: Request) {
   try {
@@ -61,6 +75,27 @@ export async function POST(request: Request) {
     await connectToDatabase();
     const data = await request.json();
     
+    // A payment to a supplier against one purchase bill. Checked before anything
+    // is written: it may not be more than what is still due on that bill, and
+    // the supplier is taken from the bill when the form did not pick one.
+    const bill: any = data.partyType === "Supplier" && data.type === "paid" ? await purchaseBillFor(data.referenceId) : null;
+    if (bill) {
+      const due = purchasePaymentState(bill.total, bill.paid).balance;
+      if (!(Number(data.amount) > 0)) {
+        return NextResponse.json({ success: false, error: "Enter the amount paid." }, { status: 400 });
+      }
+      if (round2(data.amount) > due + 0.001) {
+        return NextResponse.json(
+          { success: false, error: `Only ₹${due.toFixed(2)} is due on bill ${bill.billNo}.` },
+          { status: 400 }
+        );
+      }
+      if (!data.partyId && bill.supplierId) data.partyId = String(bill.supplierId);
+      if (!data.partyName) data.partyName = bill.supplierName;
+      if (!data.transactionId) data.transactionId = `TXN-${Date.now()}`;
+      data.referenceId = bill.billNo;
+    }
+
     // Find the customer/supplier to update balance
     if (data.partyType === "Customer") {
       const Customer = (await import("@/models/Customer")).default;
@@ -111,8 +146,36 @@ export async function POST(request: Request) {
       }
     }
     
+    if (bill) {
+      // What was paid when the bill was entered never had a transaction of its
+      // own; the supplier ledger reads it off the bill only while no transaction
+      // names the bill. Before the first one does, it is recorded as one, so it
+      // is not dropped from the ledger. (The supplier balance already excludes
+      // it, so it is not counted against the balance again.)
+      const alreadyLinked = await PaymentTransaction.exists({ partyType: "Supplier", referenceId: bill.billNo });
+      if (!alreadyLinked && Number(bill.paid) > 0) {
+        await PaymentTransaction.create({
+          transactionId: `TXN-PE-${bill.billNo}`,
+          partyId: data.partyId || String(bill.supplierId || ""),
+          partyType: "Supplier",
+          partyName: bill.supplierName,
+          amount: round2(bill.paid),
+          paymentMode: bill.paymentMode || "Cash",
+          date: bill.billDate,
+          referenceId: bill.billNo,
+          notes: "Paid at purchase entry",
+          type: "paid",
+        });
+      }
+      const state = purchasePaymentState(bill.total, (Number(bill.paid) || 0) + Number(data.amount));
+      bill.paid = state.paid;
+      bill.balance = state.balance;
+      bill.status = state.status;
+      await bill.save();
+    }
+
     const payment = await PaymentTransaction.create(data);
-    return NextResponse.json({ success: true, data: payment });
+    return NextResponse.json({ success: true, data: payment, bill: bill ? { billNo: bill.billNo, paid: bill.paid, balance: bill.balance, status: bill.status } : undefined });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
@@ -169,6 +232,18 @@ export async function DELETE(request: Request) {
       await Supplier.findByIdAndUpdate(payment.partyId, {
         $inc: { outstandingBalance: multiplier * Number(payment.amount) }
       });
+
+      // Removing a payment made against a purchase bill puts that amount back on it.
+      if (payment.type === "paid") {
+        const bill: any = await purchaseBillFor(payment.referenceId);
+        if (bill) {
+          const state = purchasePaymentState(bill.total, (Number(bill.paid) || 0) - Number(payment.amount));
+          bill.paid = Math.max(0, state.paid);
+          bill.balance = state.balance;
+          bill.status = state.status;
+          await bill.save();
+        }
+      }
     }
 
     await PaymentTransaction.findByIdAndDelete(id);

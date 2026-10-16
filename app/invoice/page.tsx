@@ -863,7 +863,9 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
               {activeData.payments
                 .map(
                   (p: any) =>
-                    `${p.mode} ₹${(Number(p.amount) || 0).toFixed(2)}${p.txnId ? ` (Ref: ${p.txnId})` : ""}`
+                    /^finance$/i.test(String(p.mode || "")) && activeData.financeProvider
+                      ? `Finance (${activeData.financeProvider}${activeData.financeDoId ? `, DO: ${activeData.financeDoId}` : ""}) ₹${(Number(p.amount) || 0).toFixed(2)}`
+                      : `${p.mode} ₹${(Number(p.amount) || 0).toFixed(2)}${p.txnId ? ` (Ref: ${p.txnId})` : ""}`
                 )
                 .join(" + ")}{" "}
               {activeData.balanceAmount > 0 ? (

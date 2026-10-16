@@ -7,6 +7,7 @@ import { useSession, signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { useOfflineSync } from "@/components/shared/offline-sync-provider";
+import { NotificationBell } from "@/components/layout/NotificationBell";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -34,65 +35,6 @@ export function Topnav() {
   const logoutUrl = ownPanel ? `/login?panel=${ownPanel.slug}` : "/login";
 
   const { isOnline, pendingCount, isSyncing, syncNow } = useOfflineSync();
-  const [approvalsList, setApprovalsList] = useState<any[]>([]);
-  const [pendingApprovalsCount, setPendingApprovalsCount] = useState(0);
-
-  // Poll live approvals.
-  // This runs for the whole session, so it has to tolerate the connection dropping:
-  // offline, a dev-server restart, or the tab navigating away mid-request all surface
-  // as a network-level "TypeError: Failed to fetch". Those are expected here, so we
-  // skip the request when we know we're offline, abort in-flight work on unmount, and
-  // keep the last known count instead of logging an error every 12 seconds.
-  useEffect(() => {
-    let cancelled = false;
-    let controller: AbortController | null = null;
-
-    const fetchPending = async () => {
-      // Don't bother the network when the browser already knows it's offline,
-      // or while the tab is hidden — nothing is being displayed to update.
-      if (typeof navigator !== "undefined" && !navigator.onLine) return;
-      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
-
-      controller?.abort();
-      controller = new AbortController();
-
-      try {
-        const res = await fetch("/api/approvals?status=pending", { signal: controller.signal });
-        if (!res.ok) return; // server-side hiccup: keep the previous count
-        const json = await res.json();
-        if (cancelled) return;
-        if (json.success) {
-          setApprovalsList(json.data || []);
-          setPendingApprovalsCount(json.pendingCount || 0);
-        }
-      } catch (e: any) {
-        // AbortError is us cancelling; "Failed to fetch" means the request never left
-        // the browser. Neither is actionable, so don't spam the console.
-        if (e?.name === "AbortError" || cancelled) return;
-        console.warn("Approvals poll skipped (network unavailable)");
-      }
-    };
-
-    fetchPending();
-    const interval = setInterval(fetchPending, 12000);
-
-    // Catch up as soon as connectivity or focus comes back.
-    const handleOnline = () => fetchPending();
-    const handleVisibility = () => {
-      if (document.visibilityState === "visible") fetchPending();
-    };
-    window.addEventListener("online", handleOnline);
-    document.addEventListener("visibilitychange", handleVisibility);
-
-    return () => {
-      cancelled = true;
-      controller?.abort();
-      clearInterval(interval);
-      window.removeEventListener("online", handleOnline);
-      document.removeEventListener("visibilitychange", handleVisibility);
-    };
-  }, []);
-
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -229,87 +171,8 @@ export function Topnav() {
             <span>Cloud Synced</span>
           </div>
         )}
-        {/* Notifications / Super Admin Approvals */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className="relative w-10 h-10 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition-colors">
-              <Bell className="w-5 h-5" />
-              {pendingApprovalsCount > 0 && (
-                <span className="absolute top-1.5 right-1.5 min-w-[18px] h-[18px] px-1 bg-red-600 text-white text-[10px] font-black rounded-full border-2 border-white flex items-center justify-center animate-pulse">
-                  {pendingApprovalsCount}
-                </span>
-              )}
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-88 rounded-2xl shadow-2xl p-0 overflow-hidden border-slate-200">
-            <div className="bg-slate-900 text-white px-4 py-3 flex items-center justify-between">
-              <div>
-                <p className="font-bold text-sm">Store Incharge Activity Queue</p>
-                <p className="text-[11px] text-slate-300">
-                  {pendingApprovalsCount} {pendingApprovalsCount === 1 ? "request" : "requests"} pending Super Admin review
-                </p>
-              </div>
-              <Link
-                href="/admin/approvals"
-                className="text-[11px] font-bold text-amber-400 hover:underline flex items-center gap-1"
-              >
-                View All →
-              </Link>
-            </div>
-            
-            <div className="max-h-[340px] overflow-y-auto divide-y">
-              {approvalsList.length === 0 ? (
-                <div className="p-6 text-center text-slate-400">
-                  <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-1.5 opacity-60" />
-                  <p className="text-xs font-bold text-slate-700">No Pending Approvals</p>
-                  <p className="text-[11px] text-slate-400">All branch incharge activities are up-to-date.</p>
-                </div>
-              ) : (
-                approvalsList.slice(0, 5).map((act) => (
-                  <div key={act.activityId} className="p-3 hover:bg-slate-50 transition-colors bg-amber-500/5">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-1.5">
-                          <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 font-bold text-[9.5px] uppercase">
-                            {act.activityType?.replace("_", " ")}
-                          </span>
-                          <span className="text-[10px] font-mono text-slate-400">{act.activityId}</span>
-                        </div>
-                        <p className="text-xs font-bold text-slate-900 mt-1">{act.title}</p>
-                        <p className="text-[11px] text-slate-600 line-clamp-1">{act.description}</p>
-                        <p className="text-[10px] text-slate-400 mt-1">
-                          📍 {act.storeName} • {act.storeInchargeName}
-                        </p>
-                      </div>
-                      {act.amount > 0 && (
-                        <p className="text-xs font-bold font-mono text-emerald-700 shrink-0">
-                          ₹{Number(act.amount).toLocaleString("en-IN")}
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="mt-2 pt-2 border-t flex items-center justify-end gap-1.5">
-                      <Link href="/admin/approvals">
-                        <Button size="sm" className="h-6 px-2 text-[10px] font-bold bg-[#30539C] hover:bg-[#203a70] text-white">
-                          Review & Authorize →
-                        </Button>
-                      </Link>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            <div className="bg-slate-50 px-3 py-2 border-t text-center">
-              <Link
-                href="/admin/approvals"
-                className="text-xs font-bold text-[#30539C] hover:underline"
-              >
-                Open Full Super Admin Approvals Center
-              </Link>
-            </div>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {/* Notifications: own tasks/targets/approvals, plus pending approvals for admins */}
+        <NotificationBell />
 
         {/* <button className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition-colors">
           <Settings className="w-5 h-5" />

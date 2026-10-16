@@ -101,6 +101,9 @@ function supplierEntries(bills: any[], payments: any[]): LedgerEntryInput[] {
   );
 
   for (const bill of bills) {
+    // A cancelled purchase bill is no longer owed (its stock and the supplier's
+    // balance were reversed when it was cancelled), so it leaves the ledger.
+    if (bill.status === "cancelled") continue;
     rows.push({
       kind: "bill",
       date: bill.billDate || bill.date,
@@ -519,7 +522,9 @@ export async function GET(req: Request) {
             paid += extra;
             onAccount -= extra;
           }
-          const balance = isDebitNote ? 0 : Math.max(0, total - paid);
+          // Under one paisa left is settled (GST maths leaves fractions on old bills).
+          const rawBalance = isDebitNote ? 0 : Math.max(0, total - paid);
+          const balance = rawBalance < 0.01 ? 0 : Math.round(rawBalance * 100) / 100;
           const overdue = balance > 0 && b.dueDate ? new Date(b.dueDate) < new Date() : false;
 
           return {

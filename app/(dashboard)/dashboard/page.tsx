@@ -51,6 +51,7 @@ import { useBranch } from "@/context/BranchContext";
 import { useSession } from "next-auth/react";
 import { SalesmanDashboardView } from "@/components/dashboard/SalesmanDashboardView";
 import { CashHandoverCard } from "@/components/dashboard/CashHandoverCard";
+import { PurchaseDistributionCard, type PurchaseCardFilter } from "@/components/dashboard/PurchaseDistributionCard";
 import { ProductLedgerModal } from "@/components/ProductLedgerModal";
 import { ExportMenu } from "@/components/shared/ExportMenu";
 import { isFinanceInvoice } from "@/lib/payment-modes";
@@ -150,7 +151,7 @@ function StatusBadge({ status, className }: { status: string; className?: string
  * hydration, no server-vs-client mismatch); it corrects itself to the
  * measured layout within a frame of mounting.
  */
-function MasonryGrid({ gap = "gap-3", children }: { gap?: string; children: React.ReactNode }) {
+function MasonryGrid({ gap = "gap-3", pinned = 1, children }: { gap?: string; pinned?: number; children: React.ReactNode }) {
   const columns = 3;
   const items = useMemo(() => Children.toArray(children), [children]);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -187,11 +188,15 @@ function MasonryGrid({ gap = "gap-3", children }: { gap?: string; children: Reac
     // drift wherever a taller sibling pushed it. Pinning index 0 keeps that
     // placement deterministic while still letting every other card balance
     // freely around it.
+    // `pinned` > 1 extends the same rule to the first few cards: they take the
+    // top of columns 0, 1, … in order (e.g. Payment and Purchase side by side).
+    const pinCount = Math.min(Math.max(1, pinned), columns, heights.length);
+    const pinnedIdx = Array.from({ length: pinCount }, (_, i) => i);
     const restByHeight = heights
       .map((_, i) => i)
-      .filter((i) => i !== 0)
+      .filter((i) => i >= pinCount)
       .sort((a, b) => heights[b] - heights[a]);
-    const order = heights.length > 0 ? [0, ...restByHeight] : [];
+    const order = heights.length > 0 ? [...pinnedIdx, ...restByHeight] : [];
 
     const colHeights = new Array(columns).fill(0);
     const next = new Array(heights.length);
@@ -556,6 +561,8 @@ export default function DashboardPage() {
   // Its own date filter, like the other cards; the universal filter at the top
   // moves it too. Figures come from the same report as Accounting › P&L.
   const [plFilter, setPlFilter] = useState<{ value: string; start?: string; end?: string }>({ value: "Today" });
+  // Purchase Distribution card: its own date filter, moved by the universal one too.
+  const [purchaseFilter, setPurchaseFilter] = useState<PurchaseCardFilter>({ value: "Today" });
   const [plSummary, setPlSummary] = useState<any | null>(null);
   const [plLoading, setPlLoading] = useState(false);
 
@@ -1112,6 +1119,7 @@ export default function DashboardPage() {
     };
     setWidgetFilters(newFilters);
     setPlFilter({ value: val, start: customStart, end: customEnd });
+    setPurchaseFilter({ value: val, start: customStart, end: customEnd });
     loadAllDashboardData(s, e, val);
   };
 
@@ -1553,8 +1561,10 @@ export default function DashboardPage() {
             inconsistent across browsers (some just fill column 1 and dump the rest into
             column 2/3 instead of truly balancing) — real content heights are measured
             client-side by <code>MasonryGrid</code> and columns rebalance automatically.
+            The first two cards (Payment & Bill Distribution, Purchase Distribution) are
+            pinned side by side on the top row.
         ═══════════════════════════════════════════════════════════════════════════════ */}
-        <MasonryGrid>
+        <MasonryGrid pinned={2}>
           <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-3 flex flex-col justify-between hover:shadow-md transition-all">
             <div className="pb-2.5 border-b border-slate-100 space-y-2">
               <div className="flex items-center gap-3">
@@ -1805,6 +1815,11 @@ export default function DashboardPage() {
               </div>
             </div>
           </div>
+
+          {/* PURCHASE DISTRIBUTION — beside Payment & Bill Distribution: purchases by
+              supplier (Value Plus first, then every other party); a click opens that
+              supplier's ledger. */}
+          <PurchaseDistributionCard filter={purchaseFilter} onFilterChange={setPurchaseFilter} />
 
           <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-3 flex flex-col justify-between hover:shadow-md transition-all">
             <div className="pb-2.5 border-b border-slate-100 space-y-2">

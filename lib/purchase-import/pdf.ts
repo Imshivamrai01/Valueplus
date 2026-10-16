@@ -10,6 +10,7 @@
 import { CanvasFactory } from "pdf-parse/worker";
 import { PDFParse } from "pdf-parse";
 import { extractEmbeddedCode } from "./match-item";
+import { parseValuePlusRetailLines } from "./valueplus-retail";
 
 /**
  * Break one extracted text line into cells resolveRows() can read as
@@ -195,7 +196,10 @@ export async function extractRowsFromPdf(
     const itemLines = serialMarkerIdx === -1 ? lines : lines.slice(0, serialMarkerIdx);
     const serialSectionLines = serialMarkerIdx === -1 ? [] : lines.slice(serialMarkerIdx + 1);
 
-    const grid = itemLines.map((line) => splitPdfTextLine(line));
+    // The distributor's own invoice layout is known exactly — read it as such
+    // (full wrapped names, right qty/rate) before falling back to guessing.
+    const knownLayoutGrid = parseValuePlusRetailLines(itemLines);
+    const grid = knownLayoutGrid || itemLines.map((line) => splitPdfTextLine(line));
 
     // Column positions in this section aren't reliable as flat text (the
     // same reversed/merged-cell issue the item table has), so each unit's
@@ -224,7 +228,7 @@ export async function extractRowsFromPdf(
       textSerialGrid = [["Description", "Serial Number"], ...serialEntries.map((e) => [e.code, e.serial])];
     }
 
-    return { grid, serialGrid: textSerialGrid, usedTableExtraction: false, rawText, supplier };
+    return { grid, serialGrid: textSerialGrid, usedTableExtraction: Boolean(knownLayoutGrid), rawText, supplier };
   } finally {
     await parser.destroy();
   }

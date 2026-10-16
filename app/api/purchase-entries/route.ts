@@ -14,6 +14,7 @@ import AuditLog from "@/models/AuditLog";
 import StaffTask from "@/models/StaffTask";
 import { authoriseDestructiveAction } from "@/lib/destructiveAction";
 import { entityOf, entityLabel, isBillingEntity } from "@/lib/billing-entity";
+import { purchasePaymentState } from "@/lib/purchase-payments";
 
 const escapeRegex = (text: string) => String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -155,6 +156,17 @@ export async function POST(req: Request) {
       ...body,
       billNo: newBillNo,
     };
+    // Paid / balance / status are worked out here from the total and what was
+    // paid, in paise — never taken as sent (a paisa-fraction balance used to
+    // leave a fully paid bill showing "partial").
+    if (body.type === "entry" || !body.type) {
+      const state = purchasePaymentState(Number(body.total) || 0, Number(body.paid) || 0);
+      payload.total = state.total;
+      payload.paid = state.paid;
+      payload.balance = state.balance;
+      payload.status = state.status;
+      body.balance = state.balance;
+    }
     // The creation form sends placeholder values ("auto"/"new") here until a
     // real Supplier record exists — only a real ObjectId is safe to store.
     if (!payload.supplierId || !mongoose.isValidObjectId(payload.supplierId)) {

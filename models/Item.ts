@@ -9,6 +9,10 @@ export interface IWarrantyPlan {
 export interface IItem extends Document {
   code: string;
   vpCode?: string;
+  /** Supplier item codes this product is billed under (e.g. "VP0012023" on a
+   *  Value Plus Retail invoice), learned at purchase entry so the next bill
+   *  matches the product by code instead of by name. */
+  supplierCodes?: string[];
   name: string;
   description?: string;
   category: string;
@@ -71,6 +75,7 @@ const ItemSchema = new Schema<IItem>(
   {
     code: { type: String, required: true, unique: true },
     vpCode: { type: String, index: true },
+    supplierCodes: { type: [String], default: undefined, index: true },
     name: { type: String, required: true },
     description: { type: String, default: "" },
     category: { type: String, default: "" },

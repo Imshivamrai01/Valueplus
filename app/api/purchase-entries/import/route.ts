@@ -5,6 +5,7 @@ import ProductCatalogReference from "@/models/ProductCatalogReference";
 import { getActor } from "@/lib/requirePermission";
 import { resolveRows } from "@/lib/purchase-import/resolve-rows";
 import { findMatchingItem, extractEmbeddedCode } from "@/lib/purchase-import/match-item";
+import { splitSupplierLine, productNameFromLine } from "@/lib/purchase-import/supplier-line";
 import { groupSerialsByProduct, findSerialsForRow } from "@/lib/purchase-import/serial-table";
 
 /**
@@ -114,7 +115,7 @@ export async function POST(req: Request) {
     await connectToDatabase();
     const allItems = await Item.find(
       {},
-      { name: 1, code: 1, vpCode: 1, purchasePrice: 1, gstRate: 1, category: 1, brand: 1 }
+      { name: 1, code: 1, vpCode: 1, supplierCodes: 1, purchasePrice: 1, gstRate: 1, category: 1, brand: 1 }
     ).lean();
 
     const serialGroups = groupSerialsByProduct(serialGrid);
@@ -135,13 +136,36 @@ export async function POST(req: Request) {
       });
     }
 
+    // Two invoice lines can carry the same product code (one unit per line),
+    // while the serial page lists them all under that code — each line takes
+    // the next serials in order, as many as its quantity, instead of every
+    // line getting the whole list.
+    const serialsTaken: Record<string, number> = {};
+    const takeSerials = (rowName: string, quantity: number): string[] | undefined => {
+      const all = findSerialsForRow(rowName, serialGroups);
+      if (!all || all.length === 0) return undefined;
+      const key = extractEmbeddedCode(rowName) || rowName;
+      const start = serialsTaken[key] || 0;
+      const count = Math.max(1, Math.round(quantity) || 1);
+      serialsTaken[key] = start + count;
+      const sameCodeRows = parsedRows.filter((r) => (extractEmbeddedCode(r.name) || r.name) === key).length;
+      // A single line keeps every serial listed for it, as before.
+      return sameCodeRows > 1 ? all.slice(start, start + count) : all;
+    };
+
     const rows = parsedRows.map((row) => {
       const matched = findMatchingItem(row.name, allItems);
-      const serialNumbers = findSerialsForRow(row.name, serialGroups);
+      const serialNumbers = takeSerials(row.name, row.quantity);
       const embeddedCode = !matched ? extractEmbeddedCode(row.name) : null;
       const referenceMatch = embeddedCode ? referenceByVpCode.get(embeddedCode) || null : null;
+      // "VP0012023 - GLS19I3AGAHF- LLOYD" → code VP0012023, brand LLOYD, and the
+      // clean name a new product should get: "GLS19I3AGAHF- LLOYD".
+      const parts = splitSupplierLine(row.name);
       return {
         ...row,
+        supplierCode: parts.supplierCode,
+        parsedBrand: parts.brand,
+        suggestedName: productNameFromLine(parts) || row.name,
         matchedItem: matched
           ? {
               _id: String(matched._id),

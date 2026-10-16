@@ -9,6 +9,21 @@
  * unmatched row by hand in the preview screen.
  */
 
+import { modelKey } from "./supplier-line";
+
+/** Every code a product is known by: its own code, its VP code, and the
+ *  supplier item codes (e.g. "VP0012023") learned from earlier purchases. */
+function codesOf(it: any): string[] {
+  return [it.code, it.vpCode, ...(Array.isArray(it.supplierCodes) ? it.supplierCodes : [])]
+    .map((c) => String(c || "").trim().toUpperCase())
+    .filter(Boolean);
+}
+
+/** A product saved the clean way — not "VP0012023 - …" and not "Unbranded". */
+function isCleanProduct(it: any): boolean {
+  return !/^\s*VP-?\d{4,}\s*-/i.test(String(it.name || "")) && !/^unbranded$/i.test(String(it.brand || "").trim());
+}
+
 function normaliseName(value: string): string {
   return String(value || "")
     .toLowerCase()
@@ -32,19 +47,25 @@ export function findMatchingItem(rowName: string, items: any[]): any | null {
   const raw = String(rowName || "").trim().toLowerCase();
 
   // Exact code / VP code hit first — the least ambiguous signal available.
-  const byCode = items.find(
-    (it) => it.code?.toLowerCase() === raw || it.vpCode?.toLowerCase() === raw
-  );
+  const byCode = items.find((it) => codesOf(it).includes(raw.toUpperCase()));
   if (byCode) return byCode;
 
   // A VP code embedded inside a longer description is just as unambiguous as
   // a whole-cell match — it just needs pulling out first.
   const embedded = extractEmbeddedCode(rowName);
   if (embedded) {
-    const byEmbeddedCode = items.find(
-      (it) => it.code?.toUpperCase() === embedded || it.vpCode?.toUpperCase() === embedded
-    );
+    const byEmbeddedCode = items.find((it) => codesOf(it).includes(embedded));
     if (byEmbeddedCode) return byEmbeddedCode;
+  }
+
+  // Same model number, ignoring the supplier code and the brand around it:
+  // "VP0012023 - GLS19I3AGAHF- LLOYD" is the catalog's "GLS19I3AGAHF- LLOYD".
+  // A variant suffix still counts ("… OU" is a different product). When an
+  // older mis-saved duplicate shares the model, the cleanly saved one wins.
+  const key = modelKey(rowName);
+  if (key.length >= 5) {
+    const sameModel = items.filter((it) => modelKey(it.name, it.brand) === key);
+    if (sameModel.length > 0) return sameModel.find(isCleanProduct) || sameModel[0];
   }
 
   const byExactName = items.find((it) => normaliseName(it.name) === normalised);

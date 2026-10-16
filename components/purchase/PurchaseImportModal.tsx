@@ -18,6 +18,9 @@ import {
   CheckCircle2,
   Sparkles,
   X,
+  Link2,
+  Pencil,
+  Search,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrency, cn } from "@/lib/utils";
@@ -61,6 +64,74 @@ interface PreviewRow {
    *  (Masters > Items > Import Stock Reference) by VP code, not a guess —
    *  shown so the admin knows it's vetted data, still fully editable. */
   fromReference?: boolean;
+  /** The supplier's own item code on this line ("VP0012023"); remembered on the
+   *  product once the rows are confirmed, so the next bill matches by code. */
+  supplierCode?: string;
+  /** Set once the product was picked by hand: editing the name no longer
+   *  re-links the row on its own. */
+  manualLink?: boolean;
+  /** Corrections to the LINKED product's own name/brand, saved on confirm. */
+  fixProduct?: { name: string; brand: string } | null;
+}
+
+/** Pick the product a row belongs to, or "create new", by searching the catalog. */
+function ProductPicker({
+  items,
+  onPick,
+  onClose,
+}: {
+  items: any[];
+  onPick: (item: any | null) => void;
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+  const results = q
+    ? items
+        .filter((it: any) =>
+          [it.name, it.code, it.vpCode, it.brand, ...(it.supplierCodes || [])]
+            .some((v) => String(v || "").toLowerCase().includes(q))
+        )
+        .slice(0, 8)
+    : [];
+  return (
+    <div className="mt-1.5 rounded-lg border border-slate-200 bg-white shadow-lg p-2 space-y-1.5 w-[260px]">
+      <div className="relative">
+        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-1/2 -translate-y-1/2" />
+        <Input
+          autoFocus
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search product, model or code"
+          className="h-8 text-xs pl-7"
+        />
+      </div>
+      <div className="max-h-48 overflow-y-auto space-y-0.5">
+        {results.map((it: any) => (
+          <button
+            key={it._id}
+            type="button"
+            onClick={() => onPick(it)}
+            className="w-full text-left px-2 py-1.5 rounded-md hover:bg-blue-50 text-xs"
+          >
+            <span className="font-semibold text-slate-800 block truncate">{it.name}</span>
+            <span className="text-[10px] text-slate-400">
+              {it.brand || "—"} · {it.vpCode || it.code} · stock {Number(it.currentStock) || 0}
+            </span>
+          </button>
+        ))}
+        {q && results.length === 0 && <p className="text-[11px] text-slate-400 px-2 py-1">No product found.</p>}
+      </div>
+      <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+        <button type="button" onClick={() => onPick(null)} className="text-[11px] font-semibold text-amber-700 hover:underline">
+          Create as new product
+        </button>
+        <button type="button" onClick={onClose} className="text-[11px] text-slate-500 hover:underline">
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export function PurchaseImportModal({
@@ -85,6 +156,7 @@ export function PurchaseImportModal({
   const [defaultCategory, setDefaultCategory] = useState("");
   const [defaultBrand, setDefaultBrand] = useState("");
   const [supplier, setSupplier] = useState<{ name?: string; phone?: string; gstin?: string } | undefined>(undefined);
+  const [pickerFor, setPickerFor] = useState<string | null>(null);
 
   const { data: categories = [] } = useQuery({
     queryKey: ["categories"],
@@ -141,7 +213,10 @@ export function PurchaseImportModal({
         data.rows.map((r: any, i: number) => ({
           key: `${r.sourceRow}-${i}`,
           sourceRow: r.sourceRow,
-          name: r.name,
+          // "GLS19I3AGAHF- LLOYD", not "VP0012023 - GLS19I3AGAHF- LLOYD": the code
+          // is kept separately below and the brand goes in its own column.
+          name: r.suggestedName || r.name,
+          supplierCode: r.supplierCode || "",
           quantity: r.quantity,
           rate: r.rate,
           gstRate: r.gstRate,
@@ -150,8 +225,9 @@ export function PurchaseImportModal({
           serialNumbers: r.serialNumbers,
           hsn: r.hsn,
           category: r.referenceMatch?.category || "",
-          brand: r.referenceMatch?.brand || "",
+          brand: r.referenceMatch?.brand || r.parsedBrand || "",
           fromReference: Boolean(r.referenceMatch),
+          fixProduct: null,
         }))
       );
       const referenceCount = data.rows.filter((r: any) => r.referenceMatch).length;
@@ -179,8 +255,11 @@ export function PurchaseImportModal({
         // Re-match live whenever the name changes, using the same function
         // the server used, so correcting a misread name to an existing
         // product's name re-links it without any extra step.
-        if (patch.name !== undefined) {
-          next.matchedItem = findMatchingItem(next.name, allItems);
+        if ((patch.name !== undefined || patch.supplierCode !== undefined) && !next.manualLink) {
+          next.matchedItem =
+            (next.supplierCode ? findMatchingItem(next.supplierCode, allItems) : null) ||
+            findMatchingItem(next.name, allItems);
+          next.fixProduct = null;
         }
         return next;
       })
@@ -206,8 +285,28 @@ export function PurchaseImportModal({
       }
 
       const resolved: any[] = [];
+      const codeLinks: { itemId: string; code: string }[] = [];
 
       for (const row of rows) {
+        if (row.matchedItem && row.fixProduct) {
+          // The product this row is linked to had a wrong name or brand — fixed
+          // here, on the product itself, so every screen shows it right.
+          const name = row.fixProduct.name.trim();
+          const brand = row.fixProduct.brand.trim();
+          if (name && (name !== row.matchedItem.name || brand !== (row.matchedItem.brand || ""))) {
+            const res = await fetch("/api/items", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ code: row.matchedItem.code, name, ...(brand ? { brand } : {}) }),
+            });
+            const json = await res.json();
+            if (!json.success) throw new Error(`Could not update "${row.matchedItem.name}": ${json.error}`);
+            row.matchedItem = { ...row.matchedItem, name, brand: brand || row.matchedItem.brand };
+          }
+        }
+        if (row.matchedItem && row.supplierCode) {
+          codeLinks.push({ itemId: row.matchedItem._id, code: row.supplierCode });
+        }
         if (row.matchedItem) {
           resolved.push({
             code: row.matchedItem.code,
@@ -241,6 +340,7 @@ export function PurchaseImportModal({
             purchasePrice: row.rate,
             sellingPrice: Math.round(row.rate * 1.25),
             mrp: Math.round(row.rate * 1.3),
+            ...(row.supplierCode ? { supplierCodes: [row.supplierCode] } : {}),
             openingStock: 0,
             currentStock: 0,
             status: "active",
@@ -250,6 +350,7 @@ export function PurchaseImportModal({
         if (!json.success) {
           throw new Error(`Could not create "${row.name}": ${json.error}`);
         }
+        if (row.supplierCode && json.data?._id) codeLinks.push({ itemId: json.data._id, code: row.supplierCode });
         resolved.push({
           code: json.data.code,
           vpCode: json.data.vpCode,
@@ -260,6 +361,20 @@ export function PurchaseImportModal({
           orderQty: row.quantity,
           serialNumbers: row.serialNumbers,
         });
+      }
+
+      // Best-effort: remembering the supplier codes only speeds up the next
+      // import; the purchase itself does not depend on it.
+      if (codeLinks.length > 0) {
+        try {
+          await fetch("/api/items/supplier-codes", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ links: codeLinks }),
+          });
+        } catch (linkErr) {
+          console.warn("Notice: could not remember supplier codes:", linkErr);
+        }
       }
 
       return resolved;
@@ -274,7 +389,7 @@ export function PurchaseImportModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl p-0 rounded-2xl border-none shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+      <DialogContent className="max-w-6xl p-0 rounded-2xl border-none shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
         <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-5 flex items-center gap-3 shrink-0">
           <div className="w-11 h-11 rounded-xl bg-white/10 flex items-center justify-center border border-white/20">
             <UploadCloud className="w-5 h-5 text-[#76C043]" />
@@ -402,17 +517,17 @@ export function PurchaseImportModal({
                 </div>
               )}
 
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                <table className="w-full text-xs">
+              <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+                <table className="w-full min-w-[1080px] text-xs">
                   <thead className="bg-slate-50 border-b border-slate-200">
                     <tr className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">
-                      <th className="px-3 py-2.5 text-left">Product Name</th>
+                      <th className="px-3 py-2.5 text-left min-w-[240px]">Product Name</th>
                       <th className="px-3 py-2.5 text-right w-20">Qty</th>
                       <th className="px-3 py-2.5 text-right w-28">Rate (₹)</th>
                       <th className="px-3 py-2.5 text-right w-20">GST %</th>
                       <th className="px-3 py-2.5 text-left w-36">Category</th>
                       <th className="px-3 py-2.5 text-left w-32">Brand</th>
-                      <th className="px-3 py-2.5 text-left w-40">Status</th>
+                      <th className="px-3 py-2.5 text-left w-60">Linked Product</th>
                       <th className="px-3 py-2.5 w-10" />
                     </tr>
                   </thead>
@@ -428,6 +543,15 @@ export function PurchaseImportModal({
                             onChange={(e) => updateRow(row.key, { name: e.target.value })}
                             className="h-8 text-xs"
                           />
+                          <div className="flex items-center gap-1 mt-1">
+                            <span className="text-[9px] font-bold text-slate-400 uppercase">Supplier code</span>
+                            <Input
+                              value={row.supplierCode || ""}
+                              onChange={(e) => updateRow(row.key, { supplierCode: e.target.value.trim().toUpperCase() })}
+                              placeholder="e.g. VP0012023"
+                              className="h-6 text-[10px] font-mono w-28 px-1.5"
+                            />
+                          </div>
                         </td>
                         <td className="px-3 py-2">
                           <Input
@@ -436,7 +560,7 @@ export function PurchaseImportModal({
                             onChange={(e) =>
                               updateRow(row.key, { quantity: Number(e.target.value) || 0 })
                             }
-                            className="h-8 text-xs text-right"
+                            className="h-8 text-xs text-right min-w-[64px]"
                           />
                         </td>
                         <td className="px-3 py-2">
@@ -445,7 +569,7 @@ export function PurchaseImportModal({
                             value={row.rate}
                             onChange={(e) => updateRow(row.key, { rate: Number(e.target.value) || 0 })}
                             className={cn(
-                              "h-8 text-xs text-right",
+                              "h-8 text-xs text-right min-w-[96px]",
                               !(row.rate > 0) && "border-red-300 bg-red-50"
                             )}
                           />
@@ -457,7 +581,7 @@ export function PurchaseImportModal({
                             onChange={(e) =>
                               updateRow(row.key, { gstRate: Number(e.target.value) || 0 })
                             }
-                            className="h-8 text-xs text-right"
+                            className="h-8 text-xs text-right min-w-[64px]"
                           />
                         </td>
                         <td className="px-3 py-2">
@@ -499,8 +623,20 @@ export function PurchaseImportModal({
                           )}
                         </td>
                         <td className="px-3 py-2">
-                          {row.matchedItem ? (
-                            <span className="text-slate-500 truncate block max-w-[110px]" title={row.matchedItem.brand || ""}>
+                          {row.matchedItem && row.fixProduct ? (
+                            <BrandSelect
+                              value={row.fixProduct.brand}
+                              onValueChange={(v) => updateRow(row.key, { fixProduct: { ...row.fixProduct!, brand: v } })}
+                              className="h-8 text-xs w-full"
+                            />
+                          ) : row.matchedItem ? (
+                            <span
+                              className={cn(
+                                "truncate block max-w-[110px]",
+                                /^unbranded$/i.test(row.matchedItem.brand || "") ? "text-red-600 font-semibold" : "text-slate-500"
+                              )}
+                              title={row.matchedItem.brand || ""}
+                            >
                               {row.matchedItem.brand || "—"}
                             </span>
                           ) : (
@@ -513,10 +649,26 @@ export function PurchaseImportModal({
                           )}
                         </td>
                         <td className="px-3 py-2">
-                          {row.matchedItem ? (
+                          {row.matchedItem && row.fixProduct ? (
+                            <div className="space-y-1">
+                              <span className="text-[9px] font-bold text-slate-400 uppercase block">Product name</span>
+                              <Input
+                                value={row.fixProduct.name}
+                                onChange={(e) => updateRow(row.key, { fixProduct: { ...row.fixProduct!, name: e.target.value } })}
+                                className="h-7 text-xs"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => updateRow(row.key, { fixProduct: null })}
+                                className="text-[10px] text-slate-500 hover:underline"
+                              >
+                                Cancel edit
+                              </button>
+                            </div>
+                          ) : row.matchedItem ? (
                             <span className="inline-flex items-center gap-1 text-emerald-700 font-semibold">
                               <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                              <span className="truncate max-w-[140px]" title={row.matchedItem.name}>
+                              <span className="truncate max-w-[200px]" title={row.matchedItem.name}>
                                 {row.matchedItem.name}
                               </span>
                             </span>
@@ -524,6 +676,57 @@ export function PurchaseImportModal({
                             <span className="inline-flex items-center gap-1 text-amber-700 font-semibold">
                               <Sparkles className="w-3.5 h-3.5 shrink-0" /> New item
                             </span>
+                          )}
+                          {row.matchedItem && (/^\s*VP-?\d{4,}\s*-/i.test(row.matchedItem.name || "") || /^unbranded$/i.test(row.matchedItem.brand || "")) && !row.fixProduct && (
+                            <span className="flex items-center gap-1 text-red-600 text-[10px] font-semibold mt-0.5">
+                              <AlertTriangle className="w-3 h-3" /> Product name/brand looks wrong
+                            </span>
+                          )}
+                          <div className="flex items-center gap-2 mt-1">
+                            <button
+                              type="button"
+                              onClick={() => setPickerFor(pickerFor === row.key ? null : row.key)}
+                              className="inline-flex items-center gap-0.5 text-[10px] font-bold text-[#3F63AD] hover:underline"
+                            >
+                              <Link2 className="w-3 h-3" /> {row.matchedItem ? "Change product" : "Link to product"}
+                            </button>
+                            {row.matchedItem && !row.fixProduct && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateRow(row.key, {
+                                    fixProduct: { name: row.matchedItem.name || "", brand: row.matchedItem.brand || "" },
+                                  })
+                                }
+                                className="inline-flex items-center gap-0.5 text-[10px] font-bold text-slate-600 hover:underline"
+                              >
+                                <Pencil className="w-3 h-3" /> Fix name/brand
+                              </button>
+                            )}
+                          </div>
+                          {pickerFor === row.key && (
+                            <ProductPicker
+                              items={allItems}
+                              onClose={() => setPickerFor(null)}
+                              onPick={(item) => {
+                                updateRow(row.key, {
+                                  matchedItem: item
+                                    ? {
+                                        _id: String(item._id),
+                                        code: item.code,
+                                        vpCode: item.vpCode,
+                                        name: item.name,
+                                        category: item.category,
+                                        brand: item.brand,
+                                        gstRate: item.gstRate,
+                                      }
+                                    : null,
+                                  manualLink: true,
+                                  fixProduct: null,
+                                });
+                                setPickerFor(null);
+                              }}
+                            />
                           )}
                           {row.lowConfidence && (
                             <span className="flex items-center gap-1 text-red-500 text-[10px] mt-0.5">

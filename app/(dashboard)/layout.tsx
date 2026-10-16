@@ -39,7 +39,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Keeps asking for the bank account / UTR of finance payouts that have none yet */}
         <FinancePayoutReminder />
 
-        <Toaster position="top-right" richColors expand={false} />
+        {/* Offset below the top bar, so a pop-up never covers the bell or Logout. */}
+        <Toaster position="top-right" richColors expand={false} offset={72} mobileOffset={{ top: 64 }} />
       </div>
     </BranchProvider>
   );

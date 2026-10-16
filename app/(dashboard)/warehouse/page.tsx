@@ -135,6 +135,26 @@ export default function WarehouseHubPage() {
     },
   });
 
+  // Each transfer starts from the location selected at the top of the app; the
+  // source can then be switched to any other store or godown in the form.
+  useEffect(() => {
+    if (isTransferModalOpen) {
+      setTransferForm((f) => ({
+        ...f,
+        fromLocation: activeLocation.name,
+        toLocation: f.toLocation === activeLocation.name ? "" : f.toLocation,
+      }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTransferModalOpen]);
+
+  const transferLocations: { name: string; type?: string; city?: string }[] =
+    dbWarehouses.length > 0
+      ? dbWarehouses.filter((w: any) => w.status !== "inactive")
+      : (locations || []).map((l: any) => ({ name: l.name, type: l.type, city: l.city }));
+  // Several godowns are saved with type "showroom", so the name is checked too.
+  const locationIcon = (w: any) => (w?.type === "godown" || /godown|warehouse/i.test(String(w?.name || "")) ? "🏢" : "🏬");
+
   // Real MongoDB Stock Transfer Mutation
   const createTransferMutation = useMutation({
     mutationFn: async (payload: any) => {
@@ -785,35 +805,59 @@ export default function WarehouseHubPage() {
           <DialogHeader>
             <DialogTitle className="text-base font-black text-slate-900 flex items-center gap-2">
               <ArrowRightLeft className="w-5 h-5 text-[#76C043]" />
-              Initiate Stock Transfer to Showroom
+              Initiate Stock Transfer
             </DialogTitle>
             <DialogDescription className="text-xs text-slate-500">
-              Dispatch inventory from godown to showroom counter with vehicle verification.
+              Move stock from any store or godown to another, with vehicle verification.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3 py-2">
             <div className="space-y-1">
-              <Label className="text-xs font-bold text-slate-700">Source Godown</Label>
-              <Input disabled value={activeLocation.name} className="h-9 text-xs bg-slate-100 font-bold" />
+              <Label className="text-xs font-bold text-slate-700">From (Store / Godown)</Label>
+              <Select
+                value={transferForm.fromLocation}
+                onValueChange={(val) =>
+                  setTransferForm({
+                    ...transferForm,
+                    fromLocation: val,
+                    toLocation: transferForm.toLocation === val ? "" : transferForm.toLocation,
+                  })
+                }
+              >
+                <SelectTrigger className="h-9 text-xs font-bold">
+                  <SelectValue placeholder="Choose where the stock leaves from" />
+                </SelectTrigger>
+                <SelectContent>
+                  {transferLocations.map((w: any) => (
+                    <SelectItem key={w._id || w.name} value={w.name}>
+                      {locationIcon(w)} {w.name}
+                      {w.city ? ` (${w.city})` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-1">
-              <Label className="text-xs font-bold text-slate-700">Destination Showroom / Branch</Label>
+              <Label className="text-xs font-bold text-slate-700">To (Store / Godown)</Label>
               <Select
                 value={transferForm.toLocation}
                 onValueChange={(val) => setTransferForm({ ...transferForm, toLocation: val })}
               >
                 <SelectTrigger className="h-9 text-xs font-bold">
-                  <SelectValue />
+                  <SelectValue placeholder="Choose where the stock goes" />
                 </SelectTrigger>
                 <SelectContent>
-                  {dbWarehouses.length > 0 ? (
-                    dbWarehouses.map((w: any) => (
-                      <SelectItem key={w._id || w.name} value={w.name}>
-                        🏬 {w.name} ({w.city})
-                      </SelectItem>
-                    ))
+                  {transferLocations.length > 0 ? (
+                    transferLocations
+                      .filter((w: any) => w.name !== transferForm.fromLocation)
+                      .map((w: any) => (
+                        <SelectItem key={w._id || w.name} value={w.name}>
+                          {locationIcon(w)} {w.name}
+                          {w.city ? ` (${w.city})` : ""}
+                        </SelectItem>
+                      ))
                   ) : (
                     <>
                       <SelectItem value="Ashoka Enterprises (Kunraghat Showroom)">
@@ -884,6 +928,14 @@ export default function WarehouseHubPage() {
             <Button
               disabled={createTransferMutation.isPending}
               onClick={() => {
+                if (!transferForm.fromLocation || !transferForm.toLocation) {
+                  toast.error("Choose both the store/godown the stock leaves from and where it goes.");
+                  return;
+                }
+                if (transferForm.fromLocation === transferForm.toLocation) {
+                  toast.error("The stock is already there — choose a different destination.");
+                  return;
+                }
                 const matchedItem = items.find((i: any) => 
                   i.code?.toLowerCase() === transferForm.itemCode?.toLowerCase() ||
                   i.vpCode?.toLowerCase() === transferForm.itemCode?.toLowerCase() ||
@@ -891,7 +943,7 @@ export default function WarehouseHubPage() {
                 );
 
                 createTransferMutation.mutate({
-                  fromWarehouse: activeLocation.name,
+                  fromWarehouse: transferForm.fromLocation,
                   toWarehouse: transferForm.toLocation,
                   vehicleNo: transferForm.vehicleNumber,
                   driverName: transferForm.driverName,
