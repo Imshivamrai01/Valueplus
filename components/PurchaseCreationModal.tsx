@@ -124,8 +124,24 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
       gstRate: number;
       serialNumbers: string[];
       showSerials?: boolean;
+      /** Marked by hand as a gift / accessory: serial numbers become optional. */
+      noSerial?: boolean;
     }>,
   });
+
+  // Gifts and accessories (a free bowl set, a remote, a stand) carry no serial
+  // or IMEI, so for them it is optional. A line counts as one when its product's
+  // category or name says so ("GIFT OTHER", "HAVELLS ACCESSORIES", …), or when
+  // it is ticked by hand on the line.
+  const GIFT_OR_ACCESSORY = /\b(gift|gifts|accessor(y|ies)|free\s*gift|complimentary|freebie)\b/i;
+  const isSerialOptional = (row: { itemId: string; name: string; noSerial?: boolean }) => {
+    if (row.noSerial) return true;
+    const product: any = catalogItems.find((c: any) => c._id === row.itemId);
+    // Brand is left out on purpose: the old stock sheet filled it with groups like
+    // "GIFT & ACCESSORIES" (Bajaj coolers) and "MOBILE & ACCESSORIES" (phones,
+    // which must keep their IMEI).
+    return [product?.category, product?.name, row.name].some((v) => GIFT_OR_ACCESSORY.test(String(v || "")));
+  };
 
   const prevIsOpenRef = React.useRef(false);
 
@@ -597,7 +613,11 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
             rate: Number(i.rate),
             gstRate: Number(i.gstRate),
             hsn: catalogItem?.hsnCode || "",
-            serialNumbers: i.serialNumbers || [],
+            // A gift/accessory line may have no serials, or only some: blanks are
+            // dropped so no empty serial record is created for it.
+            serialNumbers: isSerialOptional(i)
+              ? (i.serialNumbers || []).map((s) => String(s || "").trim()).filter(Boolean)
+              : i.serialNumbers || [],
           };
         }),
         billingEntity: billingEntity || undefined,
@@ -734,6 +754,8 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
     // MANDATORY IMEI / SERIAL NUMBER VALIDATION FOR PURCHASE ENTRY
     if (currentMode === "entry") {
       for (const item of form.items) {
+        // Gifts and accessories: serial / IMEI is optional.
+        if (isSerialOptional(item)) continue;
         const serials = item.serialNumbers || [];
         if (serials.length !== item.quantity) {
           toast.error(`Please enter all ${item.quantity} IMEI / Serial numbers for ${item.name}`);
@@ -748,7 +770,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
       }
 
       // Check duplicate serial numbers within the entry
-      const allSerials = form.items.flatMap(i => (i.serialNumbers || []).map(s => s.trim().toUpperCase()));
+      const allSerials = form.items.flatMap(i => (i.serialNumbers || []).map(s => s.trim().toUpperCase()).filter(Boolean));
       const uniqueSerials = new Set(allSerials);
       if (uniqueSerials.size !== allSerials.length) {
         toast.error("Duplicate IMEI / Serial numbers detected. Every unit must have a unique identifier.");
@@ -1168,7 +1190,9 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
                 {form.items.map((item, index) => {
                   const amount = item.quantity * item.rate;
                   const enteredSerialsCount = (item.serialNumbers || []).filter(s => s && s.trim()).length;
-                  const allSerialsDone = enteredSerialsCount === item.quantity && item.quantity > 0;
+                  const serialOptional = isSerialOptional(item);
+                  const autoOptional = serialOptional && !item.noSerial;
+                  const allSerialsDone = serialOptional || (enteredSerialsCount === item.quantity && item.quantity > 0);
 
                   return (
                     // overflow-hidden here used to clip the product-search dropdown itself:
@@ -1301,7 +1325,29 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
                               <Badge variant={allSerialsDone ? "success" : "warning"} className="text-[10px] ml-1">
                                 {enteredSerialsCount} / {item.quantity} Recorded
                               </Badge>
+                              {serialOptional && (
+                                <Badge className="text-[10px] bg-violet-50 text-violet-700 border-violet-200">
+                                  🎁 Gift / Accessory — serial optional
+                                </Badge>
+                              )}
                             </div>
+
+                            {!autoOptional && (
+                              <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 cursor-pointer select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(item.noSerial)}
+                                  onChange={(e) =>
+                                    setForm((f) => ({
+                                      ...f,
+                                      items: f.items.map((it) => (it.id === item.id ? { ...it, noSerial: e.target.checked } : it)),
+                                    }))
+                                  }
+                                  className="w-3.5 h-3.5 accent-violet-600"
+                                />
+                                Gift / Accessory (no serial)
+                              </label>
+                            )}
 
                             <button 
                               type="button" 
@@ -1328,7 +1374,9 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
                                           <CheckCircle2 className="w-3 h-3" /> Valid
                                         </span>
                                       ) : (
-                                        <span className="text-amber-600 font-bold text-[10px]">Required *</span>
+                                        <span className={cn("font-bold text-[10px]", serialOptional ? "text-slate-400" : "text-amber-600")}>
+                                          {serialOptional ? "Optional" : "Required *"}
+                                        </span>
                                       )}
                                     </div>
                                     <Input
@@ -1337,7 +1385,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
                                       onChange={(e) => updateSerialNumber(item.id, unitIdx, e.target.value.toUpperCase())}
                                       className={cn(
                                         "h-8 text-xs font-mono tracking-wider bg-slate-50",
-                                        isValid ? "border-emerald-300 bg-emerald-50/20" : "border-amber-300 bg-amber-50/20"
+                                        isValid ? "border-emerald-300 bg-emerald-50/20" : serialOptional ? "border-slate-200" : "border-amber-300 bg-amber-50/20"
                                       )}
                                     />
                                   </div>
