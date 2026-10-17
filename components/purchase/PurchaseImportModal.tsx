@@ -70,8 +70,13 @@ interface PreviewRow {
   /** Set once the product was picked by hand: editing the name no longer
    *  re-links the row on its own. */
   manualLink?: boolean;
-  /** Corrections to the LINKED product's own name/brand, saved on confirm. */
-  fixProduct?: { name: string; brand: string } | null;
+  /** Corrections to the LINKED product's own name/brand/category, saved on confirm. */
+  fixProduct?: { name: string; brand: string; category?: string } | null;
+  /** A real category (from the Categories master) suggested for this product. */
+  suggestedCategory?: string;
+  /** False when the linked product is filed under a non-master category such
+   *  as a brand group ("LLOYD") left over from the old stock sheet. */
+  categoryIsMaster?: boolean;
 }
 
 /** Pick the product a row belongs to, or "create new", by searching the catalog. */
@@ -224,10 +229,18 @@ export function PurchaseImportModal({
           matchedItem: r.matchedItem,
           serialNumbers: r.serialNumbers,
           hsn: r.hsn,
-          category: r.referenceMatch?.category || "",
+          category: r.matchedItem ? "" : r.suggestedCategory || r.referenceMatch?.category || "",
           brand: r.referenceMatch?.brand || r.parsedBrand || "",
-          fromReference: Boolean(r.referenceMatch),
-          fixProduct: null,
+          fromReference: Boolean(r.referenceMatch) && !r.suggestedCategory,
+          suggestedCategory: r.suggestedCategory || "",
+          categoryIsMaster: r.categoryIsMaster !== false,
+          // A linked product filed under a brand group ("LLOYD") instead of a real
+          // category opens already corrected to the suggested one — visible, and
+          // undone with "Cancel edit".
+          fixProduct:
+            r.matchedItem && r.categoryIsMaster === false && r.suggestedCategory
+              ? { name: r.matchedItem.name || "", brand: r.matchedItem.brand || "", category: r.suggestedCategory }
+              : null,
         }))
       );
       const referenceCount = data.rows.filter((r: any) => r.referenceMatch).length;
@@ -260,6 +273,10 @@ export function PurchaseImportModal({
             (next.supplierCode ? findMatchingItem(next.supplierCode, allItems) : null) ||
             findMatchingItem(next.name, allItems);
           next.fixProduct = null;
+          next.categoryIsMaster = next.matchedItem
+            ? categories.some((c: any) => c.name === next.matchedItem.category) &&
+              (!next.suggestedCategory || next.suggestedCategory === next.matchedItem.category)
+            : true;
         }
         return next;
       })
@@ -293,15 +310,21 @@ export function PurchaseImportModal({
           // here, on the product itself, so every screen shows it right.
           const name = row.fixProduct.name.trim();
           const brand = row.fixProduct.brand.trim();
-          if (name && (name !== row.matchedItem.name || brand !== (row.matchedItem.brand || ""))) {
+          const category = String(row.fixProduct.category || "").trim();
+          if (
+            name &&
+            (name !== row.matchedItem.name ||
+              brand !== (row.matchedItem.brand || "") ||
+              (category && category !== (row.matchedItem.category || "")))
+          ) {
             const res = await fetch("/api/items", {
               method: "PUT",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ code: row.matchedItem.code, name, ...(brand ? { brand } : {}) }),
+              body: JSON.stringify({ code: row.matchedItem.code, name, ...(brand ? { brand } : {}), ...(category ? { category } : {}) }),
             });
             const json = await res.json();
             if (!json.success) throw new Error(`Could not update "${row.matchedItem.name}": ${json.error}`);
-            row.matchedItem = { ...row.matchedItem, name, brand: brand || row.matchedItem.brand };
+            row.matchedItem = { ...row.matchedItem, name, brand: brand || row.matchedItem.brand, category: category || row.matchedItem.category };
           }
         }
         if (row.matchedItem && row.supplierCode) {
@@ -585,11 +608,40 @@ export function PurchaseImportModal({
                           />
                         </td>
                         <td className="px-3 py-2">
-                          {row.matchedItem ? (
-                            // Matched to a real catalog item — its category is
-                            // whatever that item is already filed under, not
-                            // something this import can change.
-                            <span className="text-slate-500 truncate block max-w-[130px]" title={row.matchedItem.category || ""}>
+                          {row.matchedItem && row.fixProduct ? (
+                            // Fixing the linked product: its category can be set
+                            // to a real one here, saved on the product on confirm.
+                            <div className="space-y-0.5">
+                              {row.matchedItem.category !== row.fixProduct.category && (
+                                <span className="block text-[9px] font-bold text-rose-600 line-through truncate max-w-[150px]" title={row.matchedItem.category || ""}>
+                                  {row.matchedItem.category || "—"}
+                                </span>
+                              )}
+                              <Select
+                                value={row.fixProduct.category || ""}
+                                onValueChange={(v) => updateRow(row.key, { fixProduct: { ...row.fixProduct!, category: v } })}
+                              >
+                                <SelectTrigger className="h-8 text-xs w-full border-emerald-300 bg-emerald-50/50">
+                                  <SelectValue placeholder="Pick a category…" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {categories.map((c: any) => (
+                                    <SelectItem key={c._id || c.name} value={c.name}>
+                                      {c.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          ) : row.matchedItem ? (
+                            <span
+                              className={cn(
+                                "truncate block max-w-[150px]",
+                                row.categoryIsMaster === false ? "text-rose-600 font-semibold" : "text-slate-500"
+                              )}
+                              title={row.categoryIsMaster === false ? "Not a product category — use Fix details" : row.matchedItem.category || ""}
+                            >
+                              {row.categoryIsMaster === false && "⚠ "}
                               {row.matchedItem.category || "—"}
                             </span>
                           ) : (
@@ -677,9 +729,14 @@ export function PurchaseImportModal({
                               <Sparkles className="w-3.5 h-3.5 shrink-0" /> New item
                             </span>
                           )}
-                          {row.matchedItem && (/^\s*VP-?\d{4,}\s*-/i.test(row.matchedItem.name || "") || /^unbranded$/i.test(row.matchedItem.brand || "")) && !row.fixProduct && (
+                          {row.matchedItem && (/^\s*VP-?\d{4,}\s*-/i.test(row.matchedItem.name || "") || /^unbranded$/i.test(row.matchedItem.brand || "") || row.categoryIsMaster === false) && !row.fixProduct && (
                             <span className="flex items-center gap-1 text-red-600 text-[10px] font-semibold mt-0.5">
-                              <AlertTriangle className="w-3 h-3" /> Product name/brand looks wrong
+                              <AlertTriangle className="w-3 h-3" /> Product name/brand/category looks wrong
+                            </span>
+                          )}
+                          {row.matchedItem && row.fixProduct && row.fixProduct.category && row.fixProduct.category !== row.matchedItem.category && (
+                            <span className="block text-emerald-700 text-[10px] font-semibold mt-0.5">
+                              Category will be corrected to {row.fixProduct.category}
                             </span>
                           )}
                           <div className="flex items-center gap-2 mt-1">
@@ -695,12 +752,19 @@ export function PurchaseImportModal({
                                 type="button"
                                 onClick={() =>
                                   updateRow(row.key, {
-                                    fixProduct: { name: row.matchedItem.name || "", brand: row.matchedItem.brand || "" },
+                                    fixProduct: {
+                                      name: row.matchedItem.name || "",
+                                      brand: row.matchedItem.brand || "",
+                                      category:
+                                        row.categoryIsMaster === false && row.suggestedCategory
+                                          ? row.suggestedCategory
+                                          : row.matchedItem.category || "",
+                                    },
                                   })
                                 }
                                 className="inline-flex items-center gap-0.5 text-[10px] font-bold text-slate-600 hover:underline"
                               >
-                                <Pencil className="w-3 h-3" /> Fix name/brand
+                                <Pencil className="w-3 h-3" /> Fix details
                               </button>
                             )}
                           </div>

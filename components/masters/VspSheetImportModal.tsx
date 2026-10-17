@@ -154,7 +154,7 @@ export function VspSheetImportModal({
                 {previewMutation.isPending ? "Reading the sheet..." : "Choose the price list Excel sheet"}
               </p>
               <p className="text-xs text-slate-400 mt-1">
-                Each tab needs a "Model" column and a "New V+NLC" and/or "New VSP" column. Nothing is saved until you
+                Each tab needs a "Model" (or "Product") column and a "New V+NLC" and/or "New VSP" column. Nothing is saved until you
                 confirm.
               </p>
             </button>

@@ -21,8 +21,10 @@ import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 
 export default function StaffTasksPage() {
   const queryClient = useQueryClient();
-  const { data: session } = useSession();
-  const userRole = ((session?.user as any)?.role || "admin").toLowerCase();
+  const { data: session, status: sessionStatus } = useSession();
+  // Unknown until the session has loaded — never assumed to be "admin", which
+  // used to fetch every staff member's tasks for whoever was logging in.
+  const userRole = String((session?.user as any)?.role || "").toLowerCase();
   const currentUserName = session?.user?.name || "Staff Member";
   const isSuperAdminOrAdmin = userRole === "admin" || userRole === "superadmin" || userRole === "manager" || userRole === "hr";
   const isIndividualStaff = !isSuperAdminOrAdmin;
@@ -65,6 +67,7 @@ export default function StaffTasksPage() {
   // Fetch tasks
   const { data: rawTasks = [], isLoading, refetch } = useQuery({
     queryKey: ["staffTasks", isIndividualStaff ? currentUserName : "all"],
+    enabled: sessionStatus === "authenticated" && Boolean(userRole),
     queryFn: async () => {
       let url = "/api/staff/tasks";
       if (isIndividualStaff) {
@@ -79,18 +82,19 @@ export default function StaffTasksPage() {
   // Strict isolation for individual staff
   const userScopedTasks = useMemo(() => {
     if (!isIndividualStaff) return rawTasks;
-    const firstName = currentUserName.toLowerCase().split(" ")[0];
+    const me = currentUserName.trim().toLowerCase();
+    const myId = String((session?.user as any)?.id || "");
     return rawTasks.filter((t: any) => {
-      const assigned = (t.assignedStaff || "").toLowerCase();
+      const assigned = (t.assignedStaff || "").trim().toLowerCase();
       return (
-        assigned.includes(firstName) ||
-        assigned === currentUserName.toLowerCase() ||
+        (myId && String(t.assignedStaffId || "") === myId) ||
+        assigned === me ||
         assigned === "all staff" ||
         assigned === "sales staff" ||
-        t.createdBy?.toLowerCase() === currentUserName.toLowerCase()
+        String(t.createdBy || "").trim().toLowerCase() === me
       );
     });
-  }, [rawTasks, isIndividualStaff, currentUserName]);
+  }, [rawTasks, isIndividualStaff, currentUserName, session]);
 
   // Create Task Mutation
   const createTaskMutation = useMutation({

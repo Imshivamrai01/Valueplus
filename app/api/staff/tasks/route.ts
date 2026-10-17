@@ -3,6 +3,13 @@ import connectToDatabase from "@/lib/db";
 import StaffTask from "@/models/StaffTask";
 import { notifyAssignee } from "@/lib/notify";
 import { getActor } from "@/lib/requirePermission";
+import User from "@/models/User";
+
+/** Roles that see and manage every staff member's tasks. */
+const TASK_MANAGER_ROLES = ["admin", "superadmin", "manager", "hr"];
+const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const exactName = (name: string) => ({ $regex: new RegExp(`^\\s*${escapeRegex(name.trim())}\\s*$`, "i") });
+const isGroupAssignee = (name: any) => /^(all staff|sales staff|admin \(self\))$/i.test(String(name || "").trim());
 
 const inr = (n: number) => `₹${Math.round(n).toLocaleString("en-IN")}`;
 
@@ -33,18 +40,31 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const assignedStaff = searchParams.get("staff");
     const status = searchParams.get("status");
-    const role = searchParams.get("role");
-    
+
     await connectToDatabase();
-    
+
     const filter: any = {};
-    
-    // If specific staff is requested or non-admin user
-    if (assignedStaff && assignedStaff !== "all") {
-      const firstName = assignedStaff.trim().split(" ")[0];
+
+    // Who is asking decides what they see — not a name sent by the page. Staff
+    // get only tasks given to them (by id, or by their exact full name — never
+    // a first name, which matched "Amit Singh" to "Amit Kumar Singh"), tasks
+    // for everyone, and tasks they created themselves.
+    const actor = await getActor().catch(() => null);
+    if (!actor) {
+      return NextResponse.json({ success: false, error: "You must be signed in to see tasks." }, { status: 401 });
+    }
+    if (!TASK_MANAGER_ROLES.includes(actor.role)) {
+      const isSales = ["salesman", "sales"].includes(actor.role);
       filter.$or = [
-        { assignedStaff: { $regex: new RegExp(assignedStaff, "i") } },
-        { assignedStaff: { $regex: new RegExp(firstName, "i") } },
+        ...(actor.id ? [{ assignedStaffId: actor.id }] : []),
+        { assignedStaff: exactName(actor.name) },
+        { assignedStaff: "All Staff" },
+        ...(isSales ? [{ assignedStaff: "Sales Staff" }] : []),
+        { createdBy: exactName(actor.name) },
+      ];
+    } else if (assignedStaff && assignedStaff !== "all") {
+      filter.$or = [
+        { assignedStaff: exactName(assignedStaff) },
         { assignedStaff: "All Staff" },
         { assignedStaff: "Sales Staff" },
       ];
@@ -80,6 +100,12 @@ export async function POST(req: Request) {
       currentAmount: Number(body.currentAmount) || 0,
     };
 
+    // Remember the person's id, so the task follows them rather than a spelling.
+    if (!payload.assignedStaffId && payload.assignedStaff && !isGroupAssignee(payload.assignedStaff)) {
+      const person: any = await User.findOne({ name: exactName(String(payload.assignedStaff)) }, { _id: 1 }).lean();
+      if (person) payload.assignedStaffId = String(person._id);
+    }
+
     const task = await StaffTask.create(payload);
 
     // The person (or group) it is given to sees it in their bell straight away.
@@ -114,6 +140,14 @@ export async function PUT(req: Request) {
       }
     }
     
+    // Given to someone else → their id goes with it (the old id would keep
+    // showing the task to the previous person).
+    if (updates.assignedStaff !== undefined && updates.assignedStaffId === undefined) {
+      const person: any = isGroupAssignee(updates.assignedStaff)
+        ? null
+        : await User.findOne({ name: exactName(String(updates.assignedStaff)) }, { _id: 1 }).lean();
+      updates.assignedStaffId = person ? String(person._id) : "";
+    }
     const before: any = await StaffTask.findById(targetId).lean();
     const updated: any = await StaffTask.findByIdAndUpdate(targetId, { $set: updates }, { new: true }).lean();
     if (!updated) {

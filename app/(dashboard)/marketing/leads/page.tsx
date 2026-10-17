@@ -36,7 +36,7 @@ export default function LeadsPipelinePage() {
     interestedProduct: "",
     vpCode: "",
     estimatedValue: "",
-    assignedStaff: "Amit Singh",
+    assignedStaff: "",
     priority: "Medium" as "Low" | "Medium" | "High" | "Urgent",
     status: "New" as "New" | "Contacted" | "Interested" | "Follow-up" | "Converted" | "Lost",
     followUpDate: new Date().toISOString().split("T")[0],
@@ -104,7 +104,7 @@ export default function LeadsPipelinePage() {
         interestedProduct: "",
         vpCode: "",
         estimatedValue: "",
-        assignedStaff: "Amit Singh",
+        assignedStaff: "",
         priority: "Medium",
         status: "New",
         followUpDate: new Date().toISOString().split("T")[0],
@@ -182,6 +182,10 @@ export default function LeadsPipelinePage() {
     e.preventDefault();
     if (!leadForm.customerName || !leadForm.mobile || !leadForm.interestedProduct) {
       toast.error("Please fill all required fields");
+      return;
+    }
+    if (!leadForm.assignedStaff) {
+      toast.error("Choose the staff member this lead is assigned to.");
       return;
     }
     createLeadMutation.mutate({
@@ -539,12 +543,13 @@ export default function LeadsPipelinePage() {
               </div>
 
               <div>
-                <Label className="text-xs font-bold text-slate-700">Assigned Staff</Label>
+                <Label className="text-xs font-bold text-slate-700">Assigned Staff *</Label>
                 <select
                   value={leadForm.assignedStaff}
                   onChange={(e) => setLeadForm({ ...leadForm, assignedStaff: e.target.value })}
-                  className="mt-1 w-full h-9 rounded-md border border-input bg-white px-2 py-1 text-xs font-bold shadow-xs focus:outline-none"
+                  className={`mt-1 w-full h-9 rounded-md border bg-white px-2 py-1 text-xs font-bold shadow-xs focus:outline-none ${leadForm.assignedStaff ? "border-input" : "border-rose-400 bg-rose-50"}`}
                 >
+                  <option value="">— Select staff —</option>
                   <option value="Sales Team">👥 All Sales Team</option>
                   {salesmenList.map((s: any) => (
                     <option key={s._id || s.name} value={s.name}>

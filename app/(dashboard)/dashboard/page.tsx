@@ -451,6 +451,15 @@ export default function DashboardPage() {
   const [taskDateFilter, setTaskDateFilter] = useState<string>("");
   const [taskDateRange, setTaskDateRange] = useState<{ start: string; end: string }>({ start: "", end: "" });
   const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
+  // Real staff accounts for the lead / task "assign to" pickers.
+  const [staffUsers, setStaffUsers] = useState<any[]>([]);
+  useEffect(() => {
+    fetch("/api/users")
+      .then((r) => r.json())
+      .then((j) => setStaffUsers(j.success && Array.isArray(j.data) ? j.data.filter((u: any) => u.status !== "inactive") : []))
+      .catch(() => {});
+  }, []);
+
   const [taskForm, setTaskForm] = useState({
     taskTitle: "",
     assignedStaff: "Admin (Self)",
@@ -527,7 +536,7 @@ export default function DashboardPage() {
     mobile: "",
     interestedProduct: "",
     estimatedValue: "",
-    assignedStaff: "Amit Singh",
+    assignedStaff: "",
     priority: "Medium" as "Low" | "Medium" | "High" | "Urgent",
     status: "New" as "New" | "Contacted" | "Interested" | "Follow-up" | "Converted" | "Lost",
     followUpDate: new Date().toISOString().split("T")[0],
@@ -807,6 +816,10 @@ export default function DashboardPage() {
   const handleCreateLeadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!leadForm.customerName.trim() || !leadForm.mobile.trim()) return;
+    if (!leadForm.assignedStaff) {
+      toast.error("Choose the staff member this lead is assigned to.");
+      return;
+    }
     const newLead = {
       ...leadForm,
       _id: `lead-${Date.now()}`,
@@ -836,7 +849,7 @@ export default function DashboardPage() {
       mobile: "",
       interestedProduct: "",
       estimatedValue: "",
-      assignedStaff: "Amit Singh",
+      assignedStaff: "",
       priority: "Medium",
       status: "New",
       followUpDate: new Date().toISOString().split("T")[0],
@@ -5461,12 +5474,15 @@ export default function DashboardPage() {
                   className="mt-1 w-full h-9 rounded-md border border-input bg-white px-3 py-1 text-xs font-bold shadow-xs focus:outline-none"
                 >
                   <option value="Admin (Self)">👑 Admin (Self)</option>
-                  <option value="Amit Singh">👤 Amit Singh</option>
-                  <option value="Rahul Verma">👤 Rahul Verma</option>
-                  <option value="Priya Sharma">👤 Priya Sharma</option>
-                  <option value="Pooja Gupta">👤 Pooja Gupta</option>
-                  <option value="Rakesh Patel">👤 Rakesh Patel</option>
-                  <option value="Vikash Kumar">👤 Vikash Kumar</option>
+                  <option value="All Staff">👥 All Showroom Staff</option>
+                  <option value="Sales Staff">💼 All Sales Staff</option>
+                  {staffUsers
+                    .filter((u: any) => !["admin", "superadmin"].includes(String(u.role || "").toLowerCase()))
+                    .map((u: any) => (
+                      <option key={u._id || u.email} value={u.name}>
+                        👤 {u.name} ({String(u.role || "staff").toUpperCase()})
+                      </option>
+                    ))}
                 </select>
               </div>
 
@@ -5602,11 +5618,15 @@ export default function DashboardPage() {
                   onChange={(e) => setLeadForm({ ...leadForm, assignedStaff: e.target.value })}
                   className="mt-1 w-full h-9 rounded-md border border-input bg-white px-2 py-1 text-xs font-medium shadow-xs focus:outline-none"
                 >
-                  <option value="Amit Singh">Amit Singh</option>
-                  <option value="Rahul Verma">Rahul Verma</option>
-                  <option value="Priya Sharma">Priya Sharma</option>
-                  <option value="Pooja Gupta">Pooja Gupta</option>
-                  <option value="Sales Team">Sales Team</option>
+                  <option value="">— Select staff —</option>
+                  <option value="Sales Team">👥 All Sales Team</option>
+                  {staffUsers
+                    .filter((u: any) => ["salesman", "sales", "cashier", "manager"].includes(String(u.role || "").toLowerCase()))
+                    .map((u: any) => (
+                      <option key={u._id || u.email} value={u.name}>
+                        👤 {u.name}
+                      </option>
+                    ))}
                 </select>
               </div>
 

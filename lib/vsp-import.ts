@@ -65,6 +65,13 @@ function toPrice(value: any): number | null {
 
 const formatPrice = (n: number | null) => (n === null ? "-" : String(n));
 
+// The column holding the model number. LG sheets call it "Model"; other brands'
+// sheets (e.g. Aisen) call it "Product" or "Model No.". A tab's "Model" columns
+// are used when it has any, the other names only when it has none.
+const MODEL_HEADER = /^model$/i;
+const MODEL_HEADER_FALLBACK = /^(model\s*(no\.?|number|code)|product|product\s*(code|model)|item\s*code)$/i;
+const isModelHeader = (c: string) => MODEL_HEADER.test(c) || MODEL_HEADER_FALLBACK.test(c);
+
 export function parseVspWorkbook(data: Buffer | ArrayBuffer | Uint8Array): { rows: VspSheetRow[]; notes: VspSheetNote[] } {
   const workbook = XLSX.read(data, { type: "buffer" });
   const rows: VspSheetRow[] = [];
@@ -73,11 +80,11 @@ export function parseVspWorkbook(data: Buffer | ArrayBuffer | Uint8Array): { row
   for (const sheet of workbook.SheetNames) {
     const grid: any[][] = XLSX.utils.sheet_to_json(workbook.Sheets[sheet], { header: 1, defval: "", blankrows: false });
 
-    // The header is the first row that names a model column; a tab without one is
-    // reported rather than guessed at.
-    const headerIndex = grid.findIndex((r) => r.some((c) => /^model$/i.test(clean(c))));
+    // The header is the first row that names a model column ("Model", or
+    // "Product" / "Model No."); a tab without one is reported, not guessed at.
+    const headerIndex = grid.findIndex((r) => r.some((c) => isModelHeader(clean(c))));
     if (headerIndex < 0) {
-      notes.push({ sheet, message: `Sheet "${sheet}" was skipped: it has no "Model" column.` });
+      notes.push({ sheet, message: `Sheet "${sheet}" was skipped: it has no "Model" or "Product" column.` });
       continue;
     }
     const header = grid[headerIndex].map(clean);
@@ -93,7 +100,10 @@ export function parseVspWorkbook(data: Buffer | ArrayBuffer | Uint8Array): { row
     } else if (costIndex < 0) {
       notes.push({ sheet, message: `Sheet "${sheet}" has no "New V+NLC" column, so only VSPs are taken from it.` });
     }
-    const modelIndexes = header.map((c, i) => (/^model$/i.test(c) ? i : -1)).filter((i) => i >= 0);
+    let modelIndexes = header.map((c, i) => (MODEL_HEADER.test(c) ? i : -1)).filter((i) => i >= 0);
+    if (modelIndexes.length === 0) {
+      modelIndexes = header.map((c, i) => (MODEL_HEADER_FALLBACK.test(c) ? i : -1)).filter((i) => i >= 0);
+    }
     const sapIndex = header.findIndex((c) => /sap\s*code/i.test(c));
 
     for (let i = headerIndex + 1; i < grid.length; i++) {
@@ -101,7 +111,7 @@ export function parseVspWorkbook(data: Buffer | ArrayBuffer | Uint8Array): { row
       const models = modelIndexes.map((idx) => clean(row[idx])).filter(Boolean);
       if (models.length === 0) continue;
       // A header repeated further down the tab is not a product.
-      if (models.every((m) => /^model$/i.test(m))) continue;
+      if (models.every((m) => isModelHeader(m))) continue;
 
       const vsp = vspIndex >= 0 ? toPrice(row[vspIndex]) : null;
       const cost = costIndex >= 0 ? toPrice(row[costIndex]) : null;
@@ -156,13 +166,38 @@ export interface VspMatchResult {
 
 const samePrice = (a: number, b: number) => Math.abs(a - b) < 0.005;
 
+/**
+ * Every model number a catalog product's name could carry. The first word is
+ * the model for most names ("55UA83006LA.ATR-LG"), but some put the brand
+ * first ("AISEN A43FDS962- AISEN") or glue it on ("A32HDS623-AISEN LED"), so
+ * each word is tried too — kept only when it has both letters and digits and
+ * is long enough to be a model, never a plain word like "AISEN" or "LED".
+ */
+function itemModelKeys(name: any): string[] {
+  const keys = new Set<string>();
+  const first = baseModelKey(name);
+  if (first) keys.add(first);
+  for (const word of clean(name).toUpperCase().split(/[\s()/,]+/)) {
+    const beforeDot = word.split(".")[0];
+    // "A32HDS623-AISEN" → also "A32HDS623": a trailing "-BRAND" (letters only).
+    const withoutBrand = beforeDot.replace(/-[A-Z]+$/, "");
+    for (const candidate of [beforeDot, withoutBrand]) {
+      const key = candidate.replace(/[^A-Z0-9]/g, "");
+      if (key.length >= 5 && /[A-Z]/.test(key) && /\d/.test(key)) keys.add(key);
+    }
+  }
+  return Array.from(keys);
+}
+
 export function matchVspRows(rows: VspSheetRow[], items: any[]): VspMatchResult {
   const itemsByModel = new Map<string, any[]>();
   const itemsByCode = new Map<string, any>();
   for (const item of items) {
-    const key = baseModelKey(item.name);
-    if (key) itemsByModel.set(key, [...(itemsByModel.get(key) || []), item]);
-    for (const code of [item.code, item.vpCode]) {
+    for (const key of itemModelKeys(item.name)) {
+      const list = itemsByModel.get(key) || [];
+      if (!list.includes(item)) itemsByModel.set(key, [...list, item]);
+    }
+    for (const code of [item.code, item.vpCode, ...(Array.isArray(item.supplierCodes) ? item.supplierCodes : [])]) {
       const c = clean(code).toUpperCase();
       if (c) itemsByCode.set(c, item);
     }

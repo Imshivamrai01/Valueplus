@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import Item from "@/models/Item";
 import ProductCatalogReference from "@/models/ProductCatalogReference";
+import Category from "@/models/Category";
+import { categoryForHsnCode } from "@/lib/purchase-import/hsn-category";
 import { getActor } from "@/lib/requirePermission";
 import { resolveRows } from "@/lib/purchase-import/resolve-rows";
 import { findMatchingItem, extractEmbeddedCode } from "@/lib/purchase-import/match-item";
@@ -115,8 +117,17 @@ export async function POST(req: Request) {
     await connectToDatabase();
     const allItems = await Item.find(
       {},
-      { name: 1, code: 1, vpCode: 1, supplierCodes: 1, purchasePrice: 1, gstRate: 1, category: 1, brand: 1 }
+      { name: 1, code: 1, vpCode: 1, supplierCodes: 1, purchasePrice: 1, gstRate: 1, category: 1, brand: 1, hsnCode: 1 }
     ).lean();
+
+    // Many products came from the old stock sheet filed under its brand groups
+    // ("LLOYD", "HAIER WASHING MACHINE") instead of a real category, and the
+    // stock reference's categories are often wrong too. For every row a real
+    // category from the Categories master is suggested from the invoice's HSN
+    // code (8450 → Washing Machines, 8415 → Air Conditioners, …).
+    const masterCategories = new Set(
+      ((await Category.find({}, { name: 1 }).lean()) as any[]).map((c) => String(c.name || "").trim()).filter(Boolean)
+    );
 
     const serialGroups = groupSerialsByProduct(serialGrid);
 
@@ -125,8 +136,8 @@ export async function POST(req: Request) {
     // filling in a brand-new product the admin would otherwise have to pick
     // Category/Brand for by hand.
     const referenceByVpCode = new Map<string, { category: string; brand: string }>();
-    const unmatchedCodesPresent = parsedRows.some((row) => extractEmbeddedCode(row.name));
-    if (unmatchedCodesPresent) {
+    const codesPresent = parsedRows.some((row) => extractEmbeddedCode(row.name));
+    if (codesPresent) {
       const references = await ProductCatalogReference.find(
         { category: { $ne: "" } },
         { vpCode: 1, category: 1, brand: 1 }
@@ -161,8 +172,15 @@ export async function POST(req: Request) {
       // "VP0012023 - GLS19I3AGAHF- LLOYD" → code VP0012023, brand LLOYD, and the
       // clean name a new product should get: "GLS19I3AGAHF- LLOYD".
       const parts = splitSupplierLine(row.name);
+      const suggestedCategory = categoryForHsnCode(row.hsn, masterCategories);
       return {
         ...row,
+        suggestedCategory,
+        // "Right" means a master category that agrees with the HSN on the bill.
+        categoryIsMaster: matched
+          ? masterCategories.has(String(matched.category || "").trim()) &&
+            (!suggestedCategory || suggestedCategory === String(matched.category || "").trim())
+          : true,
         supplierCode: parts.supplierCode,
         parsedBrand: parts.brand,
         suggestedName: productNameFromLine(parts) || row.name,

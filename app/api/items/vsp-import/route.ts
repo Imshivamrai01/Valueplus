@@ -58,7 +58,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: 'No price rows were found. The sheet needs a "Model" column and a "New V+NLC" or "New VSP" column.',
+          error: 'No price rows were found. The sheet needs a "Model" (or "Product") column and a "New V+NLC" or "New VSP" column.',
           notes,
         },
         { status: 400 }
@@ -66,7 +66,7 @@ export async function POST(req: Request) {
     }
 
     await connectToDatabase();
-    const items = await Item.find({}, { name: 1, code: 1, vpCode: 1, brand: 1, vsp: 1, purchasePrice: 1 }).lean();
+    const items = await Item.find({}, { name: 1, code: 1, vpCode: 1, supplierCodes: 1, brand: 1, vsp: 1, purchasePrice: 1 }).lean();
     const result = matchVspRows(rows, items);
 
     let applied = 0;
