@@ -53,7 +53,14 @@ export function CashHandoverCard({ cashierName }: { cashierName: string }) {
   // (which also carries a ₹2,00,000 opening float and every prior day's
   // history). A cashier hands over what came in today, not the business's
   // entire cash position since day one.
-  const todaysNetCash = Math.max(0, (data?.todayInflow || 0) - (data?.todayOutflow || 0));
+  // Cash that has come in since the last handover to the Admin (bills, cash
+  // taken on due/finance bills, dues collected — less cash spent or banked).
+  // Exactly what should be in the drawer to hand over now.
+  const todaysNetCash = Math.max(0, Number(data?.cashSinceLastHandover) || 0);
+  const lastHandover = data?.lastHandover || null;
+  const sinceLabel = lastHandover
+    ? `since last handover (${lastHandover.date} ${lastHandover.time})`
+    : "so far";
 
   const openDialog = () => {
     setAmount(String(Math.round(todaysNetCash)));
@@ -115,6 +122,7 @@ export function CashHandoverCard({ cashierName }: { cashierName: string }) {
             <p className="text-sm font-black text-slate-900">Today's cash has been handed over to the Admin</p>
             <p className="text-xs text-slate-500">
               {formatCurrency(todaysHandover.amount)} · at {todaysHandover.time}
+              {todaysNetCash > 0 && <> · {formatCurrency(todaysNetCash)} more received since then</>}
             </p>
           </div>
           <Button variant="outline" size="sm" onClick={openDialog} className="h-8 text-xs shrink-0">
@@ -128,7 +136,9 @@ export function CashHandoverCard({ cashierName }: { cashierName: string }) {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-black text-slate-900">Hand over cash to the Admin?</p>
-            <p className="text-xs text-slate-500">Today's cash: {formatCurrency(todaysNetCash)}</p>
+            <p className="text-xs text-slate-500">
+              Cash received {sinceLabel}: <span className="font-bold text-slate-800">{formatCurrency(todaysNetCash)}</span>
+            </p>
           </div>
           <Button size="sm" onClick={openDialog} className="h-8 text-xs shrink-0 bg-[#3F63AD] hover:bg-[#2E4F95]">
             Transfer to Admin

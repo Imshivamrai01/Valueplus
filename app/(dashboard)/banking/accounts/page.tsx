@@ -666,6 +666,11 @@ export default function BankAccountsAndCashRegisterPage() {
                                   🟢 Cash Sale Bill
                                 </Badge>
                               )}
+                              {tx.category === "CASH_RECEIPT" && (
+                                <Badge className="bg-teal-50 text-teal-800 border-teal-200 text-[10px]">
+                                  💰 Due Collected (Cash)
+                                </Badge>
+                              )}
                               {tx.category === "EMI_COLLECTION" && (
                                 <Badge className="bg-blue-50 text-blue-800 border-blue-200 text-[10px]">
                                   💳 Counter EMI

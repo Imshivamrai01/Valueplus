@@ -2,6 +2,7 @@ import CashTransaction from "@/models/CashTransaction";
 import Invoice from "@/models/Invoice";
 import Expense from "@/models/Expense";
 import FinanceTransaction from "@/models/FinanceTransaction";
+import PaymentTransaction from "@/models/PaymentTransaction";
 
 /**
  * Builds the same consolidated cash ledger + running balance the Cash Register
@@ -11,6 +12,18 @@ import FinanceTransaction from "@/models/FinanceTransaction";
  */
 /** "YYYY-MM-DD" in India time — the server runs in UTC. */
 const istDay = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(d);
+
+/** When a cash movement happened. A register entry's typed date + "HH:MM" (India
+ *  time) wins, since a handover can be recorded later than it happened. */
+function momentOf(date?: string, time?: string, createdAt?: any): number {
+  const hm = String(time || "").match(/^(\d{1,2}):(\d{2})/);
+  if (date && /^\d{4}-\d{2}-\d{2}$/.test(date) && hm && !/[ap]m/i.test(String(time))) {
+    return new Date(`${date}T${hm[1].padStart(2, "0")}:${hm[2]}:00+05:30`).getTime();
+  }
+  const c = createdAt ? new Date(createdAt).getTime() : NaN;
+  if (!isNaN(c)) return c;
+  return date ? new Date(`${date}T12:00:00+05:30`).getTime() : 0;
+}
 
 export async function getCashRegisterSummary() {
   const todayStr = istDay(new Date());
@@ -69,6 +82,7 @@ export async function getCashRegisterSummary() {
       handedTo: tx.handedTo || "",
       recordedBy: tx.recordedBy || "Cashier / Admin",
       source: "CASH_TRANSACTION",
+      at: momentOf(tx.date, tx.time, (tx as any).createdAt),
     });
   });
 
@@ -84,8 +98,11 @@ export async function getCashRegisterSummary() {
         ? inv.payments.filter((p: any) => /cash/i.test(p?.mode || ""))
         : [];
       const isSplit = Array.isArray(inv.payments) && inv.payments.length > 1;
+      // A plain cash bill: what was actually paid on it (normally the whole bill).
       const cashAmount = isSplit
         ? cashRows.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0)
+        : Number(inv.paidAmount) > 0
+        ? Number(inv.paidAmount)
         : Number(inv.grandTotal || inv.totalAmount || inv.total || 0);
 
       if (cashAmount <= 0) return;
@@ -104,8 +121,71 @@ export async function getCashRegisterSummary() {
         partyName: inv.customerName || "Walk-in Customer",
         recordedBy: "Sales Cashier",
         source: "INVOICE",
+        at: momentOf(undefined, undefined, inv.createdAt) || momentOf(invDate),
       });
     }
+  });
+
+  // A Due / Credit bill where part of the amount was taken in cash at the counter.
+  const dueCashBills = await Invoice.find(
+    {
+      type: "tax-invoice",
+      status: { $ne: "cancelled" },
+      paymentMode: { $regex: /due|credit/i },
+      dueAdvanceMode: { $regex: /cash/i },
+      paidAmount: { $gt: 0 },
+    },
+    { invoiceNumber: 1, customerName: 1, paidAmount: 1, dueAdvanceAmount: 1, date: 1, createdAt: 1 }
+  ).lean();
+  (dueCashBills as any[]).forEach((inv) => {
+    const ref = `DUEADV-${inv.invoiceNumber}`;
+    if (seenRefs.has(ref) || seenRefs.has(inv.invoiceNumber)) return;
+    seenRefs.add(ref);
+    const amount = Number(inv.dueAdvanceAmount) || Number(inv.paidAmount) || 0;
+    if (amount <= 0) return;
+    consolidatedLedger.push({
+      _id: `DUEADV-${inv._id}`,
+      type: "INFLOW",
+      category: "CASH_SALE",
+      amount,
+      date: String(inv.date || "").slice(0, 10) || (inv.createdAt ? istDay(new Date(inv.createdAt)) : todayStr),
+      time: inv.createdAt ? new Date(inv.createdAt).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata" }) : "",
+      referenceNo: inv.invoiceNumber,
+      description: `Cash received on Due / Credit bill · ${inv.customerName || "Customer"}`,
+      partyName: inv.customerName || "Customer",
+      recordedBy: "Sales Cashier",
+      source: "INVOICE",
+      at: momentOf(undefined, undefined, inv.createdAt),
+    });
+  });
+
+  // Cash collected later against a bill — a due cleared, a payment received at
+  // the counter. A bill's own first payment is already counted with the bill.
+  const cashReceipts = await PaymentTransaction.find(
+    { partyType: "Customer", type: "received", paymentMode: { $regex: /^cash/i } },
+    { transactionId: 1, amount: 1, date: 1, referenceId: 1, partyName: 1, notes: 1, createdAt: 1 }
+  ).lean();
+  (cashReceipts as any[]).forEach((p) => {
+    if (/^initial payment/i.test(String(p.notes || "")) || String(p.transactionId || "").startsWith("TXN-LEGACY")) return;
+    const ref = String(p.transactionId);
+    if (seenRefs.has(ref)) return;
+    seenRefs.add(ref);
+    const amount = Number(p.amount) || 0;
+    if (amount <= 0) return;
+    consolidatedLedger.push({
+      _id: `RCPT-${p._id}`,
+      type: "INFLOW",
+      category: "CASH_RECEIPT",
+      amount,
+      date: String(p.date || "").slice(0, 10) || (p.createdAt ? istDay(new Date(p.createdAt)) : todayStr),
+      time: p.createdAt ? new Date(p.createdAt).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata" }) : "",
+      referenceNo: p.referenceId || ref,
+      description: `Cash received${p.referenceId ? " against " + p.referenceId : ""}${p.notes ? " · " + p.notes : ""}`,
+      partyName: p.partyName || "Customer",
+      recordedBy: "Counter",
+      source: "PAYMENT",
+      at: momentOf(undefined, undefined, p.createdAt) || momentOf(p.date),
+    });
   });
 
   financeRecords.forEach((f) => {
@@ -127,6 +207,7 @@ export async function getCashRegisterSummary() {
           partyName: f.customerName,
           recordedBy: "Finance Desk",
           source: "FINANCE_DP",
+          at: momentOf(undefined, undefined, (f as any).createdAt) || momentOf(f.date ? f.date.split(" ")[0] : todayStr),
         });
       }
     }
@@ -149,6 +230,7 @@ export async function getCashRegisterSummary() {
               partyName: f.customerName,
               recordedBy: inst.collectedBy || "Store Cashier",
               source: "FINANCE_EMI",
+              at: momentOf(inst.paidDate || todayStr),
             });
           }
         }
@@ -172,6 +254,7 @@ export async function getCashRegisterSummary() {
         partyName: exp.category,
         recordedBy: "Store Manager",
         source: "EXPENSE",
+        at: momentOf(undefined, undefined, (exp as any).createdAt) || momentOf(expDate),
       });
     }
   });
@@ -203,6 +286,22 @@ export async function getCashRegisterSummary() {
     }
   });
 
+  // What the cashier should hand over now: the cash that came in (less cash
+  // spent or banked) after the last handover to the Admin. Only real cash
+  // movements count — never the all-time total.
+  const handovers = consolidatedLedger
+    .filter((e) => e.category === "MD_HANDOVER")
+    .sort((a, b) => (b.at || 0) - (a.at || 0));
+  const lastHandover = handovers[0] || null;
+  const sinceAt = lastHandover?.at || 0;
+  let cashSinceLastHandover = 0;
+  const sinceLastHandover: any[] = [];
+  consolidatedLedger.forEach((e) => {
+    if (e.category === "MD_HANDOVER" || !(Number(e.at) > sinceAt)) return;
+    cashSinceLastHandover += (e.type === "INFLOW" ? 1 : -1) * (Number(e.amount) || 0);
+    sinceLastHandover.push(e);
+  });
+
   const baseOpening = 200000;
   const currentBalance = Math.max(0, baseOpening + totalInflow - totalOutflow);
 
@@ -216,6 +315,9 @@ export async function getCashRegisterSummary() {
     bankDepositsTotal,
     mdHandoversTotal,
     cashExpensesTotal,
+    cashSinceLastHandover: Math.max(0, Math.round(cashSinceLastHandover * 100) / 100),
+    lastHandover: lastHandover ? { amount: lastHandover.amount, date: lastHandover.date, time: lastHandover.time, at: lastHandover.at } : null,
+    sinceLastHandover: sinceLastHandover.sort((a, b) => (a.at || 0) - (b.at || 0)),
     ledger: consolidatedLedger,
   };
 }
