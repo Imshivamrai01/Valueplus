@@ -182,6 +182,12 @@ export interface IInvoice extends Document {
   dispatchType?: "immediate" | "delayed_delivery";
   deliveryStatus?: "pending_dispatch" | "packed" | "out_for_delivery" | "delivered";
   deliveryOtp?: string;
+  /** When the goods are to be handed over, for a bill delivered later
+   *  ("YYYY-MM-DD"). Sold and off stock already, kept aside till then. */
+  expectedDeliveryDate?: string;
+  deliveryNote?: string;
+  /** Set once the "delivery due soon" reminder has gone out. */
+  deliveryReminderSentAt?: Date;
   driverName?: string;
   driverPhone?: string;
   driverVehicleNo?: string;
@@ -369,6 +375,9 @@ const InvoiceSchema = new Schema<IInvoice>(
     dispatchType: { type: String, enum: ["immediate", "delayed_delivery"], default: "immediate" },
     deliveryStatus: { type: String, enum: ["pending_dispatch", "packed", "out_for_delivery", "delivered"], default: "delivered" },
     deliveryOtp: { type: String, default: "" },
+    expectedDeliveryDate: { type: String, default: "", index: true },
+    deliveryNote: { type: String, default: "" },
+    deliveryReminderSentAt: { type: Date },
     driverName: { type: String, default: "" },
     driverPhone: { type: String, default: "" },
     driverVehicleNo: { type: String, default: "" },
@@ -377,7 +386,7 @@ const InvoiceSchema = new Schema<IInvoice>(
     deliveryChallanNo: String,
     creditNoteRef: String,
     notes: String,
-    salesExecutive: { type: String, default: "AMIT SINGH" },
+    salesExecutive: { type: String, default: "" },
     salesExecutiveIncentive: { type: Number, default: 0 },
     adminOverridePinUsed: { type: Boolean, default: false },
     reprintCount: { type: Number, default: 0 },

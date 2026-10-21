@@ -9,8 +9,11 @@ import FinanceTransaction from "@/models/FinanceTransaction";
  * snapshot "what the system expects the drawer to hold" without re-deriving
  * this logic a second time and risking the two drifting apart.
  */
+/** "YYYY-MM-DD" in India time — the server runs in UTC. */
+const istDay = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(d);
+
 export async function getCashRegisterSummary() {
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = istDay(new Date());
 
   const recordedTxns = await CashTransaction.find({}).sort({ createdAt: -1 });
 
@@ -72,7 +75,10 @@ export async function getCashRegisterSummary() {
   cashInvoices.forEach((inv: any) => {
     if (!seenRefs.has(inv.invoiceNumber)) {
       seenRefs.add(inv.invoiceNumber);
-      const invDate = inv.invoiceDate ? inv.invoiceDate.split("T")[0] : todayStr;
+      // The bill's own date. Bills keep it in `date`; reading `invoiceDate` (which no
+      // bill has) put every cash bill ever on "today", so today's cash showed the
+      // all-time total — ₹1,67,500 handed over on a day with no cash sale.
+      const invDate = String(inv.date || inv.invoiceDate || "").slice(0, 10) || (inv.createdAt ? istDay(new Date(inv.createdAt)) : todayStr);
 
       const cashRows = Array.isArray(inv.payments)
         ? inv.payments.filter((p: any) => /cash/i.test(p?.mode || ""))
@@ -90,7 +96,7 @@ export async function getCashRegisterSummary() {
         category: "CASH_SALE",
         amount: cashAmount,
         date: invDate,
-        time: inv.createdAt ? new Date(inv.createdAt).toLocaleTimeString("en-IN") : "10:00 AM",
+        time: inv.createdAt ? new Date(inv.createdAt).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata" }) : "10:00 AM",
         referenceNo: inv.invoiceNumber,
         description: isSplit
           ? `Cash portion of Split Bill · ${inv.customerName || "Customer"}`
@@ -160,7 +166,7 @@ export async function getCashRegisterSummary() {
         category: "CASH_EXPENSE",
         amount: Number(exp.amount || 0),
         date: expDate,
-        time: exp.createdAt ? new Date(exp.createdAt).toLocaleTimeString("en-IN") : "04:30 PM",
+        time: exp.createdAt ? new Date(exp.createdAt).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata" }) : "04:30 PM",
         referenceNo: exp.expenseNo,
         description: `Store Expense · ${exp.category} (${exp.description || ""})`,
         partyName: exp.category,

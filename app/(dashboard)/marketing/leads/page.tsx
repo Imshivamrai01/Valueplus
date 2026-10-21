@@ -18,8 +18,27 @@ import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { cn, indianNumberFormat, formatCurrency } from "@/lib/utils";
 import { ExportMenu } from "@/components/shared/ExportMenu";
+import { LeadProductPicker, leadProductsLabel, leadProductsTotal, type LeadProduct } from "@/components/shared/LeadProductPicker";
 
 const LEAD_STATUSES = ["all", "New", "Contacted", "Interested", "Follow-up", "Converted", "Lost"] as const;
+
+/** "9559005759" → "tel:+919559005759" (an Indian 10-digit number gets +91). */
+function telLink(mobile: any): string {
+  const digits = String(mobile || "").replace(/\D/g, "");
+  if (digits.length === 10) return `tel:+91${digits}`;
+  if (digits.length === 12 && digits.startsWith("91")) return `tel:+${digits}`;
+  return `tel:${digits}`;
+}
+
+function calledAgo(at: any): string {
+  const t = at ? new Date(at).getTime() : NaN;
+  if (isNaN(t)) return "";
+  const m = Math.max(0, Math.round((Date.now() - t) / 60000));
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  if (m < 1440) return `${Math.floor(m / 60)}h ago`;
+  return new Date(t).toLocaleDateString("en-IN", { day: "2-digit", month: "short", timeZone: "Asia/Kolkata" });
+}
 
 export default function LeadsPipelinePage() {
   const queryClient = useQueryClient();
@@ -34,6 +53,7 @@ export default function LeadsPipelinePage() {
     email: "",
     source: "Walk-in Store",
     interestedProduct: "",
+    items: [] as LeadProduct[],
     vpCode: "",
     estimatedValue: "",
     assignedStaff: "",
@@ -102,6 +122,7 @@ export default function LeadsPipelinePage() {
         email: "",
         source: "Walk-in Store",
         interestedProduct: "",
+        items: [],
         vpCode: "",
         estimatedValue: "",
         assignedStaff: "",
@@ -180,8 +201,12 @@ export default function LeadsPipelinePage() {
 
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!leadForm.customerName || !leadForm.mobile || !leadForm.interestedProduct) {
+    if (!leadForm.customerName || !leadForm.mobile) {
       toast.error("Please fill all required fields");
+      return;
+    }
+    if (!leadForm.items.length) {
+      toast.error("Add at least one product the customer is interested in.");
       return;
     }
     if (!leadForm.assignedStaff) {
@@ -192,6 +217,22 @@ export default function LeadsPipelinePage() {
       ...leadForm,
       estimatedValue: Number(leadForm.estimatedValue || 0),
     });
+  };
+
+  // Call button: count the call first (keepalive, so it still reaches the server
+  // as the phone switches to its dialer), then let the tel: link open the dialer.
+  const logCall = (lead: any) => {
+    queryClient.setQueriesData({ queryKey: ["leads"] }, (old: any) =>
+      Array.isArray(old)
+        ? old.map((x: any) => (x._id === lead._id ? { ...x, callCount: (Number(x.callCount) || 0) + 1, lastCalledAt: new Date().toISOString() } : x))
+        : old
+    );
+    fetch("/api/crm/leads", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: lead._id, logCall: true }),
+      keepalive: true,
+    }).catch(() => toast.error("The call could not be counted — check the connection."));
   };
 
   const totalLeads = leads.length;
@@ -280,6 +321,7 @@ export default function LeadsPipelinePage() {
                 "Lead ID": l.leadId,
                 Customer: l.customerName,
                 Mobile: l.mobile,
+                Calls: Number(l.callCount) || 0,
                 Source: l.source || "Walk-in Store",
                 "Interested Product": l.interestedProduct,
                 "VP Code": l.vpCode || "",
@@ -346,7 +388,24 @@ export default function LeadsPipelinePage() {
                     </td>
                     <td className="p-3 font-bold text-slate-900">
                       {l.customerName}
-                      <span className="block text-[11px] font-mono text-slate-500 font-normal">{l.mobile}</span>
+                      <span className="flex items-center gap-1.5 flex-wrap text-[11px] font-mono text-slate-500 font-normal">
+                        {l.mobile}
+                        {l.mobile && (
+                          <a
+                            href={telLink(l.mobile)}
+                            onClick={() => logCall(l)}
+                            title={`Call ${l.customerName}`}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold font-sans no-underline"
+                          >
+                            📞 Call
+                          </a>
+                        )}
+                      </span>
+                      <span className="block text-[10px] font-semibold text-slate-500 font-sans mt-0.5" title={l.lastCalledAt ? new Date(l.lastCalledAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : ""}>
+                        {Number(l.callCount) > 0
+                          ? `${l.callCount} call${Number(l.callCount) === 1 ? "" : "s"} · last ${calledAgo(l.lastCalledAt)}`
+                          : "Not called yet"}
+                      </span>
                       <span className="inline-block text-[9px] font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 mt-0.5">
                         {l.source || "Walk-in Store"}
                       </span>
@@ -503,14 +562,22 @@ export default function LeadsPipelinePage() {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs font-bold text-slate-700">Interested Product *</Label>
-                <Input
-                  value={leadForm.interestedProduct}
-                  onChange={(e) => setLeadForm({ ...leadForm, interestedProduct: e.target.value })}
-                  placeholder="e.g. Sony Bravia 55' OLED TV"
-                  required
-                  className="mt-1 bg-white text-xs h-9 font-medium"
+              <div className="col-span-2">
+                <Label className="text-xs font-bold text-slate-700">Interested Products *</Label>
+                <LeadProductPicker
+                  value={leadForm.items}
+                  onChange={(items) => {
+                    const prevTotal = leadProductsTotal(leadForm.items || []);
+                    const amountWasAuto = !leadForm.estimatedValue || Number(leadForm.estimatedValue) === prevTotal;
+                    const total = leadProductsTotal(items);
+                    setLeadForm({
+                      ...leadForm,
+                      items,
+                      interestedProduct: leadProductsLabel(items),
+                      vpCode: items.find((p) => p.itemCode)?.itemCode || "",
+                      estimatedValue: amountWasAuto ? (total > 0 ? String(total) : "") : leadForm.estimatedValue,
+                    });
+                  }}
                 />
               </div>
 

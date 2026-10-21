@@ -12,7 +12,8 @@ import { formatCurrency } from "@/lib/utils";
 import { HandCoins, CheckCircle2 } from "lucide-react";
 
 function todayStr() {
-  return new Date().toISOString().split("T")[0];
+  // India date — toISOString() is UTC, which is still "yesterday" before 5:30 am.
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
 }
 function nowTimeStr() {
   const d = new Date();

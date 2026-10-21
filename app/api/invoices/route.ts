@@ -774,6 +774,59 @@ export async function PUT(req: Request) {
       return NextResponse.json({ success: false, error: "Invoice not found" }, { status: 404 });
     }
 
+    // A bill already made as "Immediate Handover" whose goods are in fact handed
+    // over later (e.g. kept till December). The sale, payment and stock stay as
+    // they are — the goods are sold and off stock — only the delivery is now
+    // pending, with the date it is due, so it shows in Order Dispatch and a
+    // reminder goes out before that date.
+    if (body.action === "mark-delivery-pending") {
+      const actor = await getActor();
+      if (!actor) {
+        return NextResponse.json({ success: false, error: "You must be signed in to do this." }, { status: 401 });
+      }
+      if (!["admin", "superadmin", "manager", "accounts", "cashier"].includes(actor.role)) {
+        return NextResponse.json({ success: false, error: "You are not allowed to change a bill's delivery." }, { status: 403 });
+      }
+      if (existingInvoice.status === "cancelled" || existingInvoice.type === "proforma" || existingInvoice.type === "credit-note") {
+        return NextResponse.json({ success: false, error: "Only a live tax invoice can have a pending delivery." }, { status: 400 });
+      }
+      const due = String(body.expectedDeliveryDate || "").slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) {
+        return NextResponse.json({ success: false, error: "Enter the expected delivery date." }, { status: 400 });
+      }
+      if (due < String(existingInvoice.date || "").slice(0, 10)) {
+        return NextResponse.json({ success: false, error: "The delivery date cannot be before the bill date." }, { status: 400 });
+      }
+      const wasDelivered = existingInvoice.deliveryStatus === "delivered" || !existingInvoice.deliveryStatus;
+      (existingInvoice as any).dispatchType = "delayed_delivery";
+      if (wasDelivered) (existingInvoice as any).deliveryStatus = "pending_dispatch";
+      if (!existingInvoice.deliveryOtp) {
+        (existingInvoice as any).deliveryOtp = Math.floor(1000 + Math.random() * 9000).toString();
+      }
+      (existingInvoice as any).expectedDeliveryDate = due;
+      (existingInvoice as any).deliveryNote = String(body.deliveryNote || "").trim();
+      (existingInvoice as any).deliveryReminderSentAt = undefined;
+      (existingInvoice as any).deliveredAt = undefined;
+      const saved = await existingInvoice.save();
+      try {
+        await AuditLog.create({
+          action: "invoice.delivery.pending",
+          entityType: "Invoice",
+          entityRef: existingInvoice.invoiceNumber,
+          entityId: String(existingInvoice._id),
+          partyName: existingInvoice.customerName,
+          amount: Number(existingInvoice.total) || 0,
+          reason: `Delivery pending till ${due}${body.deliveryNote ? " — " + String(body.deliveryNote).trim() : ""}`,
+          performedBy: actor.name,
+          performedByUserId: actor.id,
+          performedByRole: actor.role,
+        });
+      } catch (logErr) {
+        console.warn("Notice: audit log for delivery pending:", logErr);
+      }
+      return NextResponse.json({ success: true, message: `Delivery of ${existingInvoice.invoiceNumber} is pending till ${due}.`, data: saved });
+    }
+
     // Special handler for clearing Due / Settlement from Dashboard
     if (body.action === "clear-due" || body.dueClearedMode) {
       // A credit note is money owed BACK to the customer, so it has no due to

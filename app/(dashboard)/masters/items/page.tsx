@@ -1087,6 +1087,16 @@ function ItemsPageContent() {
                                     🏭 {godownQty}
                                   </span>
                                 </div>
+                                {/* Sold on a bill but kept in the store till its delivery date —
+                                    already off the stock above; not to be sold again. */}
+                                {Number(item.awaitingDeliveryQty) > 0 && (
+                                  <span
+                                    className="mt-0.5 px-1 rounded font-bold border text-[9px] bg-orange-50 text-orange-800 border-orange-300 whitespace-nowrap"
+                                    title={`Sold – awaiting delivery on ${(item.awaitingDeliveryBills || []).join(", ")}`}
+                                  >
+                                    🚚 +{item.awaitingDeliveryQty} sold, awaiting delivery
+                                  </span>
+                                )}
                               </div>
                             </button>
                           </PopoverTrigger>

@@ -31,8 +31,13 @@ export async function POST(req: Request) {
     const body = await req.json();
     await connectToDatabase();
     
+    // Date and time of the visit in India time — the server itself runs in UTC.
+    const now = new Date();
     if (!body.date) {
-      body.date = new Date().toISOString().split("T")[0];
+      body.date = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(now);
+    }
+    if (!body.time) {
+      body.time = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" });
     }
     
     const leadCount = await Lead.countDocuments();
@@ -52,7 +57,7 @@ export async function POST(req: Request) {
         source: "Walk-in Store",
         walkInReason: body.reason || "Product Enquiry",
         interestedProduct: body.interestedProduct || "Showroom Product",
-        assignedStaff: body.staff || "Amit Singh",
+        assignedStaff: body.staff || "Sales Team",
         estimatedValue: Number(body.budget) || 0,
         priority: "Medium",
         status: "New",
@@ -111,7 +116,7 @@ export async function PUT(req: Request) {
         source: "Walk-in Store",
         walkInReason: walkIn.reason,
         interestedProduct: walkIn.interestedProduct,
-        assignedStaff: walkIn.staff || "Amit Singh",
+        assignedStaff: walkIn.staff || "Sales Team",
         estimatedValue: walkIn.budget || 0,
         priority: "High",
         status: "Interested",
@@ -122,7 +127,7 @@ export async function PUT(req: Request) {
             date: new Date(),
             action: "Converted from Walk-in Query",
             notes: `Walk-in reason: ${walkIn.reason}`,
-            staff: walkIn.staff || "Amit Singh",
+            staff: walkIn.staff || "Sales Team",
           },
         ],
       });

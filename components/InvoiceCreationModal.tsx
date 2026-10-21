@@ -199,6 +199,8 @@ export function InvoiceCreationModal({
     shippingState: "Uttar Pradesh",
     shippingPin: "273001",
     dispatchType: "immediate" as "immediate" | "delayed_delivery",
+    // For a delayed delivery: when the goods are to be handed over (optional).
+    expectedDeliveryDate: "",
     driverName: "",
     driverPhone: "",
     placeOfSupply: "Uttar Pradesh(09)",
@@ -1359,6 +1361,7 @@ export function InvoiceCreationModal({
         : (billingForm.shippingAddress ? `${billingForm.shippingAddress}, ${billingForm.shippingCity}, ${billingForm.shippingState} - ${billingForm.shippingPin}` : ""),
       dispatchType: billingForm.dispatchType || "immediate",
       deliveryStatus: billingForm.dispatchType === "delayed_delivery" ? "pending_dispatch" : "delivered",
+      expectedDeliveryDate: billingForm.dispatchType === "delayed_delivery" ? billingForm.expectedDeliveryDate || "" : "",
       driverName: billingForm.driverName || "",
       driverPhone: billingForm.driverPhone || "",
       driverVehicleNo: billingForm.vehicleNumber || "",
@@ -1708,6 +1711,18 @@ export function InvoiceCreationModal({
                       <span className="text-[11px] font-mono font-bold text-amber-800 bg-amber-100/80 px-2.5 py-1 rounded-md border border-amber-200 flex items-center gap-1.5">
                         <span>🔑 Auto Delivery OTP & WhatsApp Tracking Link will be generated</span>
                       </span>
+                    )}
+                    {billingForm.dispatchType === "delayed_delivery" && (
+                      <label className="flex items-center gap-2 text-[11px] font-bold text-slate-700">
+                        Expected delivery date
+                        <input
+                          type="date"
+                          value={billingForm.expectedDeliveryDate || ""}
+                          onChange={(e) => setBillingForm({ ...billingForm, expectedDeliveryDate: e.target.value })}
+                          className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-mono"
+                        />
+                        <span className="font-normal text-slate-400">(optional — a reminder comes 2 days before)</span>
+                      </label>
                     )}
                   </div>
                 </div>
@@ -3074,7 +3089,7 @@ export function InvoiceCreationModal({
                       <Input readOnly value={formatCurrency(billCalculations.grandTotal)} className="bg-white border-rose-300 font-black text-slate-900 mt-1" />
                     </div>
                     <div>
-                      <Label className="font-bold text-rose-950">Advance Received (₹)</Label>
+                      <Label className="font-bold text-rose-950">Amount Received (₹)</Label>
                       <Input 
                         type="number" min="0" max={billCalculations.grandTotal}
                         value={billingForm.advanceAmount || ""} 
@@ -3084,7 +3099,7 @@ export function InvoiceCreationModal({
                       />
                     </div>
                     <div>
-                      <Label className="font-bold text-rose-950">Advance Payment Mode</Label>
+                      <Label className="font-bold text-rose-950">Payment Mode</Label>
                       <Select 
                         value={billingForm.dueAdvanceMode || "Cash"} 
                         onValueChange={(v) => setBillingForm({ ...billingForm, dueAdvanceMode: v })}

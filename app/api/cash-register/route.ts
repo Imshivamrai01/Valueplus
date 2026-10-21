@@ -4,9 +4,13 @@ import CashTransaction from "@/models/CashTransaction";
 import BankAccount from "@/models/BankAccount";
 import Expense from "@/models/Expense";
 import { getCashRegisterSummary } from "@/lib/cashRegister";
+import { getActor } from "@/lib/requirePermission";
 
 export async function GET(req: Request) {
   try {
+    // The whole cash ledger — only for someone signed in to the ERP.
+    const actor = await getActor();
+    if (!actor) return NextResponse.json({ success: false, error: "You must be signed in to see the cash register." }, { status: 401 });
     await connectToDatabase();
     const data = await getCashRegisterSummary();
     return NextResponse.json({ success: true, data });
@@ -17,6 +21,8 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    const actor = await getActor();
+    if (!actor) return NextResponse.json({ success: false, error: "You must be signed in to record cash." }, { status: 401 });
     const body = await req.json();
     await connectToDatabase();
 
@@ -48,7 +54,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
     const genRef = referenceNo || (category === "CASH_EXPENSE" ? `EXP-${Date.now().toString().slice(-6)}` : `CSH-${Date.now().toString().slice(-6)}`);
 
     // Create Cash Transaction Entry in MongoDB
@@ -57,7 +63,7 @@ export async function POST(req: Request) {
       category,
       amount: Number(amount),
       date: date || todayStr,
-      time: time || new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
+      time: time || new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" }),
       referenceNo: genRef,
       description: description.trim(),
       partyName: partyName || (category === "MD_HANDOVER" ? handedTo : targetBankAccount) || "Showroom Expense",

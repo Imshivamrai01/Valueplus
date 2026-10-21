@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import mongoose from "mongoose";
 import connectToDatabase from "@/lib/db";
 import Item from "@/models/Item";
+import Invoice from "@/models/Invoice";
 
 export async function GET(req: Request) {
   try {
@@ -59,7 +60,28 @@ export async function GET(req: Request) {
         }))
       : items;
 
-    return NextResponse.json({ success: true, data });
+    // Units already sold on a bill whose goods are kept aside for a later
+    // delivery: off stock, but still physically in the store. Shown on the
+    // product so they are not sold to someone else.
+    const pendingDelivery: any[] = await Invoice.aggregate([
+      {
+        $match: {
+          dispatchType: "delayed_delivery",
+          deliveryStatus: { $in: ["pending_dispatch", "packed"] },
+          status: { $ne: "cancelled" },
+          type: { $nin: ["proforma", "credit-note"] },
+        },
+      },
+      { $unwind: "$items" },
+      { $group: { _id: "$items.itemId", qty: { $sum: "$items.quantity" }, bills: { $addToSet: "$invoiceNumber" } } },
+    ]).catch(() => []);
+    const awaiting = new Map(pendingDelivery.map((p) => [String(p._id), p]));
+    const withAwaiting = (data as any[]).map((it) => {
+      const p = awaiting.get(String(it._id));
+      return p ? { ...it, awaitingDeliveryQty: p.qty, awaitingDeliveryBills: p.bills } : it;
+    });
+
+    return NextResponse.json({ success: true, data: withAwaiting });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

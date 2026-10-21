@@ -52,6 +52,7 @@ import { useSession } from "next-auth/react";
 import { SalesmanDashboardView } from "@/components/dashboard/SalesmanDashboardView";
 import { CashHandoverCard } from "@/components/dashboard/CashHandoverCard";
 import { PurchaseDistributionCard, type PurchaseCardFilter } from "@/components/dashboard/PurchaseDistributionCard";
+import { LeadProductPicker, leadProductsLabel, leadProductsTotal, type LeadProduct } from "@/components/shared/LeadProductPicker";
 import { ProductLedgerModal } from "@/components/ProductLedgerModal";
 import { ExportMenu } from "@/components/shared/ExportMenu";
 import { isFinanceInvoice } from "@/lib/payment-modes";
@@ -535,6 +536,8 @@ export default function DashboardPage() {
     customerName: "",
     mobile: "",
     interestedProduct: "",
+    items: [] as LeadProduct[],
+    vpCode: "",
     estimatedValue: "",
     assignedStaff: "",
     priority: "Medium" as "Low" | "Medium" | "High" | "Urgent",
@@ -816,6 +819,10 @@ export default function DashboardPage() {
   const handleCreateLeadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!leadForm.customerName.trim() || !leadForm.mobile.trim()) return;
+    if (!leadForm.items.length) {
+      toast.error("Add at least one product the customer is interested in.");
+      return;
+    }
     if (!leadForm.assignedStaff) {
       toast.error("Choose the staff member this lead is assigned to.");
       return;
@@ -848,6 +855,8 @@ export default function DashboardPage() {
       customerName: "",
       mobile: "",
       interestedProduct: "",
+      items: [],
+      vpCode: "",
       estimatedValue: "",
       assignedStaff: "",
       priority: "Medium",
@@ -5587,14 +5596,22 @@ export default function DashboardPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs font-bold text-slate-700">Interested Product *</Label>
-                <Input
-                  value={leadForm.interestedProduct}
-                  onChange={(e) => setLeadForm({ ...leadForm, interestedProduct: e.target.value })}
-                  placeholder="e.g. Samsung 65' Neo QLED TV"
-                  required
-                  className="mt-1 bg-white text-xs h-9 font-medium"
+              <div className="col-span-2">
+                <Label className="text-xs font-bold text-slate-700">Interested Products *</Label>
+                <LeadProductPicker
+                  value={leadForm.items}
+                  onChange={(items) => {
+                    const prevTotal = leadProductsTotal(leadForm.items || []);
+                    const amountWasAuto = !leadForm.estimatedValue || Number(leadForm.estimatedValue) === prevTotal;
+                    const total = leadProductsTotal(items);
+                    setLeadForm({
+                      ...leadForm,
+                      items,
+                      interestedProduct: leadProductsLabel(items),
+                      vpCode: items.find((p) => p.itemCode)?.itemCode || "",
+                      estimatedValue: amountWasAuto ? (total > 0 ? String(total) : "") : leadForm.estimatedValue,
+                    });
+                  }}
                 />
               </div>
 

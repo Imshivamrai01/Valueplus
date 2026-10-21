@@ -30,7 +30,12 @@ const WalkInQuerySchema = new Schema<IWalkInQuery>(
     customerName: { type: String, required: true },
     mobile: { type: String, required: true, index: true },
     date: { type: String, required: true, index: true },
-    time: { type: String, default: () => new Date().toLocaleTimeString("en-IN", { hour: '2-digit', minute: '2-digit' }) },
+    // India time: the server runs in UTC, which showed a 11:53 am visit as 06:23 am.
+    time: {
+      type: String,
+      default: () =>
+        new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" }),
+    },
     reason: {
       type: String,
       enum: [

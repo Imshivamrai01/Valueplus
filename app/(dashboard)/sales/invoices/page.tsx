@@ -30,7 +30,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getOfflineInvoices, OfflineInvoice } from "@/lib/offline-storage";
 import { useOfflineSync } from "@/components/shared/offline-sync-provider";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
-import { WifiOff, RefreshCw, CloudUpload } from "lucide-react";
+import { WifiOff, RefreshCw, CloudUpload, Truck } from "lucide-react";
+import { DeliveryPendingDialog } from "@/components/sales/DeliveryPendingDialog";
+import { productLabel } from "@/lib/product-label";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { BillingEntityBadge } from "@/components/shared/BillingEntityPicker";
@@ -84,6 +86,7 @@ function SalesInvoicesContent() {
   const [activeSuggestRow, setActiveSuggestRow] = useState<number | null>(null);
   const [invoiceToDelete, setInvoiceToDelete] = useState<string | null>(null);
   const [invoiceToCancel, setInvoiceToCancel] = useState<string | null>(null);
+  const [invoiceForDelivery, setInvoiceForDelivery] = useState<any | null>(null);
   const [editingInvoice, setEditingInvoice] = useState<any | null>(null);
   const [editForm, setEditForm] = useState<any>({});
   // The PIN and reason now live inside AuthorizePinDialog; this only holds the
@@ -143,7 +146,13 @@ function SalesInvoicesContent() {
       const matchesSearch =
         !q ||
         inv.invoiceNumber?.toLowerCase().includes(q) ||
-        inv.customerName?.toLowerCase().includes(q);
+        inv.customerName?.toLowerCase().includes(q) ||
+        // A product on the bill — by name or serial number.
+        (Array.isArray(inv.items) &&
+          inv.items.some(
+            (it: any) =>
+              String(it.itemName || "").toLowerCase().includes(q) || String(it.serialNumber || "").toLowerCase().includes(q)
+          ));
       const matchesStatus = statusFilter === "all" || inv.status === statusFilter;
       const matchesDate = isDateInRange(inv.date || inv.createdAt, dateRange.start, dateRange.end);
       const matchesEntity = entityFilter === "all" || entityOf(inv) === entityFilter;
@@ -174,6 +183,9 @@ function SalesInvoicesContent() {
       return json.success ? json.data : [];
     }
   });
+
+  // Product master by id, for the brand/kind label shown on each bill's products.
+  const catalogById = useMemo(() => new Map((catalogItems as any[]).map((c: any) => [String(c._id), c])), [catalogItems]);
 
   const { data: purchaseEntries = [], isLoading: loadingEntries } = useQuery({
     queryKey: ["purchaseEntries"],
@@ -405,7 +417,7 @@ function SalesInvoicesContent() {
             searchKeys={["invoiceNumber", "customerName", "phone"]}
             displayKey="invoiceNumber"
             subDisplayKey="customerName"
-            placeholder="Search invoice #, customer..."
+            placeholder="Search invoice #, customer, product or serial..."
             value={search}
             onSearchChange={(val) => { setSearch(val); setPage(1); }}
             className="flex-1 min-w-48"
@@ -509,6 +521,14 @@ function SalesInvoicesContent() {
                               <FileText className="w-3 h-3 text-muted-foreground" />
                             </button>
                             <BillingEntityBadge entity={entityOf(inv)} className="ml-1" />
+                            {inv.expectedDeliveryDate && inv.deliveryStatus !== "delivered" && inv.status !== "cancelled" && (
+                              <span
+                                className="ml-1 font-mono text-[9px] font-bold px-1.5 py-0.5 rounded bg-orange-50 text-orange-800 border border-orange-300"
+                                title={inv.deliveryNote || "Goods sold, kept aside till this date"}
+                              >
+                                🚚 Delivery {formatDate(inv.expectedDeliveryDate)}
+                              </span>
+                            )}
                             {(inv.reprintCount || 0) > 0 ? (
                               <span 
                                 className="font-mono text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-50 text-amber-800 border border-amber-300"
@@ -524,6 +544,36 @@ function SalesInvoicesContent() {
                         <td className="px-4 py-3">
                           <div className="flex flex-col">
                             <span className="font-semibold text-foreground">{inv.customerName}</span>
+                            {/* What was sold on this bill, right under the customer. */}
+                            {Array.isArray(inv.items) && inv.items.length > 0 && (
+                              <span
+                                className="text-[11px] text-slate-500 leading-snug mt-0.5 max-w-[260px]"
+                                title={inv.items
+                                  .map((it: any) => {
+                                    const label = productLabel(it, catalogById.get(String(it.itemId)));
+                                    return `${label ? label + " · " : ""}${it.itemName}${Number(it.quantity) > 1 ? ` ×${it.quantity}` : ""}`;
+                                  })
+                                  .join("\n")}
+                              >
+                                {inv.items.slice(0, 2).map((it: any, i: number) => {
+                                  const label = productLabel(it, catalogById.get(String(it.itemId)));
+                                  return (
+                                    <span key={i} className="flex items-center gap-1 min-w-0">
+                                      {label && (
+                                        <span className="shrink-0 rounded bg-indigo-50 border border-indigo-200 px-1 text-[10px] font-bold text-indigo-800">
+                                          {label}
+                                        </span>
+                                      )}
+                                      <span className="truncate">{it.itemName}</span>
+                                      {Number(it.quantity) > 1 && <span className="shrink-0 font-mono text-slate-400">×{it.quantity}</span>}
+                                    </span>
+                                  );
+                                })}
+                                {inv.items.length > 2 && (
+                                  <span className="block text-[10px] font-semibold text-[#3F63AD]">+{inv.items.length - 2} more</span>
+                                )}
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">{formatDate(inv.date || inv.createdAt)}</td>
@@ -610,6 +660,15 @@ function SalesInvoicesContent() {
                                     onClick={() => openEditInvoice(inv)}
                                   >
                                     <Edit className="h-4 w-4" /> Edit Invoice
+                                  </DropdownMenuItem>
+                                )}
+                                {inv.status !== "cancelled" && inv.type !== "proforma" && inv.type !== "credit-note" && (
+                                  <DropdownMenuItem
+                                    className="gap-2 cursor-pointer text-orange-700 focus:text-orange-700"
+                                    onClick={() => setInvoiceForDelivery(inv)}
+                                  >
+                                    <Truck className="h-4 w-4" />
+                                    {inv.expectedDeliveryDate && inv.deliveryStatus !== "delivered" ? "Change Delivery Date" : "Mark Delivery Pending"}
                                   </DropdownMenuItem>
                                 )}
                                 <DropdownMenuSeparator />
@@ -875,6 +934,8 @@ function SalesInvoicesContent() {
         isPending={deleteInvoiceMutation.isPending}
         errorMessage={authError}
       />
+
+      <DeliveryPendingDialog invoice={invoiceForDelivery} onOpenChange={(open) => !open && setInvoiceForDelivery(null)} />
 
       <AuthorizePinDialog
         open={!!invoiceToCancel}

@@ -18,6 +18,23 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+// When the visit happened, in India time. Taken from the record's own save time
+// (createdAt) when it has one: visits logged before this fix stored their time
+// in the server's UTC, so a 11:53 am visit read 06:23 am.
+const IST = "Asia/Kolkata";
+function visitTime(q: any): string {
+  const at = q?.createdAt ? new Date(q.createdAt) : null;
+  if (at && !isNaN(at.getTime())) {
+    return at.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: IST });
+  }
+  return q?.time || "";
+}
+function visitDate(q: any): string {
+  const at = q?.createdAt ? new Date(q.createdAt) : null;
+  if (at && !isNaN(at.getTime())) return new Intl.DateTimeFormat("en-CA", { timeZone: IST }).format(at);
+  return q?.date || "";
+}
+
 export default function WalkInQueriesPage() {
   const queryClient = useQueryClient();
   const { data: session } = useSession();
@@ -147,8 +164,8 @@ export default function WalkInQueriesPage() {
             title="Customer Walk-in Queries"
             subtitle={`${filtered.length} queries logged`}
             data={(filtered as any[]).map((q) => ({
-              Date: q.date || "",
-              Time: q.time || "",
+              Date: visitDate(q),
+              Time: visitTime(q),
               Customer: q.customerName || "",
               Mobile: q.mobile || "",
               "Visit Reason": q.reason || "",
@@ -214,7 +231,7 @@ export default function WalkInQueriesPage() {
                 filtered.map((q: any) => (
                   <tr key={q._id} className="hover:bg-slate-50 transition-colors">
                     <td className="p-3 font-mono text-slate-600">
-                      {q.date} <span className="block text-[10px] text-slate-400">{q.time}</span>
+                      {visitDate(q)} <span className="block text-[10px] text-slate-400">{visitTime(q)}</span>
                     </td>
                     <td className="p-3 font-bold text-slate-900">
                       {q.customerName}

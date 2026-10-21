@@ -41,6 +41,14 @@ const HSN_RULES: [string, string][] = [
   ["8504", "Small & Domestic Appliances"],
 ].sort((a, b) => b[0].length - a[0].length) as [string, string][];
 
+/** The category an HSN code belongs to, without checking the Categories master. */
+export function hsnCategoryName(hsn: string | undefined): string {
+  const digits = String(hsn || "").replace(/\D/g, "");
+  if (digits.length < 4) return "";
+  for (const [prefix, category] of HSN_RULES) if (digits.startsWith(prefix)) return category;
+  return "";
+}
+
 export function categoryForHsnCode(hsn: string | undefined, masterCategories: Set<string>): string {
   const digits = String(hsn || "").replace(/\D/g, "");
   if (digits.length < 4) return "";

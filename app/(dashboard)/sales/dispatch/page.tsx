@@ -434,6 +434,24 @@ export default function OrderDispatchHubPage() {
                           <span className="block text-[10px] text-slate-400 mt-0.5">
                             {formatDate(inv.date)}
                           </span>
+                          {/* A bill whose goods are kept aside till a later date. */}
+                          {inv.expectedDeliveryDate && !isDelivered && (
+                            <span
+                              className={`mt-1 inline-block text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                                inv.expectedDeliveryDate < new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date())
+                                  ? "bg-rose-50 text-rose-700 border-rose-300"
+                                  : "bg-orange-50 text-orange-800 border-orange-300"
+                              }`}
+                              title={inv.deliveryNote || ""}
+                            >
+                              🚚 Deliver by {formatDate(inv.expectedDeliveryDate)}
+                            </span>
+                          )}
+                          {inv.deliveryNote && !isDelivered && (
+                            <span className="block text-[10px] text-slate-500 mt-0.5 max-w-[160px] truncate" title={inv.deliveryNote}>
+                              {inv.deliveryNote}
+                            </span>
+                          )}
                         </td>
 
                         {/* 2. Customer */}

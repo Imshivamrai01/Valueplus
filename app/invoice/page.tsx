@@ -884,7 +884,7 @@ function ValueplusInvoiceContent({ invoiceData: propInvoiceData, onBack }: Value
             </p>
           ) : activeData.paymentMode === "Due / Credit" ? (
             <p>
-              <span className="font-bold">Remarks:</span> Payment Mode: <span className="font-bold uppercase text-rose-700">DUE / CREDIT</span> • Advance Received: <span className="font-mono font-bold">₹{(activeData.dueAdvanceAmount || activeData.paidAmount || 0)?.toFixed(2)}</span> via <span className="font-bold uppercase">{activeData.dueAdvanceMode || "Cash"}</span> • Balance Due: <span className="font-mono font-bold text-rose-800">₹{activeData.balanceAmount?.toFixed(2)}</span> {activeData.dueDate ? `(Promise Date: ${activeData.dueDate})` : ""} {activeData.vehicleNumber ? `• Vehicle: ${activeData.vehicleNumber}` : ""}
+              <span className="font-bold">Remarks:</span> Payment Mode: <span className="font-bold uppercase text-rose-700">DUE / CREDIT</span> • Amount Received: <span className="font-mono font-bold">₹{(activeData.dueAdvanceAmount || activeData.paidAmount || 0)?.toFixed(2)}</span> via <span className="font-bold uppercase">{activeData.dueAdvanceMode || "Cash"}</span> • Balance Due: <span className="font-mono font-bold text-rose-800">₹{activeData.balanceAmount?.toFixed(2)}</span> {activeData.dueDate ? `(Promise Date: ${activeData.dueDate})` : ""} {activeData.vehicleNumber ? `• Vehicle: ${activeData.vehicleNumber}` : ""}
             </p>
           ) : activeData.paymentMode === "Credit Card" || activeData.paymentMode === "Debit Card" ? (
             <p>

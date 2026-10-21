@@ -73,8 +73,29 @@ export async function PUT(req: Request) {
     const body = await req.json();
     await connectToDatabase();
     
-    const { id, leadId, actionNote, followUp, ...updates } = body;
+    const { id, leadId, actionNote, followUp, logCall, ...updates } = body;
     const identifier = id ? { _id: id } : { leadId };
+
+    // The Call button: one more call to this customer, by whoever pressed it.
+    if (logCall) {
+      const actor = await getActor();
+      const staff = actor?.name || "Staff";
+      const now = new Date();
+      const lead: any = await Lead.findOneAndUpdate(
+        identifier,
+        {
+          $inc: { callCount: 1 },
+          $set: { lastCalledAt: now },
+          $push: {
+            calls: { at: now, staff },
+            timeline: { date: now, action: "Called customer", notes: "", staff },
+          },
+        },
+        { new: true, projection: { callCount: 1, lastCalledAt: 1, leadId: 1 } }
+      );
+      if (!lead) return NextResponse.json({ success: false, error: "Lead not found" }, { status: 404 });
+      return NextResponse.json({ success: true, data: lead });
+    }
     
     // Logging a follow-up: records when the customer was contacted and when the
     // next contact is due, and keeps the history of every one.

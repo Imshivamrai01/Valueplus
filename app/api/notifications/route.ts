@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import connectToDatabase from "@/lib/db";
 import Notification from "@/models/Notification";
 import { getActor } from "@/lib/requirePermission";
+import { sendDueDeliveryReminders } from "@/lib/delivery-reminders";
 
 /**
  * The signed-in user's own notifications (the bell).
@@ -22,6 +23,8 @@ export async function GET() {
     const actor = await getActor();
     if (!actor?.id) return NextResponse.json({ success: false, error: "Not signed in" }, { status: 401 });
     await connectToDatabase();
+    // Deliveries due soon are reminded here (no scheduler on the server).
+    await sendDueDeliveryReminders();
     const [data, unreadCount] = await Promise.all([
       Notification.find({ recipientId: actor.id }).sort({ createdAt: -1 }).limit(30).lean(),
       Notification.countDocuments({ recipientId: actor.id, readAt: null }),
