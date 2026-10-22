@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
+import { cn } from "@/lib/utils";
 import { PageShell } from "@/components/shared/page-shell";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -77,11 +78,24 @@ export default function GSTReportsPage() {
     queryFn: async () => {
       const res = await fetch(`/api/gstr-reports?type=GSTR1_B2C&month=${selectedFilter.month}&year=${selectedFilter.year}`);
       const json = await res.json();
-      return json.success ? { rows: json.data, b2clCandidates: json.meta?.b2clCandidates || 0 } : { rows: [], b2clCandidates: 0 };
+      return json.success
+        ? { rows: json.data, b2clCandidates: json.meta?.b2clCandidates || 0, billsByRow: json.meta?.billsByRow || {} }
+        : { rows: [], b2clCandidates: 0, billsByRow: {} };
     }
   });
   const b2cRows = b2cData?.rows || [];
   const b2clCandidates = b2cData?.b2clCandidates || 0;
+  const b2cBillsByRow: Record<string, any[]> = (b2cData as any)?.billsByRow || {};
+  // Which B2C rows are opened to show their bills.
+  const [openB2cRows, setOpenB2cRows] = useState<Set<string>>(new Set());
+  const b2cRowKey = (row: any) => `${row["Place of Supply"]}__${row["Rate (%)"]}`;
+  const toggleB2cRow = (key: string) =>
+    setOpenB2cRows((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  const allB2cOpen = b2cRows.length > 0 && b2cRows.every((r: any) => openB2cRows.has(b2cRowKey(r)));
 
   // Every month that actually has a Sales or Purchase record, newest first —
   // replaces the old fixed Aug/Jul/Jun list, which silently hid any period
@@ -378,7 +392,18 @@ export default function GSTReportsPage() {
         <TabsContent value="b2c">
           <div className="bg-white border rounded-2xl overflow-hidden">
             <div className="p-4 border-b">
-              <h3 className="font-semibold">GSTR-1 — Table 7: B2C (Small) Consolidated Summary</h3>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-semibold">GSTR-1 — Table 7: B2C (Small) Consolidated Summary</h3>
+                {b2cRows.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setOpenB2cRows(allB2cOpen ? new Set() : new Set(b2cRows.map(b2cRowKey)))}
+                    className="text-xs font-bold text-[#3F63AD] hover:underline"
+                  >
+                    {allB2cOpen ? "Hide all bills" : "Show all bills"}
+                  </button>
+                )}
+              </div>
               <p className="text-xs text-muted-foreground mt-1">
                 Every sale with no business GSTIN, consolidated by Place of Supply + Tax Rate — matches the official
                 GSTR-1 B2C Small table shape. Verify with your CA before filing.
@@ -401,25 +426,83 @@ export default function GSTReportsPage() {
                     <th className="px-3 py-2.5 text-right">CGST</th>
                     <th className="px-3 py-2.5 text-right">SGST</th>
                     <th className="px-3 py-2.5 text-right">Invoice Count</th>
+                    <th className="px-3 py-2.5 text-right">Bills</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
                   {loadingB2C ? (
-                    <tr><td colSpan={7} className="p-0"><TableShimmer rows={6} cols={7} /></td></tr>
+                    <tr><td colSpan={8} className="p-0"><TableShimmer rows={6} cols={8} /></td></tr>
                   ) : b2cRows.length === 0 ? (
-                    <tr><td colSpan={7} className="text-center p-8 text-muted-foreground">No B2C sales found for this period</td></tr>
+                    <tr><td colSpan={8} className="text-center p-8 text-muted-foreground">No B2C sales found for this period</td></tr>
                   ) : (
-                    b2cRows.map((row: any, i: number) => (
-                      <tr key={`${row["Place of Supply"]}-${row["Rate (%)"]}-${i}`} className="hover:bg-slate-50/50">
-                        <td className="px-3 py-2.5">{row["Place of Supply"]}</td>
-                        <td className="px-3 py-2.5 text-right">{row["Rate (%)"]}%</td>
-                        <td className="px-3 py-2.5 text-right font-medium">{money(row["Taxable Value"])}</td>
-                        <td className="px-3 py-2.5 text-right">{money(row["IGST Amount"])}</td>
-                        <td className="px-3 py-2.5 text-right">{money(row["CGST Amount"])}</td>
-                        <td className="px-3 py-2.5 text-right">{money(row["SGST Amount"])}</td>
-                        <td className="px-3 py-2.5 text-right">{row["Invoice Count"]}</td>
-                      </tr>
-                    ))
+                    b2cRows.map((row: any, i: number) => {
+                      const key = b2cRowKey(row);
+                      const isOpen = openB2cRows.has(key);
+                      const bills = b2cBillsByRow[key] || [];
+                      return (
+                        <React.Fragment key={`${key}-${i}`}>
+                          <tr className={cn("hover:bg-slate-50/50 cursor-pointer", isOpen && "bg-blue-50/40")} onClick={() => toggleB2cRow(key)}>
+                            <td className="px-3 py-2.5">{row["Place of Supply"]}</td>
+                            <td className="px-3 py-2.5 text-right">{row["Rate (%)"]}%</td>
+                            <td className="px-3 py-2.5 text-right font-medium">{money(row["Taxable Value"])}</td>
+                            <td className="px-3 py-2.5 text-right">{money(row["IGST Amount"])}</td>
+                            <td className="px-3 py-2.5 text-right">{money(row["CGST Amount"])}</td>
+                            <td className="px-3 py-2.5 text-right">{money(row["SGST Amount"])}</td>
+                            <td className="px-3 py-2.5 text-right">{row["Invoice Count"]}</td>
+                            <td className="px-3 py-2.5 text-right">
+                              <span className="text-xs font-bold text-[#3F63AD] whitespace-nowrap">{isOpen ? "Hide ▴" : "View bills ▾"}</span>
+                            </td>
+                          </tr>
+                          {isOpen && (
+                            <tr className="bg-slate-50/60">
+                              <td colSpan={8} className="px-3 py-2">
+                                <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                                  <table className="w-full min-w-[760px] text-xs">
+                                    <thead className="bg-slate-50 text-[10px] uppercase text-slate-500">
+                                      <tr>
+                                        <th className="px-2.5 py-2 text-left">Bill #</th>
+                                        <th className="px-2.5 py-2 text-left">Date</th>
+                                        <th className="px-2.5 py-2 text-left">Customer</th>
+                                        <th className="px-2.5 py-2 text-left">Products (GST %)</th>
+                                        <th className="px-2.5 py-2 text-right">Taxable</th>
+                                        <th className="px-2.5 py-2 text-right">CGST + SGST / IGST</th>
+                                        <th className="px-2.5 py-2 text-right">Bill Total</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y">
+                                      {bills.map((b: any) => (
+                                        <tr key={b.invoiceNumber}>
+                                          <td className="px-2.5 py-1.5 font-mono font-bold text-[#3F63AD] whitespace-nowrap">{b.invoiceNumber}</td>
+                                          <td className="px-2.5 py-1.5 whitespace-nowrap">{b.date}</td>
+                                          <td className="px-2.5 py-1.5">
+                                            {b.customerName}
+                                            {b.customerPhone && <span className="block text-[10px] text-slate-400">{b.customerPhone}</span>}
+                                          </td>
+                                          <td className="px-2.5 py-1.5">
+                                            {b.items.map((l: any, k: number) => (
+                                              <span key={k} className="block">
+                                                {l.name}
+                                                {l.quantity > 1 ? ` ×${l.quantity}` : ""}{" "}
+                                                <span className={cn("font-mono text-[10px]", l.gstRate === 28 ? "text-rose-600 font-bold" : "text-slate-400")}>
+                                                  ({l.gstRate}%{l.hsn ? ` · HSN ${l.hsn}` : ""})
+                                                </span>
+                                              </span>
+                                            ))}
+                                          </td>
+                                          <td className="px-2.5 py-1.5 text-right font-mono">{money(b.taxable)}</td>
+                                          <td className="px-2.5 py-1.5 text-right font-mono">{money(b.igst > 0 ? b.igst : b.cgst + b.sgst)}</td>
+                                          <td className="px-2.5 py-1.5 text-right font-mono font-bold">{money(b.total)}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })
                   )}
                 </tbody>
               </table>

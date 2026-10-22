@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
+import { allowedGstRate } from "@/lib/gst-rate";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -640,7 +641,7 @@ export function InvoiceCreationModal({
             incentiveType: matchedCatalog?.incentiveType || "fixed",
             incentiveValue: matchedCatalog?.incentiveValue || 0,
             discount: Number(it.discount) || 0,
-            gstRate: gst,
+            gstRate: allowedGstRate(gst),
             availableStock: matchedCatalog?.currentStock || matchedCatalog?.openingStock || 10,
             extendedWarrantyProvider: "OneAssist",
             extendedWarrantyPlan: "none",
@@ -942,7 +943,7 @@ export function InvoiceCreationModal({
       incentiveType: prod.incentiveType || "fixed",
       incentiveValue: prod.incentiveAmount || prod.incentiveValue || 0,
       adminApprovedRate: false,
-      gstRate: prod.gstRate || 18,
+      gstRate: allowedGstRate(prod.gstRate ?? 18),
       itemCode: prod.code,
       vpCode: itemVpCode,
       itemId: prod._id,
@@ -1127,6 +1128,10 @@ export function InvoiceCreationModal({
     const needsPaymentMode = !(mode === "estimate" && !estimateIncludesAdvance);
     if (needsPaymentMode && !isSplitPayment && !billingForm.paymentMode) {
       toast.error("Select a payment mode — Cash, UPI or Card.");
+      return;
+    }
+    if (mode !== "estimate" && billingForm.dispatchType === "delayed_delivery" && !billingForm.expectedDeliveryDate) {
+      toast.error("Confirm the delivery date with the customer and enter it — the bill then shows in Order Dispatch.");
       return;
     }
     if (splitHasFinance && mode !== "estimate" && !String(billingForm.financeProvider || "").trim()) {
@@ -1359,9 +1364,10 @@ export function InvoiceCreationModal({
       shippingAddress: billingForm.isShippingSameAsBilling 
         ? (billingForm.customerAddress ? `${billingForm.customerAddress}, ${billingForm.customerCity}, ${billingForm.customerState} - ${billingForm.customerPin}` : "")
         : (billingForm.shippingAddress ? `${billingForm.shippingAddress}, ${billingForm.shippingCity}, ${billingForm.shippingState} - ${billingForm.shippingPin}` : ""),
-      dispatchType: billingForm.dispatchType || "immediate",
-      deliveryStatus: billingForm.dispatchType === "delayed_delivery" ? "pending_dispatch" : "delivered",
-      expectedDeliveryDate: billingForm.dispatchType === "delayed_delivery" ? billingForm.expectedDeliveryDate || "" : "",
+      dispatchType: mode === "estimate" ? "immediate" : billingForm.dispatchType || "immediate",
+      deliveryStatus: mode !== "estimate" && billingForm.dispatchType === "delayed_delivery" ? "pending_dispatch" : "delivered",
+      expectedDeliveryDate:
+        mode !== "estimate" && billingForm.dispatchType === "delayed_delivery" ? billingForm.expectedDeliveryDate || "" : "",
       driverName: billingForm.driverName || "",
       driverPhone: billingForm.driverPhone || "",
       driverVehicleNo: billingForm.vehicleNumber || "",
@@ -1675,7 +1681,9 @@ export function InvoiceCreationModal({
                     </div>
                   )}
 
-                  {/* DISPATCH / DELIVERY TIMING MODE SELECTOR */}
+                  {/* DISPATCH / DELIVERY TIMING MODE SELECTOR — bills only; an estimate
+                      is a quotation, nothing is handed over yet. */}
+                  {mode !== "estimate" && (
                   <div className="pt-2 border-t border-blue-100/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Dispatch Mode:</span>
@@ -1714,17 +1722,22 @@ export function InvoiceCreationModal({
                     )}
                     {billingForm.dispatchType === "delayed_delivery" && (
                       <label className="flex items-center gap-2 text-[11px] font-bold text-slate-700">
-                        Expected delivery date
+                        Delivery date *
                         <input
                           type="date"
                           value={billingForm.expectedDeliveryDate || ""}
+                          min={billingForm.invoiceDate || undefined}
                           onChange={(e) => setBillingForm({ ...billingForm, expectedDeliveryDate: e.target.value })}
-                          className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-mono"
+                          className={cn(
+                            "h-8 rounded-md border bg-white px-2 text-xs font-mono",
+                            billingForm.expectedDeliveryDate ? "border-slate-300" : "border-rose-400 bg-rose-50"
+                          )}
                         />
-                        <span className="font-normal text-slate-400">(optional — a reminder comes 2 days before)</span>
+                        <span className="font-normal text-slate-400">* confirm with the customer — a reminder comes 2 days before</span>
                       </label>
                     )}
                   </div>
+                  )}
                 </div>
 
                 {/* 8. GSTIN */}
@@ -2245,7 +2258,6 @@ export function InvoiceCreationModal({
                               <SelectItem value="5">5%</SelectItem>
                               <SelectItem value="12">12%</SelectItem>
                               <SelectItem value="18">18% (Standard)</SelectItem>
-                              <SelectItem value="28">28% (Luxury)</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>

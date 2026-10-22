@@ -147,6 +147,10 @@ export async function GET(req: Request) {
       // listed invoice-by-invoice.
       const b2cInvoices = invoices.filter((inv: any) => !isRealGstin(inv.customerGST));
       const groups = new Map<string, any>();
+      // The bills behind each consolidated row, so a row can be opened and
+      // checked bill by bill. Sent beside the rows (not in them), so the
+      // exported table keeps the official GSTR-1 shape.
+      const billsByRow: Record<string, any[]> = {};
       let b2clCandidates = 0;
 
       b2cInvoices.forEach((inv: any) => {
@@ -182,6 +186,24 @@ export async function GET(req: Request) {
         existing["SGST Amount"] += sgst;
         existing["Invoice Count"] += 1;
         groups.set(key, existing);
+        (billsByRow[key] ||= []).push({
+          invoiceNumber: inv.invoiceNumber,
+          date: inv.date || "",
+          customerName: inv.customerName || "",
+          customerPhone: inv.customerPhone || "",
+          taxable: round2(taxable),
+          cgst: round2(cgst),
+          sgst: round2(sgst),
+          igst: round2(igst),
+          total: round2(Number(inv.total) || 0),
+          items: (inv.items || []).map((l: any) => ({
+            name: l.itemName || "",
+            hsn: l.hsn || "",
+            gstRate: Number(l.gstRate) || 0,
+            quantity: Number(l.quantity) || 1,
+            taxable: round2(Number(l.taxableAmount) || 0),
+          })),
+        });
       });
 
       const rows = Array.from(groups.values()).map((g: any) => ({
@@ -192,7 +214,7 @@ export async function GET(req: Request) {
         "SGST Amount": round2(g["SGST Amount"]),
       }));
 
-      return NextResponse.json({ success: true, data: rows, meta: { b2clCandidates } });
+      return NextResponse.json({ success: true, data: rows, meta: { b2clCandidates, billsByRow } });
     }
 
     if (type === "GSTR1") {

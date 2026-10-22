@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model } from "mongoose";
+import { allowedGstRate } from "@/lib/gst-rate";
 
 export interface IWarrantyPlan {
   planName: string;
@@ -82,7 +83,8 @@ const ItemSchema = new Schema<IItem>(
     brand: { type: String, default: "" },
     unit: { type: String, default: "Pcs" },
     hsnCode: { type: String, default: "8528" },
-    gstRate: { type: Number, default: 18 },
+    // Never saved above 18% (see lib/gst-rate.ts).
+    gstRate: { type: Number, default: 18, set: (v: any) => allowedGstRate(v) },
     purchasePrice: { type: Number, required: true },
     sellingPrice: { type: Number, required: true },
     vsp: { type: Number, default: 0 },
