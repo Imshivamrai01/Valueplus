@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Receipt, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils";
+import { todayInIndia } from "@/lib/today";
 
 interface LineItem {
   name: string;
@@ -33,7 +34,7 @@ export function VendorBillModal({
 }) {
   const queryClient = useQueryClient();
   const [selectedVendor, setSelectedVendor] = useState(vendorId || "");
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(todayInIndia());
   const [dueDate, setDueDate] = useState("");
   const [gstRate, setGstRate] = useState("18");
   const [reference, setReference] = useState("");
@@ -43,7 +44,7 @@ export function VendorBillModal({
   useEffect(() => {
     if (!open) return;
     setSelectedVendor(vendorId || "");
-    setDate(new Date().toISOString().split("T")[0]);
+    setDate(todayInIndia());
     setDueDate("");
     setGstRate("18");
     setReference("");
@@ -112,7 +113,7 @@ export function VendorBillModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl p-0 rounded-2xl border-none shadow-2xl overflow-hidden">
+      <DialogContent className="max-w-2xl p-0 rounded-2xl border-none shadow-2xl overflow-y-auto">
         <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-5 flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl bg-white/10 flex items-center justify-center border border-white/20">
             <Receipt className="w-5 h-5 text-[#76C043]" />

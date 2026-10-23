@@ -299,7 +299,7 @@ function AllLedgersInner() {
       )}
 
       <Dialog open={Boolean(drawerParty)} onOpenChange={(o) => !o && setDrawerParty(null)}>
-        <DialogContent className="max-w-5xl p-0 overflow-hidden rounded-2xl border-none shadow-2xl">
+        <DialogContent className="max-w-5xl p-0 overflow-y-auto rounded-2xl border-none shadow-2xl">
           {drawerParty && (
             <PartyLedgerPanel
               party="supplier"

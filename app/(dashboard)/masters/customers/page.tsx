@@ -336,7 +336,7 @@ export default function CustomersPage() {
       </div>
 
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent className="max-w-3xl p-0 rounded-2xl border-none shadow-2xl overflow-hidden">
+        <DialogContent className="max-w-3xl p-0 rounded-2xl border-none shadow-2xl overflow-y-auto">
           {/* Header */}
           <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-6 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -496,7 +496,7 @@ export default function CustomersPage() {
       {/* Same shared ledger panel the vendor and supplier screens use, so every
           party's balance and ageing is computed the one way. */}
       <Dialog open={isLedgerOpen} onOpenChange={setIsLedgerOpen}>
-        <DialogContent className="max-w-5xl p-0 overflow-hidden rounded-2xl border-none shadow-2xl">
+        <DialogContent className="max-w-5xl p-0 overflow-y-auto rounded-2xl border-none shadow-2xl">
           {selectedCustomerForLedger && (
             <PartyLedgerPanel party="customer" partyId={selectedCustomerForLedger._id} />
           )}

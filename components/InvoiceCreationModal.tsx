@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { allowedGstRate } from "@/lib/gst-rate";
+const todayInIndia = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -58,13 +59,18 @@ export function InvoiceCreationModal({
   onSuccess, 
   mode = "invoice",
   preloadedEstimate = null,
+  editEstimate = null,
 }: { 
   isOpen: boolean; 
   onClose: () => void; 
   onSuccess?: () => void; 
   mode?: "invoice" | "estimate" | "sales-order" | "credit-note";
   preloadedEstimate?: any;
+  /** An existing estimate to edit: the form opens filled with it and saving
+   *  updates it (same number) instead of creating a new one. */
+  editEstimate?: any;
 }) {
+  const isEditingEstimate = mode === "estimate" && Boolean(editEstimate);
   const queryClient = useQueryClient();
   const [offlineInvoiceToPrint, setOfflineInvoiceToPrint] = useState<any>(null);
   const [generatedInvoiceToPrint, setGeneratedInvoiceToPrint] = useState<any>(null);
@@ -177,11 +183,12 @@ export function InvoiceCreationModal({
 
   const INITIAL_BILLING_FORM = {
     invoiceNo: "",
-    invoiceDate: new Date().toISOString().split("T")[0],
+    // Today in India time (toISOString is UTC — "yesterday" before 5:30 am).
+    invoiceDate: todayInIndia(),
     // Defaults to today, not some days-out guess — the picker still lets it be
     // moved up to 7 days ahead, but an untouched field should mean "due now",
     // not silently promise a week's grace the customer never actually asked for.
-    dueDate: new Date().toISOString().split("T")[0],
+    dueDate: todayInIndia(),
     customerId: "",
     customerName: "",
     customerPhone: "",
@@ -647,7 +654,7 @@ export function InvoiceCreationModal({
             extendedWarrantyPlan: "none",
             extendedWarrantyAmount: 0,
             extendedWarrantyDuration: 1,
-            extendedWarrantyStartDate: new Date().toISOString().split("T")[0],
+            extendedWarrantyStartDate: todayInIndia(),
             extendedWarrantyEndDate: "",
             extendedWarrantyHsn: "",
             extendedWarrantySerial: "",
@@ -678,7 +685,7 @@ export function InvoiceCreationModal({
             extendedWarrantyPlan: "none",
             extendedWarrantyAmount: 0,
             extendedWarrantyDuration: 1,
-            extendedWarrantyStartDate: new Date().toISOString().split("T")[0],
+            extendedWarrantyStartDate: todayInIndia(),
             extendedWarrantyEndDate: "",
             extendedWarrantyHsn: "",
             extendedWarrantySerial: "",
@@ -710,6 +717,25 @@ export function InvoiceCreationModal({
       handleLoadEstimate(preloadedEstimate);
     }
   }, [isOpen, preloadedEstimate]);
+
+  // Editing an estimate: same number, date and salesperson; the company is the
+  // one it was made under, so no new number is drawn.
+  useEffect(() => {
+    if (!isOpen || !isEditingEstimate) return;
+    const est = editEstimate;
+    setBillingEntity(entityOf(est.billingEntity || est));
+    handleLoadEstimate(est);
+    setBillingForm((prev: any) => ({
+      ...prev,
+      invoiceNo: est.estimateNumber || est.estimateNo || prev.invoiceNo,
+      invoiceDate: String(est.date || prev.invoiceDate).slice(0, 10),
+      dueDate: est.expiryDate ? String(est.expiryDate).slice(0, 10) : prev.dueDate,
+      salesExecutive: est.salesperson || est.salesExecutive || prev.salesExecutive,
+      notes: est.notes && est.notes !== "Official Estimate Generated" ? est.notes : "",
+      linkedEstimateNumber: undefined,
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, isEditingEstimate, editEstimate]);
 
   const handlePhoneLookup = (phone: string) => {
     const cleanPhone = phone.replace(/\D/g, '');
@@ -975,7 +1001,7 @@ export function InvoiceCreationModal({
       if (mode === "estimate") {
         try {
           const estRes = await fetch("/api/estimates", {
-            method: "POST",
+            method: isEditingEstimate ? "PUT" : "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               estimateNumber: payload.invoiceNumber,
@@ -1015,6 +1041,19 @@ export function InvoiceCreationModal({
         }
       }
 
+      // An edited estimate updates its own quotation record; nothing else (stock,
+      // payments) is touched — an estimate never moved any of them.
+      if (isEditingEstimate) {
+        const upd = await fetch("/api/invoices", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...payload, type: "proforma" }),
+        });
+        const updJson = await upd.json().catch(() => ({}));
+        // Older estimates exist only in the estimates list — that one was updated above.
+        return { isOffline: false, edited: true, data: updJson?.data || { invoiceNumber: payload.invoiceNumber } };
+      }
+
       const res = await fetch("/api/invoices", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1034,7 +1073,13 @@ export function InvoiceCreationModal({
         toast.warning("⚡ Saved locally in offline queue. Auto-sync on connection.", { duration: 5000 });
         setOfflineInvoiceToPrint(result.data);
       } else {
-        toast.success(mode === "estimate" ? `Estimate ${result.data?.invoiceNumber || ""} created & recorded!` : `Invoice ${result.data?.invoiceNumber || ""} finalized successfully!`);
+        toast.success(
+          result.edited
+            ? `Estimate ${result.data?.invoiceNumber || ""} updated.`
+            : mode === "estimate"
+            ? `Estimate ${result.data?.invoiceNumber || ""} created & recorded!`
+            : `Invoice ${result.data?.invoiceNumber || ""} finalized successfully!`
+        );
         if (result.numberReassignedFrom) {
           toast.warning(
             `Number ${result.numberReassignedFrom} was already taken — this bill was saved as ${result.data?.invoiceNumber}.`,
@@ -1340,7 +1385,7 @@ export function InvoiceCreationModal({
       salesperson: isIndividualStaff ? currentUserName : (billingForm.salesExecutive || currentUserName),
       createdBy: currentUserName,
       date: billingForm.invoiceDate,
-      dueDate: billingForm.dueDate || new Date().toISOString().split("T")[0],
+      dueDate: billingForm.dueDate || todayInIndia(),
       customerName: billingForm.customerName,
       customerPhone: billingForm.customerPhone,
       customerAltPhone: billingForm.customerAltPhone || "",
@@ -1490,7 +1535,7 @@ export function InvoiceCreationModal({
             >
             {/* SECTION 1: CUSTOMER-FIRST BILLING FORM */}
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-              <div className="flex items-center justify-between border-b pb-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-3">
                 <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#3F63AD] flex items-center gap-2">
                   <Users className="w-4 h-4 text-[#3F63AD]" /> 1. CUSTOMER PARTICULARS (CUSTOMER-FIRST IDENTIFICATION)
                 </h4>
@@ -1567,6 +1612,31 @@ export function InvoiceCreationModal({
                   <Label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Doc / Invoice No.</Label>
                   <Input value={billingForm.invoiceNo} onChange={e => setBillingForm({ ...billingForm, invoiceNo: e.target.value })} className="font-mono text-xs font-bold text-[#3F63AD] bg-blue-50/60 border-blue-200" />
                 </div>
+
+                {/* 3b. BILL DATE — only the Admin and the Store Manager can date a bill
+                    earlier; a Store Manager's back-dated bill goes to the Admin to approve. */}
+                {mode === "invoice" && ["admin", "superadmin", "manager"].includes(userRole) && (
+                  <div className="space-y-1.5 md:col-span-1">
+                    <Label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Bill Date</Label>
+                    <Input
+                      type="date"
+                      value={billingForm.invoiceDate}
+                      max={todayInIndia()}
+                      onChange={(e) => setBillingForm({ ...billingForm, invoiceDate: e.target.value || todayInIndia() })}
+                      className={cn(
+                        "font-mono text-xs",
+                        billingForm.invoiceDate < todayInIndia() && "border-amber-400 bg-amber-50 text-amber-900"
+                      )}
+                    />
+                    {billingForm.invoiceDate < todayInIndia() && (
+                      <p className="text-[10px] font-semibold text-amber-700">
+                        {userRole === "manager"
+                          ? "Back-dated — the Admin will be asked to approve this bill."
+                          : "Back-dated bill."}
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {/* 4. BILLING ADDRESS GROUP */}
                 <div className="space-y-1.5 md:col-span-2">
@@ -1924,7 +1994,7 @@ export function InvoiceCreationModal({
 
             {/* SECTION 2: ITEMS, VP CODES, STOCK, SERIALS & EXTENDED WARRANTY */}
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#3F63AD] flex items-center gap-2">
                     <ShoppingCart className="w-4 h-4 text-[#3F63AD]" /> 2. PRODUCTS, VP CODES, INVENTORY STOCK & SERIAL / WARRANTY
@@ -1990,12 +2060,17 @@ export function InvoiceCreationModal({
                       <div
                         key={item.id}
                         onClick={() => setCollapsedIds(prev => { const next = new Set(prev); next.delete(item.id); return next; })}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/40 cursor-pointer transition-colors text-xs"
+                        className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/40 cursor-pointer transition-colors text-xs"
                       >
                         <span className="w-5 h-5 shrink-0 rounded-full bg-[#3F63AD] text-white flex items-center justify-center text-[10px] font-bold">
                           {idx + 1}
                         </span>
-                        <span className="font-bold text-slate-800 truncate flex-1 min-w-0">{item.name}</span>
+                        <span className="font-bold text-slate-800 truncate flex-1 min-w-[8rem]">{item.name}</span>
+                        {item.serialNumber && (
+                          <span className="font-mono text-[10px] font-bold text-[#3F63AD] bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5 shrink-0">
+                            SN: {item.serialNumber}
+                          </span>
+                        )}
                         <span className="text-slate-500 font-mono shrink-0">{item.qty} × {formatCurrency(item.rate)}</span>
                         {Number(item.discount) > 0 && (
                           <span className="text-emerald-700 font-mono shrink-0">-{formatCurrency(item.discount)}</span>
@@ -2018,9 +2093,9 @@ export function InvoiceCreationModal({
                       ref={item.id === justAddedId ? lastRowRef : undefined}
                       className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3 relative hover:border-blue-300 transition-colors"
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="w-6 h-6 rounded-full bg-[#3F63AD] text-white flex items-center justify-center text-xs font-bold">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2 min-w-0">
+                          <span className="w-6 h-6 shrink-0 rounded-full bg-[#3F63AD] text-white flex items-center justify-center text-xs font-bold">
                             {idx + 1}
                           </span>
                           <span className="text-xs font-bold text-slate-800">
@@ -2071,7 +2146,7 @@ export function InvoiceCreationModal({
                             </Badge>
                           )}
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 ml-auto">
                           {item.name && (
                             <button
                               type="button"
@@ -2105,7 +2180,7 @@ export function InvoiceCreationModal({
                             <div className="absolute left-0 top-12 w-full bg-white border-2 border-[#3F63AD] shadow-2xl rounded-xl z-[9999] max-h-64 overflow-y-auto divide-y divide-slate-100 p-1.5">
                               <div className="px-3 py-1 bg-slate-100 text-[10px] font-bold text-slate-600 uppercase flex justify-between rounded-t-lg">
                                 <span>Catalog Match ({suggestions.length} items)</span>
-                                <span>🏪 Showroom & 🏭 Godown Live Stock</span>
+                                <span className="hidden sm:inline">🏪 Showroom & 🏭 Godown Live Stock</span>
                               </div>
                               {suggestions.map((prod: any, pIdx: number) => {
                                 const shStock = prod.showroomStock !== undefined ? prod.showroomStock : (prod.currentStock || 0);
@@ -2126,7 +2201,7 @@ export function InvoiceCreationModal({
                                           <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">🏷️ {prod.brand}</span>
                                         )}
                                       </div>
-                                      <p className="font-bold text-slate-900 text-xs truncate max-w-[320px]">{prod.name}</p>
+                                      <p className="font-bold text-slate-900 text-xs truncate max-w-[180px] sm:max-w-[320px]">{prod.name}</p>
                                       
                                       {/* STOCK BREAKDOWN BADGES */}
                                       <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
@@ -2423,7 +2498,7 @@ export function InvoiceCreationModal({
             {/* 3A. ESTIMATE QUOTATION TERMS (PRICE QUOTE ONLY BY DEFAULT) */}
             {mode === "estimate" && (
               <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-                <div className="flex items-center justify-between border-b pb-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-3">
                   <h4 className="text-xs font-extrabold uppercase tracking-wider text-blue-700 flex items-center gap-2">
                     <FileText className="w-4 h-4 text-blue-600" /> 3. ESTIMATE QUOTATION TERMS
                   </h4>
@@ -2482,7 +2557,7 @@ export function InvoiceCreationModal({
             {/* 3B. PAYMENT MODES & RECONCILIATION (CASH, UPI, ONLINE, CREDIT CARD + MDR, DEBIT CARD, FINANCE, DUE) */}
             {(mode !== "estimate" || estimateIncludesAdvance) && (
               <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-                <div className="flex items-center justify-between border-b pb-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3">
                     <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#3F63AD] flex items-center gap-2">
                       <CreditCard className="w-4 h-4 text-[#3F63AD]" /> 
                       {mode === "estimate" ? "3. TOKEN ADVANCE PAYMENT MODE SPECIFICATIONS" : "3. PAYMENT MODE SPECIFICATIONS & RECONCILIATION"}
@@ -3137,10 +3212,10 @@ export function InvoiceCreationModal({
                       <Input
                         type="date"
                         value={billingForm.dueDate || ""}
-                        min={new Date().toISOString().split("T")[0]}
+                        min={todayInIndia()}
                         max={new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0]}
                         onChange={(e) => {
-                          const todayStr = new Date().toISOString().split("T")[0];
+                          const todayStr = todayInIndia();
                           const maxStr = new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0];
                           let picked = e.target.value;
                           if (picked && picked < todayStr) picked = todayStr;
@@ -3309,7 +3384,7 @@ export function InvoiceCreationModal({
 
       {/* ─── Admin PIN Authorization Dialog (Floor Price Override) ─── */}
       <Dialog open={!!pinPrompt} onOpenChange={(open) => { if (!open) setPinPrompt(null); }}>
-        <DialogContent className="max-w-md p-0 rounded-2xl border-none shadow-2xl overflow-hidden bg-white z-[99999]">
+        <DialogContent className="max-w-md p-0 rounded-2xl border-none shadow-2xl overflow-y-auto bg-white z-[99999]">
           <div className="bg-gradient-to-r from-amber-600 to-amber-700 text-white p-5 flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center backdrop-blur-md">
               <Shield className="w-5 h-5 text-white" />

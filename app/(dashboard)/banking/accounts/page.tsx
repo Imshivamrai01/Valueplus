@@ -19,6 +19,7 @@ import { formatCurrency } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ExportMenu } from "@/components/shared/ExportMenu";
 import { describeDenominations } from "@/lib/cashDenominations";
+import { todayInIndia } from "@/lib/today";
 
 export default function BankAccountsAndCashRegisterPage() {
   const queryClient = useQueryClient();
@@ -50,7 +51,7 @@ export default function BankAccountsAndCashRegisterPage() {
     expenseCategory: "Tea, Pantry & Staff Refreshment",
     referenceNo: "",
     description: "",
-    date: new Date().toISOString().split("T")[0],
+    date: todayInIndia(),
     recordedBy: "Amit Singh (Store Cashier)",
   });
 
@@ -176,7 +177,7 @@ export default function BankAccountsAndCashRegisterPage() {
         expenseCategory: "Tea, Pantry & Staff Refreshment",
         referenceNo: "",
         description: "",
-        date: new Date().toISOString().split("T")[0],
+        date: todayInIndia(),
         recordedBy: "Amit Singh (Store Cashier)",
       });
     },
@@ -223,7 +224,7 @@ export default function BankAccountsAndCashRegisterPage() {
       expenseCategory: "Tea, Pantry & Staff Refreshment",
       referenceNo: `VCH-${Date.now().toString().slice(-5)}`,
       description: "",
-      date: new Date().toISOString().split("T")[0],
+      date: todayInIndia(),
       recordedBy: "Amit Singh (Store Cashier)",
     });
     setIsCashOutflowModalOpen(true);
@@ -736,7 +737,7 @@ export default function BankAccountsAndCashRegisterPage() {
 
       {/* ─── 4. RECORD CASH MOVEMENT / OUTFLOW MODAL (CLEAN SPACIOUS LAYOUT) ─── */}
       <Dialog open={isCashOutflowModalOpen} onOpenChange={setIsCashOutflowModalOpen}>
-        <DialogContent className="max-w-xl p-0 rounded-2xl shadow-2xl border border-slate-200 overflow-hidden bg-white">
+        <DialogContent className="max-w-xl p-0 rounded-2xl shadow-2xl border border-slate-200 overflow-y-auto bg-white">
           {/* HEADER */}
           <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-white">
             <div className="flex items-center gap-3">
@@ -1007,7 +1008,7 @@ export default function BankAccountsAndCashRegisterPage() {
 
       {/* ─── 5. ADD / EDIT BANK ACCOUNT MODAL ─── */}
       <Dialog open={isAddBankModalOpen} onOpenChange={setIsAddBankModalOpen}>
-        <DialogContent className="max-w-md p-0 rounded-2xl shadow-2xl border border-slate-200 overflow-hidden bg-white">
+        <DialogContent className="max-w-md p-0 rounded-2xl shadow-2xl border border-slate-200 overflow-y-auto bg-white">
           <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-white">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#30539C] flex items-center justify-center border border-blue-100">

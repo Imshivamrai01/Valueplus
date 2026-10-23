@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils";
+import { todayInIndia } from "@/lib/today";
 
 /**
  * Pay a supplier against one purchase bill — the whole balance or part of it.
@@ -18,7 +19,7 @@ import { formatCurrency } from "@/lib/utils";
  */
 
 const MODES = ["Cash", "UPI", "NEFT", "RTGS", "IMPS", "Cheque", "Card"];
-const today = () => new Date().toISOString().split("T")[0];
+const today = () => todayInIndia();
 
 export function RecordBillPaymentDialog({
   bill,

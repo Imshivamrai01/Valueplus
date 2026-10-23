@@ -121,7 +121,7 @@ export function VendorFormModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl p-0 rounded-2xl border-none shadow-2xl overflow-hidden">
+      <DialogContent className="max-w-3xl p-0 rounded-2xl border-none shadow-2xl overflow-y-auto">
         <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-6 flex items-center gap-3">
           <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center border border-white/20">
             <Building2 className="w-6 h-6 text-[#76C043]" />

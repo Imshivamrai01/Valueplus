@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { Plus, Search, FileText, Send, CheckCircle, Clock, Trash2, AlertTriangle, Eye, User, CalendarDays, WalletCards, Printer, MessageCircle } from "lucide-react";
+import { Plus, Search, FileText, Send, CheckCircle, Clock, Trash2, AlertTriangle, Eye, User, CalendarDays, WalletCards, Printer, MessageCircle, Pencil } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { AuthorizePinDialog, PinAuthResult } from "@/components/AuthorizePinDialog";
@@ -47,6 +47,7 @@ export default function EstimatesPage() {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [selectedEstimate, setSelectedEstimate] = useState<any | null>(null);
   const [convertingEstimate, setConvertingEstimate] = useState<any | null>(null);
+  const [editingEstimate, setEditingEstimate] = useState<any | null>(null);
 
   const { data: estimates = [], isLoading } = useQuery({
     queryKey: ["estimates"],
@@ -299,6 +300,18 @@ export default function EstimatesPage() {
                     >
                       <MessageCircle className="w-3.5 h-3.5" />
                     </Button>
+                    {e.status !== "Converted" && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-amber-700 hover:bg-amber-50"
+                        onClick={() => setEditingEstimate(e)}
+                        title="Edit Estimate"
+                        aria-label={"Edit estimate " + (e.estimateNumber || e.estimateNo)}
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
                     <Button variant="ghost" size="icon" className="h-7 w-7 text-[#3F63AD] hover:bg-blue-50" onClick={() => setSelectedEstimate(e)} title="View Info">
                       <Eye className="w-3.5 h-3.5" />
                     </Button>
@@ -323,6 +336,17 @@ export default function EstimatesPage() {
         }} 
       />
 
+      <InvoiceCreationModal
+        isOpen={!!editingEstimate}
+        onClose={() => setEditingEstimate(null)}
+        mode="estimate"
+        editEstimate={editingEstimate}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ["estimates"] });
+          setEditingEstimate(null);
+        }}
+      />
+
       <InvoiceCreationModal 
         isOpen={!!convertingEstimate} 
         onClose={() => setConvertingEstimate(null)} 
@@ -337,7 +361,7 @@ export default function EstimatesPage() {
 
       {selectedEstimate && (
         <Dialog open={!!selectedEstimate} onOpenChange={() => setSelectedEstimate(null)}>
-          <DialogContent className="max-w-4xl p-0 rounded-2xl border-none shadow-2xl overflow-hidden bg-slate-50/50">
+          <DialogContent className="max-w-4xl p-0 rounded-2xl border-none shadow-2xl overflow-y-auto bg-slate-50/50">
             {/* Header */}
             <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-6 pr-14 flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3 min-w-0">

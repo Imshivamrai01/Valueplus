@@ -412,7 +412,7 @@ export function PurchaseImportModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-6xl p-0 rounded-2xl border-none shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+      <DialogContent className="max-w-6xl p-0 rounded-2xl border-none shadow-2xl overflow-y-auto max-h-[90vh] flex flex-col">
         <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-5 flex items-center gap-3 shrink-0">
           <div className="w-11 h-11 rounded-xl bg-white/10 flex items-center justify-center border border-white/20">
             <UploadCloud className="w-5 h-5 text-[#76C043]" />

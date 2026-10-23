@@ -16,6 +16,7 @@ import {
 import { toast } from "sonner";
 import { useBranch } from "@/context/BranchContext";
 import { ExportMenu } from "@/components/shared/ExportMenu";
+import { todayInIndia } from "@/lib/today";
 
 export default function InventoryAuditPage() {
   const queryClient = useQueryClient();
@@ -265,7 +266,7 @@ export default function InventoryAuditPage() {
             <Button variant="ghost" onClick={() => setIsAuditModalOpen(false)}>Cancel</Button>
             <Button
               onClick={() => submitAuditMutation.mutate({
-                auditDate: new Date().toISOString().split("T")[0],
+                auditDate: todayInIndia(),
                 auditor: auditorName,
                 items: auditItems,
               })}

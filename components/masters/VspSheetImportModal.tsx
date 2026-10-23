@@ -122,7 +122,7 @@ export function VspSheetImportModal({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-3xl p-0 rounded-2xl overflow-hidden border-none shadow-2xl">
+      <DialogContent className="max-w-3xl p-0 rounded-2xl overflow-y-auto border-none shadow-2xl">
         <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-5">
           <DialogTitle className="text-lg font-black tracking-tight flex items-center gap-2">
             <FileSpreadsheet className="w-5 h-5 text-[#76C043]" /> Update Prices from Sheet

@@ -370,7 +370,7 @@ export default function SalesIncentivesPage() {
 
       {/* INVOICE PREVIEW MODAL */}
       <Dialog open={!!viewInvoice} onOpenChange={() => setViewInvoice(null)}>
-        <DialogContent className="max-w-4xl p-0 overflow-hidden rounded-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl p-0 overflow-y-auto rounded-2xl max-h-[90vh] overflow-y-auto">
           {viewInvoice && <ValueplusInvoice invoiceData={viewInvoice} onBack={() => setViewInvoice(null)} />}
         </DialogContent>
       </Dialog>

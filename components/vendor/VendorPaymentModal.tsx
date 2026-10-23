@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { WalletCards } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils";
+import { todayInIndia } from "@/lib/today";
 
 /**
  * Modes are free text on the model, but the counter picks from this list so the
@@ -45,7 +46,7 @@ export function VendorPaymentModal({
     vendorId: vendorId || "",
     amount: "",
     mode: "Cash",
-    date: new Date().toISOString().split("T")[0],
+    date: todayInIndia(),
     refNo: "",
     againstBillNo: "",
     notes: "",
@@ -58,7 +59,7 @@ export function VendorPaymentModal({
       vendorId: vendorId || "",
       amount: "",
       mode: "Cash",
-      date: new Date().toISOString().split("T")[0],
+      date: todayInIndia(),
       refNo: "",
       againstBillNo: "",
       notes: "",
@@ -132,7 +133,7 @@ export function VendorPaymentModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg p-0 rounded-2xl border-none shadow-2xl overflow-hidden">
+      <DialogContent className="max-w-lg p-0 rounded-2xl border-none shadow-2xl overflow-y-auto">
         <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-5 flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl bg-white/10 flex items-center justify-center border border-white/20">
             <WalletCards className="w-5 h-5 text-[#76C043]" />

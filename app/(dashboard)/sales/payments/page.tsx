@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/shared/date-range-filter";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 import { ExportMenu } from "@/components/shared/ExportMenu";
+import { todayInIndia } from "@/lib/today";
 
 export default function ReceivePaymentPage() {
   const [search, setSearch] = useState("");
@@ -80,7 +81,7 @@ export default function ReceivePaymentPage() {
 
   const totalReceived = currentTabPayments.reduce((sum: number, p: any) => sum + (p.type === "received" ? (p.amount || 0) : -(p.amount || 0)), 0);
   const todayReceived = currentTabPayments
-    .filter((p: any) => p.date === new Date().toISOString().split("T")[0])
+    .filter((p: any) => p.date === todayInIndia())
     .reduce((sum: number, p: any) => sum + (p.type === "received" ? (p.amount || 0) : -(p.amount || 0)), 0);
 
   return (

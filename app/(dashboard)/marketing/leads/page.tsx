@@ -16,9 +16,11 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { cn, indianNumberFormat, formatCurrency } from "@/lib/utils";
 import { ExportMenu } from "@/components/shared/ExportMenu";
 import { LeadProductPicker, leadProductsLabel, leadProductsTotal, type LeadProduct } from "@/components/shared/LeadProductPicker";
+import { todayInIndia } from "@/lib/today";
 
 const LEAD_STATUSES = ["all", "New", "Contacted", "Interested", "Follow-up", "Converted", "Lost"] as const;
 
@@ -42,6 +44,12 @@ function calledAgo(at: any): string {
 
 export default function LeadsPipelinePage() {
   const queryClient = useQueryClient();
+  const { data: session } = useSession();
+  const myRole = String((session?.user as any)?.role || "").toLowerCase();
+  const myName = String(session?.user?.name || "");
+  // A salesperson's new lead is theirs unless they pick someone else — they only
+  // see leads assigned to them.
+  const ownLeadDefault = ["salesman", "sales"].includes(myRole) ? myName : "";
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -59,7 +67,7 @@ export default function LeadsPipelinePage() {
     assignedStaff: "",
     priority: "Medium" as "Low" | "Medium" | "High" | "Urgent",
     status: "New" as "New" | "Contacted" | "Interested" | "Follow-up" | "Converted" | "Lost",
-    followUpDate: new Date().toISOString().split("T")[0],
+    followUpDate: todayInIndia(),
     notes: "",
   });
 
@@ -128,7 +136,7 @@ export default function LeadsPipelinePage() {
         assignedStaff: "",
         priority: "Medium",
         status: "New",
-        followUpDate: new Date().toISOString().split("T")[0],
+        followUpDate: todayInIndia(),
         notes: "",
       });
     },
@@ -138,7 +146,7 @@ export default function LeadsPipelinePage() {
   // Log a follow-up: when the customer was contacted and when to call next.
   const [followUpLead, setFollowUpLead] = useState<any | null>(null);
   const [followUpForm, setFollowUpForm] = useState({ date: "", nextDate: "", notes: "" });
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = todayInIndia();
 
   const openFollowUp = (lead: any) => {
     setFollowUpLead(lead);
@@ -198,6 +206,14 @@ export default function LeadsPipelinePage() {
   const handleConvertLeadToBill = (lead: any) => {
     router.push(`/sales/invoices?new=true&name=${encodeURIComponent(lead.customerName)}&phone=${encodeURIComponent(lead.mobile)}`);
   };
+
+  // Opening "+ New Lead" as a salesperson starts with their own name assigned.
+  React.useEffect(() => {
+    if (isAddModalOpen && ownLeadDefault && !leadForm.assignedStaff) {
+      setLeadForm((f) => ({ ...f, assignedStaff: ownLeadDefault }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAddModalOpen, ownLeadDefault]);
 
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -313,7 +329,7 @@ export default function LeadsPipelinePage() {
             />
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <ExportMenu
               title="Lead Management & Sales Pipeline"
               subtitle={`${filtered.length} leads`}
@@ -523,7 +539,7 @@ export default function LeadsPipelinePage() {
 
       {/* ─── ADD NEW LEAD MODAL ────────────────────────────────────────── */}
       <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
-        <DialogContent className="max-w-lg p-0 rounded-2xl overflow-hidden border-none shadow-2xl">
+        <DialogContent className="max-w-lg p-0 rounded-2xl overflow-y-auto border-none shadow-2xl">
           <div className="bg-gradient-to-r from-[#1B2537] via-[#10B981]/90 to-[#1B2537] text-white p-5">
             <div className="flex items-center gap-2.5">
               <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center">
@@ -693,7 +709,7 @@ export default function LeadsPipelinePage() {
 
       {/* ─── LOG A FOLLOW-UP ─── */}
       <Dialog open={!!followUpLead} onOpenChange={() => setFollowUpLead(null)}>
-        <DialogContent className="max-w-md p-0 rounded-2xl overflow-hidden border-none shadow-2xl">
+        <DialogContent className="max-w-md p-0 rounded-2xl overflow-y-auto border-none shadow-2xl">
           <div className="bg-gradient-to-r from-[#1B2537] via-[#243753] to-[#1B2537] text-white p-5">
             <DialogTitle className="text-base font-bold tracking-tight flex items-center gap-2">
               <Clock className="w-4 h-4 text-amber-400" /> Record Follow-up

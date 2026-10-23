@@ -19,6 +19,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { todayInIndia } from "@/lib/today";
 
 export const DATE_FILTER_OPTIONS = [
   { label: "Today", value: "Today" },
@@ -36,8 +37,8 @@ export type DateFilterType = (typeof DATE_FILTER_OPTIONS)[number]["value"];
 export function resolveDateRange(filter: string, customStart?: string, customEnd?: string) {
   const today = new Date();
   today.setHours(23, 59, 59, 999);
-  let start = new Date().toISOString().split("T")[0];
-  let end = new Date().toISOString().split("T")[0];
+  let start = todayInIndia();
+  let end = todayInIndia();
 
   if (filter === "Yesterday") {
     const y = new Date();
@@ -48,12 +49,12 @@ export function resolveDateRange(filter: string, customStart?: string, customEnd
     const d = new Date();
     d.setDate(d.getDate() - 7);
     start = d.toISOString().split("T")[0];
-    end = new Date().toISOString().split("T")[0];
+    end = todayInIndia();
   } else if (filter === "This Month") {
     const d = new Date();
     d.setDate(1);
     start = d.toISOString().split("T")[0];
-    end = new Date().toISOString().split("T")[0];
+    end = todayInIndia();
   } else if (filter === "Last Month") {
     const d = new Date();
     d.setMonth(d.getMonth() - 1);
@@ -65,12 +66,12 @@ export function resolveDateRange(filter: string, customStart?: string, customEnd
     const d = new Date();
     d.setMonth(d.getMonth() - 3);
     start = d.toISOString().split("T")[0];
-    end = new Date().toISOString().split("T")[0];
+    end = todayInIndia();
   } else if (filter === "Last Year") {
     const d = new Date();
     d.setFullYear(d.getFullYear() - 1);
     start = d.toISOString().split("T")[0];
-    end = new Date().toISOString().split("T")[0];
+    end = todayInIndia();
   } else if (filter === "Custom Date" && customStart && customEnd) {
     start = customStart;
     end = customEnd;
@@ -108,8 +109,8 @@ export function DateRangeFilter({
   placeholder = "Select Date",
 }: DateRangeFilterProps) {
   const [customModalOpen, setCustomModalOpen] = useState(false);
-  const [tempStart, setTempStart] = useState(() => new Date().toISOString().split("T")[0]);
-  const [tempEnd, setTempEnd] = useState(() => new Date().toISOString().split("T")[0]);
+  const [tempStart, setTempStart] = useState(() => todayInIndia());
+  const [tempEnd, setTempEnd] = useState(() => todayInIndia());
 
   const handleSelectChange = (val: string) => {
     if (val === "Custom Date") {

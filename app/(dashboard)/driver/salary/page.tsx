@@ -259,7 +259,7 @@ export default function DriverSalaryPage() {
 
         {/* ─── REQUEST ADVANCE MODAL ─────────────────────────────────── */}
         <Dialog open={advanceRequestOpen} onOpenChange={setAdvanceRequestOpen}>
-          <DialogContent className="max-w-md p-0 rounded-3xl overflow-hidden shadow-2xl border-none">
+          <DialogContent className="max-w-md p-0 rounded-3xl overflow-y-auto shadow-2xl border-none">
             <div className="bg-[#1B2537] text-white p-5 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-400/30 flex items-center justify-center font-bold">

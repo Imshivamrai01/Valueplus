@@ -18,6 +18,7 @@ import {
 import { formatDate } from "@/lib/utils";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 import { ExportMenu } from "@/components/shared/ExportMenu";
+import { todayInIndia } from "@/lib/today";
 
 export default function StockAdjustmentPage() {
   const queryClient = useQueryClient();
@@ -26,7 +27,7 @@ export default function StockAdjustmentPage() {
   const [adjustmentToDelete, setAdjustmentToDelete] = useState<string | null>(null);
 
   const [newAdjustment, setNewAdjustment] = useState({
-    date: new Date().toISOString().split("T")[0],
+    date: todayInIndia(),
     reason: "Opening Stock",
     warehouseId: "",
     items: [{ itemId: "", itemName: "", quantity: 1, type: "in", remarks: "" }]
@@ -95,7 +96,7 @@ export default function StockAdjustmentPage() {
       toast.success(`Stock Adjustment ${data.adjustmentNo} created successfully!`);
       setIsFormOpen(false);
       setNewAdjustment({
-        date: new Date().toISOString().split("T")[0],
+        date: todayInIndia(),
         reason: "Opening Stock",
         warehouseId: "",
         items: [{ itemId: "", itemName: "", quantity: 1, type: "in", remarks: "" }]
@@ -246,7 +247,7 @@ export default function StockAdjustmentPage() {
       </div>
 
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent className="max-w-4xl p-0 rounded-2xl border-none shadow-2xl overflow-hidden">
+        <DialogContent className="max-w-4xl p-0 rounded-2xl border-none shadow-2xl overflow-y-auto">
           <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-6 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/20">

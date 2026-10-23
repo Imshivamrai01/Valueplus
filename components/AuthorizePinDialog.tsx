@@ -108,7 +108,7 @@ export function AuthorizePinDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md p-0 rounded-2xl border-none shadow-2xl overflow-hidden">
+      <DialogContent className="max-w-md p-0 rounded-2xl border-none shadow-2xl overflow-y-auto">
         <div
           className={cn(
             "p-5 text-white flex items-center gap-3",

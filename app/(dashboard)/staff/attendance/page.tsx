@@ -33,12 +33,13 @@ import { toast } from "sonner";
 import { useSession } from "next-auth/react";
 import { useBranch } from "@/context/BranchContext";
 import { ExportMenu } from "@/components/shared/ExportMenu";
+import { todayInIndia } from "@/lib/today";
 
 function getISTDateString() {
   try {
     return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
   } catch (e) {
-    return new Date().toISOString().split("T")[0];
+    return todayInIndia();
   }
 }
 

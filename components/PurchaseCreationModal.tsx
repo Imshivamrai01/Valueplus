@@ -22,6 +22,7 @@ import { PurchaseBillPrintModal } from "@/components/PurchaseBillPrintModal";
 import { QuickAddItemModal } from "@/components/QuickAddItemModal";
 import { BillingEntityPicker } from "@/components/shared/BillingEntityPicker";
 import { entityOf, entityLabel, type BillingEntity } from "@/lib/billing-entity";
+import { todayInIndia } from "@/lib/today";
 
 // Stable reference for useQuery fallbacks — `= []` inline would create a brand-new
 // array on every render while data is loading, which can make effects that depend on
@@ -106,7 +107,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
 
   const [form, setForm] = useState({
     billNo: "",
-    billDate: new Date().toISOString().split("T")[0],
+    billDate: todayInIndia(),
     warehouse: userAssignedBranch,
     warehouseId: "" as string,
     supplierName: "",
@@ -194,7 +195,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
 
         setForm({
           billNo: "",
-          billDate: new Date().toISOString().split("T")[0],
+          billDate: todayInIndia(),
           warehouse: defaultWh,
           warehouseId: "",
           supplierName: supplierName,
@@ -670,7 +671,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
       // Reset form
       setForm({
         billNo: "",
-        billDate: new Date().toISOString().split("T")[0],
+        billDate: todayInIndia(),
         warehouse: userAssignedBranch,
         warehouseId: "",
         supplierName: "",
@@ -823,7 +824,7 @@ export function PurchaseCreationModal({ isOpen, onClose, mode = "entry", preload
   return (
     <>
       <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-5xl p-0 overflow-hidden bg-slate-50 flex flex-col max-h-[92vh]">
+      <DialogContent className="max-w-5xl p-0 overflow-y-auto bg-slate-50 flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className={`p-6 text-white flex items-center justify-between shrink-0 ${isDebit ? 'bg-gradient-to-r from-red-950 via-red-900 to-red-950' : (isOrder ? 'bg-gradient-to-r from-amber-900 via-amber-800 to-amber-900' : 'bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537]')}`}>
           <div className="flex items-center gap-3">

@@ -123,6 +123,35 @@ export async function POST(req: Request) {
     const body = await req.json();
     await connectToDatabase();
     
+    // 0a. Bill date. Today (India time) for everyone; an earlier date only for the
+    // Admin or the Store Manager — and a Store Manager's back-dated bill goes to
+    // the Admin for approval. A bill made offline and synced later keeps the day
+    // it was made, so it is not treated as back-dated.
+    const todayIst = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+    const billDay = String(body.date || "").slice(0, 10);
+    let backdateNeedsApproval: { by: string } | null = null;
+    if (body.type !== "proforma" && /^\d{4}-\d{2}-\d{2}$/.test(billDay) && billDay !== todayIst && !body.offlineId) {
+      if (billDay > todayIst) {
+        return NextResponse.json({ success: false, error: "A bill cannot be dated in the future." }, { status: 400 });
+      }
+      const dateActor = await getActor();
+      const dateRole = String(dateActor?.role || "");
+      if (!dateActor || !["admin", "superadmin", "manager"].includes(dateRole)) {
+        return NextResponse.json(
+          { success: false, error: "Only the Admin or the Store Manager can make a bill with an earlier date." },
+          { status: 403 }
+        );
+      }
+      body.backdateMadeOn = todayIst;
+      if (dateRole === "manager") {
+        body.backdateStatus = "pending";
+        body.backdateRequestedBy = dateActor.name;
+        backdateNeedsApproval = { by: dateActor.name };
+      } else {
+        body.backdateStatus = "approved";
+      }
+    }
+
     // 0. Billing entity. A bill is raised under Value Plus or Ashoka Enterprises
     // and may only carry that one's products — the form filters the product list,
     // and this is what actually enforces it.
@@ -326,6 +355,35 @@ export async function POST(req: Request) {
     if (Array.isArray(body.items)) body.items = await stampLineCosts(body.items);
 
     const invoice = await Invoice.create(body);
+
+    // A Store Manager's back-dated bill: the Admin is asked to approve it.
+    if (backdateNeedsApproval) {
+      try {
+        const StoreActivityApproval = (await import("@/models/StoreActivityApproval")).default;
+        const { notifyAdmins } = await import("@/lib/notify");
+        await StoreActivityApproval.create({
+          activityId: `ACT-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}-${Math.floor(100 + Math.random() * 900)}`,
+          storeName: (invoice as any).warehouse || "Store",
+          storeInchargeName: backdateNeedsApproval.by,
+          storeInchargeEmail: (await getActor())?.email || "",
+          activityType: "general",
+          title: `Back-dated bill ${invoice.invoiceNumber} (${invoice.date})`,
+          description: `${invoice.customerName} · ₹${Number(invoice.total || 0).toLocaleString("en-IN")} · dated ${invoice.date}, made on ${body.backdateMadeOn}`,
+          amount: Number(invoice.total) || 0,
+          payload: { kind: "backdated_invoice", invoiceNumber: invoice.invoiceNumber, date: invoice.date, madeOn: body.backdateMadeOn },
+          status: "pending",
+        });
+        await notifyAdmins({
+          type: "approval_request",
+          title: `🔔 Approve back-dated bill ${invoice.invoiceNumber}`,
+          message: `${backdateNeedsApproval.by} dated it ${invoice.date} (made on ${body.backdateMadeOn}) · ${invoice.customerName} · ₹${Number(invoice.total || 0).toLocaleString("en-IN")}`,
+          link: "/admin/approvals",
+          createdBy: backdateNeedsApproval.by,
+        });
+      } catch (approvalErr) {
+        console.warn("Notice: back-date approval request:", approvalErr);
+      }
+    }
 
     try {
       // 2.5 Create Payment Transaction if paidAmount > 0
@@ -574,7 +632,8 @@ export async function POST(req: Request) {
       }
 
       // 6. Auto-Convert matching Walk-in/CRM Leads upon Customer Purchase
-      if (invoice.type !== "credit-note") {
+      // (an estimate is a quotation, not a purchase — it leaves the lead open)
+      if (invoice.type !== "credit-note" && invoice.type !== "proforma") {
         try {
           const Lead = (await import("@/models/Lead")).default;
           const phoneDigits = (invoice.customerPhone || "").replace(/\D/g, "");
@@ -594,7 +653,17 @@ export async function POST(req: Request) {
           const leadOwner = matchedLeads
             .map((l: any) => String(l.assignedStaff || "").trim())
             .find((name) => name && !/^sales team$/i.test(name));
-          if (leadOwner && (!invoice.salesExecutive || ["Admin", "Store Staff", "Counter Staff"].includes(invoice.salesExecutive))) {
+          // The lead's salesperson gets the sale — unless the bill already names
+          // another salesperson (they made the sale on the floor). A cashier,
+          // admin or blank on the bill is replaced by the lead's owner.
+          let billedBySalesperson = false;
+          if (leadOwner && invoice.salesExecutive && invoice.salesExecutive.trim().toLowerCase() !== leadOwner.toLowerCase()) {
+            const User = (await import("@/models/User")).default;
+            const esc = invoice.salesExecutive.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const person: any = await User.findOne({ name: { $regex: new RegExp(`^${esc}$`, "i") } }, { role: 1 }).lean();
+            billedBySalesperson = ["salesman", "sales"].includes(String(person?.role || "").toLowerCase());
+          }
+          if (leadOwner && !billedBySalesperson && invoice.salesExecutive !== leadOwner) {
             invoice.salesExecutive = leadOwner;
             await invoice.save();
           }

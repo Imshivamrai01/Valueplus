@@ -56,6 +56,7 @@ import { LeadProductPicker, leadProductsLabel, leadProductsTotal, type LeadProdu
 import { ProductLedgerModal } from "@/components/ProductLedgerModal";
 import { ExportMenu } from "@/components/shared/ExportMenu";
 import { isFinanceInvoice } from "@/lib/payment-modes";
+import { todayInIndia } from "@/lib/today";
 
 
 
@@ -275,6 +276,7 @@ export default function DashboardPage() {
   const { data: session, status } = useSession();
 
   const userRole = ((session?.user as any)?.role || "").toLowerCase();
+  const canSeeProfit = ["admin", "superadmin", "accounts", "manager"].includes(userRole);
 
   // Instant role-based navigation guards
   useEffect(() => {
@@ -290,8 +292,8 @@ export default function DashboardPage() {
 
   // Period Filter State
   const [dateFilter, setDateFilter] = useState("Today");
-  const [startDate, setStartDate] = useState(() => new Date().toISOString().split("T")[0]);
-  const [endDate, setEndDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [startDate, setStartDate] = useState(() => todayInIndia());
+  const [endDate, setEndDate] = useState(() => todayInIndia());
 
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<any>(null);
@@ -407,7 +409,7 @@ export default function DashboardPage() {
       taskTitle: "Verify Bajaj Finance DO & Bank Settlement",
       assignedStaff: "Admin (Self)",
       priority: "Urgent",
-      dueDate: new Date().toISOString().split("T")[0],
+      dueDate: todayInIndia(),
       dueTime: "17:00",
       description: "Reconcile delivery orders and payout statement for Gorakhpur branch",
       status: "In Progress",
@@ -418,7 +420,7 @@ export default function DashboardPage() {
       taskTitle: "Call Walk-in Customer for Sony Bravia 55' OLED",
       assignedStaff: "Amit Singh",
       priority: "High",
-      dueDate: new Date().toISOString().split("T")[0],
+      dueDate: todayInIndia(),
       dueTime: "14:30",
       description: "Customer requested 5% card cashback offer and zero-downpayment scheme",
       status: "Pending",
@@ -429,7 +431,7 @@ export default function DashboardPage() {
       taskTitle: "Dispatch Inter-Warehouse Stock to Deoria Road Godown",
       assignedStaff: "Rahul Verma",
       priority: "Medium",
-      dueDate: new Date().toISOString().split("T")[0],
+      dueDate: todayInIndia(),
       dueTime: "16:00",
       description: "Transfer 10 units Voltas 1.5T Inverter AC & create Delivery Challan",
       status: "Completed",
@@ -440,7 +442,7 @@ export default function DashboardPage() {
       taskTitle: "Customer Follow-up for Extended Warranty Protection",
       assignedStaff: "Priya Sharma",
       priority: "Medium",
-      dueDate: new Date().toISOString().split("T")[0],
+      dueDate: todayInIndia(),
       dueTime: "18:00",
       description: "Contact 5 high-value appliance customers for 2nd year extended warranty",
       status: "Pending",
@@ -465,7 +467,7 @@ export default function DashboardPage() {
     taskTitle: "",
     assignedStaff: "Admin (Self)",
     priority: "Medium" as "Low" | "Medium" | "High" | "Urgent",
-    dueDate: new Date().toISOString().split("T")[0],
+    dueDate: todayInIndia(),
     dueTime: "18:00",
     description: "",
     createdBy: "Admin",
@@ -484,7 +486,7 @@ export default function DashboardPage() {
       assignedStaff: "Amit Singh",
       priority: "High",
       status: "Follow-up",
-      followUpDate: new Date().toISOString().split("T")[0],
+      followUpDate: todayInIndia(),
       notes: "Interested in 0% Bajaj Finance EMI scheme and free wall-mount installation",
     },
     {
@@ -497,7 +499,7 @@ export default function DashboardPage() {
       assignedStaff: "Priya Sharma",
       priority: "Urgent",
       status: "Converted",
-      followUpDate: new Date().toISOString().split("T")[0],
+      followUpDate: todayInIndia(),
       notes: "Billed successfully via INV-2026-0042 (Paid via POS Card)",
     },
     {
@@ -510,7 +512,7 @@ export default function DashboardPage() {
       assignedStaff: "Rahul Verma",
       priority: "Medium",
       status: "Follow-up",
-      followUpDate: new Date().toISOString().split("T")[0],
+      followUpDate: todayInIndia(),
       notes: "Needs site inspection for piping before billing on Monday",
     },
     {
@@ -523,7 +525,7 @@ export default function DashboardPage() {
       assignedStaff: "Amit Singh",
       priority: "High",
       status: "New",
-      followUpDate: new Date().toISOString().split("T")[0],
+      followUpDate: todayInIndia(),
       notes: "Walk-in inquiry asking for HDFC bank instant discount",
     },
   ]);
@@ -542,7 +544,7 @@ export default function DashboardPage() {
     assignedStaff: "",
     priority: "Medium" as "Low" | "Medium" | "High" | "Urgent",
     status: "New" as "New" | "Contacted" | "Interested" | "Follow-up" | "Converted" | "Lost",
-    followUpDate: new Date().toISOString().split("T")[0],
+    followUpDate: todayInIndia(),
     notes: "",
   });
 
@@ -579,6 +581,7 @@ export default function DashboardPage() {
   const [plLoading, setPlLoading] = useState(false);
 
   useEffect(() => {
+    if (!["admin", "superadmin", "accounts", "manager"].includes(((session?.user as any)?.role || "").toLowerCase())) return;
     const { start, end } = resolveDateRange(plFilter.value, plFilter.start, plFilter.end);
     let cancelled = false;
     setPlLoading(true);
@@ -594,7 +597,8 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [plFilter.value, plFilter.start, plFilter.end]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plFilter.value, plFilter.start, plFilter.end, (session?.user as any)?.role]);
   // Old stock: products still on hand whose last purchase was 6+ months / 1+ year ago.
   const [agedStock, setAgedStock] = useState<{ summary: any; items: any[] }>({
     summary: { sixMonths: { products: 0, qty: 0, value: 0 }, oneYear: { products: 0, qty: 0, value: 0 } },
@@ -783,7 +787,7 @@ export default function DashboardPage() {
       taskTitle: "",
       assignedStaff: "Admin (Self)",
       priority: "Medium",
-      dueDate: new Date().toISOString().split("T")[0],
+      dueDate: todayInIndia(),
       dueTime: "18:00",
       description: "",
       createdBy: "Admin",
@@ -861,7 +865,7 @@ export default function DashboardPage() {
       assignedStaff: "",
       priority: "Medium",
       status: "New",
-      followUpDate: new Date().toISOString().split("T")[0],
+      followUpDate: todayInIndia(),
       notes: "",
     });
   };
@@ -2481,7 +2485,9 @@ export default function DashboardPage() {
           </div>
 
           {/* PROFIT & LOSS — replaces the Alert Center. Sales are taken before GST, and the
-              cost of goods is each sold product's purchase price, as in Accounting › P&L. */}
+              cost of goods is each sold product's purchase price, as in Accounting › P&L.
+              For Admin, Accounts and Manager only — not the cashier. */}
+          {canSeeProfit && (
           <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-3 flex flex-col justify-between hover:shadow-md transition-all">
             <div className="pb-2.5 border-b border-slate-100 space-y-2">
               <div className="flex items-center gap-3 min-w-0">
@@ -2567,6 +2573,7 @@ export default function DashboardPage() {
               </button>
             </div>
           </div>
+          )}
         </MasonryGrid>
 
         {/* ═══════════════════════════════════════════════════════════════════════════════
@@ -2580,7 +2587,7 @@ export default function DashboardPage() {
             sits between the two manually-balanced column pools rather than inside one.
         ═══════════════════════════════════════════════════════════════════════════════ */}
         <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-3 hover:shadow-md transition-all">
-          <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
             <div className="flex items-center gap-3">
               <div className="w-7 h-7 rounded-lg bg-indigo-50 border border-indigo-200/60 flex items-center justify-center text-indigo-600">
                 <Building2 className="w-5 h-5" />
@@ -2663,9 +2670,9 @@ export default function DashboardPage() {
           </div>
 
           <p className="text-[10px] text-slate-400 pt-3 mt-1 border-t border-slate-100 leading-relaxed">
-            These figures are reported separately and are not included in Total Revenue, Total
-            Expenses or Net Profit above: a supplier payout settles a bill the purchase already
-            expensed.
+            These figures are reported separately and are not included in Total Revenue
+            {canSeeProfit ? ", Total Expenses or Net Profit" : " or Total Expenses"} above: a supplier
+            payout settles a bill the purchase already expensed.
           </p>
         </div>
 
@@ -3967,7 +3974,7 @@ export default function DashboardPage() {
 
       {/* ─── TODAY'S DUE COLLECTIONS & CREDIT KHATA SETTLEMENT WIDGET ─── */}
       {(() => {
-        const todayStr = new Date().toISOString().split("T")[0];
+        const todayStr = todayInIndia();
 
         // Date-wise scope: when a range is chosen, keep only dues whose due date falls inside it
         const isDueFilterActive = Boolean(dueDateFilter && dueDateRange.start && dueDateRange.end);
@@ -4322,7 +4329,7 @@ export default function DashboardPage() {
 
       {/* ─── PAYMENT LEAKAGE & VOID AUDIT DETAILS MODAL ────────────────── */}
       <Dialog open={!!leakageModal} onOpenChange={() => setLeakageModal(null)}>
-        <DialogContent className="max-w-4xl p-0 rounded-2xl overflow-hidden border-none shadow-2xl">
+        <DialogContent className="max-w-4xl p-0 rounded-2xl overflow-y-auto border-none shadow-2xl">
           {/* Header */}
           <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-6">
             <div className="flex items-center justify-between">
@@ -4506,7 +4513,7 @@ export default function DashboardPage() {
 
       {/* ─── TRANSACTION & EXPENSE LEDGER DRILLDOWN MODAL ───────────────────────── */}
       <Dialog open={!!activeModal} onOpenChange={() => { setActiveModal(null); setExpenseModalModeFilter("all"); }}>
-        <DialogContent className="max-w-4xl p-0 rounded-2xl overflow-hidden border-none shadow-2xl">
+        <DialogContent className="max-w-4xl p-0 rounded-2xl overflow-y-auto border-none shadow-2xl">
           <div className={cn(
             "p-6 text-white",
             activeModal === "due" 
@@ -5114,7 +5121,7 @@ export default function DashboardPage() {
 
       {/* ─── TOTAL STOCK CATEGORY BREAKDOWN MODAL ───────────────────────── */}
       <Dialog open={openStockModal} onOpenChange={setOpenStockModal}>
-        <DialogContent className="max-w-4xl p-0 rounded-2xl overflow-hidden border-none shadow-2xl">
+        <DialogContent className="max-w-4xl p-0 rounded-2xl overflow-y-auto border-none shadow-2xl">
           {/* Header */}
           <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-6">
             <div className="flex items-center justify-between">
@@ -5449,7 +5456,7 @@ export default function DashboardPage() {
 
       {/* ─── QUICK ASSIGN TASK MODAL ───────────────────────────────────── */}
       <Dialog open={isNewTaskModalOpen} onOpenChange={setIsNewTaskModalOpen}>
-        <DialogContent className="max-w-lg p-0 rounded-2xl overflow-hidden border-none shadow-2xl">
+        <DialogContent className="max-w-lg p-0 rounded-2xl overflow-y-auto border-none shadow-2xl">
           <div className="bg-gradient-to-r from-[#1E293B] via-[#30539C] to-[#1E293B] text-white p-5">
             <div className="flex items-center gap-2.5">
               <div className="w-7 h-7 rounded-lg bg-white/10 flex items-center justify-center">
@@ -5557,7 +5564,7 @@ export default function DashboardPage() {
 
       {/* ─── QUICK ADD LEAD MODAL ──────────────────────────────────────── */}
       <Dialog open={isNewLeadModalOpen} onOpenChange={setIsNewLeadModalOpen}>
-        <DialogContent className="max-w-lg p-0 rounded-2xl overflow-hidden border-none shadow-2xl">
+        <DialogContent className="max-w-lg p-0 rounded-2xl overflow-y-auto border-none shadow-2xl">
           <div className="bg-gradient-to-r from-[#1B2537] via-[#10B981]/80 to-[#1B2537] text-white p-5">
             <div className="flex items-center gap-2.5">
               <div className="w-7 h-7 rounded-lg bg-white/10 flex items-center justify-center">
@@ -5698,7 +5705,7 @@ export default function DashboardPage() {
 
       {/* ─── CLEAR DUE / SETTLEMENT MODAL ───────────────────────── */}
       <Dialog open={!!selectedDueInvoice} onOpenChange={() => setSelectedDueInvoice(null)}>
-        <DialogContent className="max-w-md p-0 rounded-2xl overflow-hidden border-none shadow-2xl">
+        <DialogContent className="max-w-md p-0 rounded-2xl overflow-y-auto border-none shadow-2xl">
           <div className="bg-gradient-to-r from-[#1B2537] via-[#243753] to-[#1B2537] text-white p-6">
             <div className="flex items-center gap-3">
               <div className="w-11 h-11 rounded-xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-emerald-400">
@@ -5843,7 +5850,7 @@ export default function DashboardPage() {
 
       {/* ─── OLD STOCK — FULL LIST ─────────────────────────────────── */}
       <Dialog open={openAgedStockModal} onOpenChange={setOpenAgedStockModal}>
-        <DialogContent className="max-w-4xl p-0 rounded-2xl overflow-hidden border-none shadow-2xl">
+        <DialogContent className="max-w-4xl p-0 rounded-2xl overflow-y-auto border-none shadow-2xl">
           <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-5">
             <DialogTitle className="text-lg font-black tracking-tight flex items-center gap-2">
               <Clock className="w-5 h-5 text-amber-400" /> Old Stock (Not Cleared)
@@ -5953,7 +5960,7 @@ export default function DashboardPage() {
 
       {/* ─── PAYMENT DETAILS (HOW ONE BILL WAS PAID) ───────────────── */}
       <Dialog open={!!paymentDetailId} onOpenChange={() => setPaymentDetailId(null)}>
-        <DialogContent className="max-w-lg p-0 rounded-2xl overflow-hidden border-none shadow-2xl">
+        <DialogContent className="max-w-lg p-0 rounded-2xl overflow-y-auto border-none shadow-2xl">
           {(() => {
             const detail = getPaymentDetail(paymentDetailId);
             const parts: any[] = detail?.parts || [];

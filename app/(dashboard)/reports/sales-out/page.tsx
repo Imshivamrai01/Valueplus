@@ -13,6 +13,7 @@ import { DateRangeFilter, resolveDateRange } from "@/components/shared/date-rang
 import { ExportMenu } from "@/components/shared/ExportMenu";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 import Link from "next/link";
+import { todayInIndia } from "@/lib/today";
 
 function formatCurrency(val: number) {
   return new Intl.NumberFormat("en-IN", {
@@ -117,7 +118,7 @@ function SalesOutReportContent() {
     "Invoice Status": i.invoiceStatus,
     "Finance Status": i.financeStatus,
   }));
-  const exportFilename = `ValuePlus_Sales_Out_Report_${new Date().toISOString().split("T")[0]}`;
+  const exportFilename = `ValuePlus_Sales_Out_Report_${todayInIndia()}`;
 
   return (
     <PageShell

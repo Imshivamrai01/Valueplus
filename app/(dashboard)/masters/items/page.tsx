@@ -804,10 +804,10 @@ function ItemsPageContent() {
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {/* Company Filter */}
             <Select value={entityFilter} onValueChange={(v) => { setEntityFilter(v); setPage(1); }}>
-              <SelectTrigger className="w-44 bg-white">
+              <SelectTrigger className="w-[calc(50%-0.25rem)] sm:w-44 bg-white">
                 <SelectValue placeholder="Company" />
               </SelectTrigger>
               <SelectContent>
@@ -818,7 +818,7 @@ function ItemsPageContent() {
 
             {/* Category Filter */}
             <Select value={categoryFilter} onValueChange={(v) => { setCategoryFilter(v); setPage(1); }}>
-              <SelectTrigger className="w-40 bg-white">
+              <SelectTrigger className="w-[calc(50%-0.25rem)] sm:w-40 bg-white">
                 <SelectValue placeholder="Category" />
               </SelectTrigger>
               <SelectContent>
@@ -829,7 +829,7 @@ function ItemsPageContent() {
 
             {/* Status Filter */}
             <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
-              <SelectTrigger className="w-32 bg-white">
+              <SelectTrigger className="w-[calc(50%-0.25rem)] sm:w-32 bg-white">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -1834,7 +1834,7 @@ function ItemsPageContent() {
 
       {/* View Item Modal */}
       <Dialog open={!!viewingItem} onOpenChange={(open) => !open && setViewingItem(null)}>
-        <DialogContent className="max-w-6xl p-0 rounded-2xl overflow-hidden border-none shadow-2xl">
+        <DialogContent className="max-w-6xl p-0 rounded-2xl overflow-y-auto border-none shadow-2xl">
           <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-5 pr-14 flex flex-wrap justify-between items-center gap-3">
             <div className="min-w-0">
               <h3 className="text-lg font-bold tracking-tight">Product Details & Live Stock</h3>

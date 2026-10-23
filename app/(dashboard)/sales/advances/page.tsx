@@ -480,7 +480,7 @@ export default function CustomerAdvancesPage() {
 
       {/* CREATE ADVANCE MODAL */}
       <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
-        <DialogContent className="max-w-xl p-0 overflow-hidden rounded-2xl">
+        <DialogContent className="max-w-xl p-0 overflow-y-auto rounded-2xl">
           <DialogHeader className="bg-gradient-to-r from-[#1B2537] to-[#2A3B5C] text-white p-5">
             <DialogTitle className="text-lg font-black flex items-center gap-2">
               <span className="p-1.5 bg-amber-500/20 border border-amber-400/40 rounded-lg text-amber-300">
@@ -625,7 +625,7 @@ export default function CustomerAdvancesPage() {
       {/* PRINTABLE ADVANCE RECEIPT MODAL */}
       {selectedAdvanceForPrint && (
         <Dialog open={Boolean(selectedAdvanceForPrint)} onOpenChange={() => setSelectedAdvanceForPrint(null)}>
-          <DialogContent className="max-w-md p-0 overflow-hidden rounded-2xl bg-white border border-slate-300">
+          <DialogContent className="max-w-md p-0 overflow-y-auto rounded-2xl bg-white border border-slate-300">
             <div id="advance-print-slip" className="p-6 space-y-4 bg-white text-slate-900 text-xs">
               {/* Header */}
               <div className="text-center border-b-2 border-slate-800 pb-3 space-y-1">

@@ -53,6 +53,7 @@ import { formatCurrency } from "@/lib/utils";
 import { useBranch } from "@/context/BranchContext";
 import { AttendancePunchWidget } from "@/components/shared/AttendancePunchWidget";
 import { TableShimmer, MetricCardsShimmer, GridCardsShimmer, GodownHubShimmer } from "@/components/shared/shimmer-skeleton";
+import { todayInIndia } from "@/lib/today";
 
 export default function WarehouseHubPage() {
   const queryClient = useQueryClient();
@@ -274,7 +275,7 @@ export default function WarehouseHubPage() {
           item: sn.itemName || sn.item?.name || "Product Unit",
           itemCode: sn.itemCode || sn.vpCode || "VP-SKU",
           status: sn.status === "AVAILABLE" ? "In Godown (Available)" : sn.status,
-          inwardDate: sn.inwardDate ? new Date(sn.inwardDate).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
+          inwardDate: sn.inwardDate ? new Date(sn.inwardDate).toISOString().split("T")[0] : todayInIndia(),
           godownLocation: sn.warehouse || activeLocation.name,
           supplier: sn.supplier || "Official Electronics Distributor",
           warrantyMonths: sn.warrantyMonths || 24,
@@ -296,7 +297,7 @@ export default function WarehouseHubPage() {
       item: foundItem ? foundItem.name : "Product Unit",
       itemCode: foundItem ? (foundItem.vpCode || foundItem.code) : "VP-ITEM",
       status: (foundItem?.currentStock || 0) > 0 ? "In Godown (Available)" : "Out of Stock",
-      inwardDate: new Date().toISOString().split("T")[0],
+      inwardDate: todayInIndia(),
       godownLocation: activeLocation.name,
       supplier: foundItem?.brand ? `${foundItem.brand} India Distribution` : "Authorized Distributor",
       warrantyMonths: 24,
@@ -315,11 +316,11 @@ export default function WarehouseHubPage() {
         {/* GODOWN METRICS & SELECTOR BANNER */}
         <div className="p-5 rounded-2xl bg-gradient-to-r from-[#1B2537] via-[#2A4365] to-[#1B2537] text-white shadow-xl border border-slate-700">
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3.5">
-              <div className="w-12 h-12 rounded-2xl bg-amber-500 text-slate-900 flex items-center justify-center font-black shadow-lg">
+            <div className="flex items-center gap-3.5 min-w-0 max-w-full">
+              <div className="w-12 h-12 shrink-0 rounded-2xl bg-amber-500 text-slate-900 flex items-center justify-center font-black shadow-lg">
                 <Warehouse className="w-7 h-7" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <Select
                     value={selectedWarehouseFilter}
@@ -329,7 +330,7 @@ export default function WarehouseHubPage() {
                       if (matched) setActiveLocation(matched);
                     }}
                   >
-                    <SelectTrigger className="h-8 bg-white/10 hover:bg-white/20 text-white font-bold border-white/20 text-sm max-w-xs">
+                    <SelectTrigger className="h-8 bg-white/10 hover:bg-white/20 text-white font-bold border-white/20 text-sm max-w-full sm:max-w-xs">
                       <SelectValue placeholder="Select Warehouse / Location" />
                     </SelectTrigger>
                     <SelectContent>
@@ -352,7 +353,7 @@ export default function WarehouseHubPage() {
             </div>
 
             {/* Quick Action Buttons */}
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button
                 onClick={() => setIsInwardModalOpen(true)}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md h-9 rounded-xl"
@@ -1032,7 +1033,7 @@ export default function WarehouseHubPage() {
                 const serials = inwardForm.serialNumbers.split(",").map(s => s.trim()).filter(Boolean);
                 createInwardMutation.mutate({
                   billNo: `GRN-${Date.now().toString().slice(-4)}`,
-                  billDate: new Date().toISOString().split("T")[0],
+                  billDate: todayInIndia(),
                   supplierName: inwardForm.supplierName,
                   linkedPoNo: inwardForm.poNumber,
                   warehouse: activeLocation.name,

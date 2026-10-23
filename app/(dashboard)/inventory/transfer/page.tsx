@@ -15,6 +15,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useBranch } from "@/context/BranchContext";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 import { ExportMenu } from "@/components/shared/ExportMenu";
+import { todayInIndia } from "@/lib/today";
 
 interface TransferItem {
   id: string;
@@ -348,7 +349,7 @@ export default function StockTransferPage() {
       fromWarehouse: formData.fromWarehouse,
       toWarehouse: formData.toWarehouse,
       items: formData.items,
-      date: new Date().toISOString().split("T")[0],
+      date: todayInIndia(),
       status: "in-transit",
     };
 
@@ -509,7 +510,7 @@ export default function StockTransferPage() {
       </div>
 
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent className="max-w-2xl p-0 rounded-2xl border-none shadow-2xl overflow-hidden">
+        <DialogContent className="max-w-2xl p-0 rounded-2xl border-none shadow-2xl overflow-y-auto">
           {/* Header */}
           <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-6 flex items-center justify-between">
             <div className="flex items-center gap-3">

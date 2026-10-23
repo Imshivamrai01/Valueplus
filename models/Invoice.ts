@@ -185,6 +185,12 @@ export interface IInvoice extends Document {
   /** When the goods are to be handed over, for a bill delivered later
    *  ("YYYY-MM-DD"). Sold and off stock already, kept aside till then. */
   expectedDeliveryDate?: string;
+  /** A bill dated before the day it was made. "pending" when a Store Manager
+   *  made it and the Admin has not yet approved; "rejected" bills are moved back
+   *  to the day they were made. */
+  backdateStatus?: "approved" | "pending" | "rejected";
+  backdateRequestedBy?: string;
+  backdateMadeOn?: string;
   deliveryNote?: string;
   /** Set once the "delivery due soon" reminder has gone out. */
   deliveryReminderSentAt?: Date;
@@ -376,6 +382,9 @@ const InvoiceSchema = new Schema<IInvoice>(
     deliveryStatus: { type: String, enum: ["pending_dispatch", "packed", "out_for_delivery", "delivered"], default: "delivered" },
     deliveryOtp: { type: String, default: "" },
     expectedDeliveryDate: { type: String, default: "", index: true },
+    backdateStatus: { type: String, enum: ["approved", "pending", "rejected", ""], default: "" },
+    backdateRequestedBy: { type: String, default: "" },
+    backdateMadeOn: { type: String, default: "" },
     deliveryNote: { type: String, default: "" },
     deliveryReminderSentAt: { type: Date },
     driverName: { type: String, default: "" },

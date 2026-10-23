@@ -62,7 +62,7 @@ export function ViewPurchaseOrderModal({ isOpen, onClose, purchaseOrder }: ViewP
           header and footer stay put. Without the cap, a PO with a dozen-plus lines
           grew taller than the screen and pushed its own title and Close button out
           of view. */}
-      <DialogContent className="max-w-3xl p-0 overflow-hidden bg-white max-h-[90vh] flex flex-col gap-0">
+      <DialogContent className="max-w-3xl p-0 overflow-y-auto bg-white max-h-[90vh] flex flex-col gap-0">
         <div className="bg-gradient-to-r from-amber-900 via-amber-800 to-amber-900 text-white p-6 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/20">

@@ -599,7 +599,7 @@ export default function OrderDispatchHubPage() {
 
         {/* ─── OUT FOR DELIVERY DISPATCH MODAL ───────────────────────── */}
         <Dialog open={dispatchModalOpen} onOpenChange={setDispatchModalOpen}>
-          <DialogContent className="max-w-md p-0 rounded-2xl overflow-hidden shadow-2xl border-none">
+          <DialogContent className="max-w-md p-0 rounded-2xl overflow-y-auto shadow-2xl border-none">
             <div className="bg-[#1B2537] text-white p-5 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="w-10 h-10 rounded-xl bg-blue-600/30 flex items-center justify-center border border-blue-400/30">
@@ -678,7 +678,7 @@ export default function OrderDispatchHubPage() {
 
         {/* ─── VERIFY OTP MODAL ───────────────────────────────────────── */}
         <Dialog open={otpModalOpen} onOpenChange={setOtpModalOpen}>
-          <DialogContent className="max-w-sm p-0 rounded-2xl overflow-hidden shadow-2xl border-none">
+          <DialogContent className="max-w-sm p-0 rounded-2xl overflow-y-auto shadow-2xl border-none">
             <div className="bg-gradient-to-r from-emerald-800 to-teal-900 text-white p-5 flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
                 <ShieldCheck className="w-6 h-6 text-white" />

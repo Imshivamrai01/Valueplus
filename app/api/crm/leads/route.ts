@@ -4,6 +4,10 @@ import Lead from "@/models/Lead";
 import { notifyWhatsApp } from "@/lib/whatsapp/notify";
 import { getActor } from "@/lib/requirePermission";
 
+/** Roles that see every lead; everyone else sees only their own. */
+const ALL_LEADS_ROLES = ["admin", "superadmin", "manager", "accounts"];
+const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
@@ -13,8 +17,26 @@ export async function GET(req: Request) {
     const mobile = searchParams.get("mobile");
     
     await connectToDatabase();
-    
+
+    const actor = await getActor();
+    if (!actor) {
+      return NextResponse.json({ success: false, error: "You must be signed in to see leads." }, { status: 401 });
+    }
+
     const filter: any = {};
+    // A salesperson sees only the leads assigned to them (and the unassigned
+    // "Sales Team" pool); Admin, Store Manager and Accounts see every lead.
+    // Looking a lead up by the customer's mobile (the billing form does, to put
+    // the lead's salesperson on the bill) works for anyone signed in.
+    if (!ALL_LEADS_ROLES.includes(actor.role) && !mobile) {
+      const isSales = ["salesman", "sales"].includes(actor.role);
+      // "Amit Singh (Sales Executive)" also matches leads assigned to "Amit Singh".
+      const names = [...new Set([actor.name.trim(), actor.name.replace(/\s*\(.*\)\s*$/, "").trim()])].filter(Boolean);
+      filter.$or = [
+        ...names.map((n) => ({ assignedStaff: { $regex: new RegExp(`^\\s*${escapeRegex(n)}\\s*$`, "i") } })),
+        ...(isSales ? [{ assignedStaff: { $regex: /^sales team$/i } }, { assignedStaff: { $in: ["", null] } }] : []),
+      ];
+    }
     if (status && status !== "all") filter.status = status;
     if (staff) filter.assignedStaff = staff;
     if (priority) filter.priority = priority;

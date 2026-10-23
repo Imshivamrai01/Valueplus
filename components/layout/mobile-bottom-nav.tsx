@@ -416,7 +416,7 @@ export function MobileBottomNav() {
 
       {/* ─── FULL MOBILE MENU DRAWER ──────────────────────────────────────── */}
       <Dialog open={isMenuDrawerOpen} onOpenChange={setIsMenuDrawerOpen}>
-        <DialogContent className="max-w-md h-[88vh] rounded-t-3xl p-0 bg-[#1B2537] text-white border-white/15 overflow-hidden flex flex-col">
+        <DialogContent className="max-w-md h-[88vh] rounded-t-3xl p-0 bg-[#1B2537] text-white border-white/15 overflow-y-auto flex flex-col">
           {/* Drawer Header */}
           <div className="p-4 border-b border-white/10 bg-black/20 flex items-center justify-between">
             <div className="flex items-center gap-3">

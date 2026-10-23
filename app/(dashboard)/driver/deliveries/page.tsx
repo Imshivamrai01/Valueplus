@@ -416,7 +416,7 @@ export default function DriverDeliveriesPage() {
 
         {/* ─── ENTER OTP VERIFICATION MODAL ──────────────────────────── */}
         <Dialog open={otpModalOpen} onOpenChange={setOtpModalOpen}>
-          <DialogContent className="max-w-sm p-0 rounded-3xl overflow-hidden shadow-2xl border-none">
+          <DialogContent className="max-w-sm p-0 rounded-3xl overflow-y-auto shadow-2xl border-none">
             <div className="bg-gradient-to-r from-emerald-800 via-teal-800 to-emerald-900 text-white p-5 flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center">
                 <ShieldCheck className="w-6 h-6 text-white" />

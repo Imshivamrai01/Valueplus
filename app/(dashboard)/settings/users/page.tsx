@@ -53,6 +53,7 @@ import { toast } from "sonner";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
 import { formatCurrency } from "@/lib/utils";
 import { ExportMenu } from "@/components/shared/ExportMenu";
+import { todayInIndia } from "@/lib/today";
 
 const ROLE_OPTIONS = [
   { value: "admin", label: "👑 Super Admin (Full Master Access)" },
@@ -168,7 +169,7 @@ export default function UsersAndStaffPage() {
     designation: "Sales Executive",
     monthlySalary: "25000",
     salaryType: "Fixed",
-    joiningDate: new Date().toISOString().split("T")[0],
+    joiningDate: todayInIndia(),
     advanceBalance: "0",
     monthlyAdvanceDeduction: "2000",
     bankName: "State Bank of India",
@@ -232,7 +233,7 @@ export default function UsersAndStaffPage() {
         designation: "Sales Executive",
         monthlySalary: "25000",
         salaryType: "Fixed",
-        joiningDate: new Date().toISOString().split("T")[0],
+        joiningDate: todayInIndia(),
         advanceBalance: "0",
         monthlyAdvanceDeduction: "2000",
         bankName: "State Bank of India",
@@ -1015,7 +1016,7 @@ export default function UsersAndStaffPage() {
 
       {/* VIEW FULL STAFF PROFILE MODAL */}
       <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
-        <DialogContent className="max-w-2xl bg-white rounded-3xl shadow-2xl p-0 overflow-hidden border border-slate-200">
+        <DialogContent className="max-w-2xl bg-white rounded-3xl shadow-2xl p-0 overflow-y-auto border border-slate-200">
           {selectedUserForView && (
             <div>
               {/* Header Hero */}

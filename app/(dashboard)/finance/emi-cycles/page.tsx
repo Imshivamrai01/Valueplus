@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { TableShimmer, MetricCardsShimmer } from "@/components/shared/shimmer-skeleton";
 import { ExportMenu } from "@/components/shared/ExportMenu";
+import { todayInIndia } from "@/lib/today";
 
 const FINANCE_PROVIDERS = [
   "Bajaj Finance Limited",
@@ -52,7 +53,7 @@ export default function MonthlyEmiCyclesStandalonePage() {
     channel: "Shop Counter" as "Shop Counter" | "Bank Auto-Debit",
     mode: "Cash",
     collectedBy: "Amit Singh (Store Cashier)",
-    paidDate: new Date().toISOString().split("T")[0],
+    paidDate: todayInIndia(),
     bankRef: "",
     receiptNumber: "",
     bounceReason: "Insufficient Balance / Mandate Return",
@@ -97,7 +98,7 @@ export default function MonthlyEmiCyclesStandalonePage() {
       channel: "Shop Counter",
       mode: "Cash",
       collectedBy: "Amit Singh (Store Cashier)",
-      paidDate: new Date().toISOString().split("T")[0],
+      paidDate: todayInIndia(),
       bankRef: "",
       receiptNumber: `REC-EMI-${inst.installmentNumber}-${Math.floor(1000 + Math.random() * 9000)}`,
       bounceReason: "Insufficient Balance / Mandate Return",
@@ -514,7 +515,7 @@ export default function MonthlyEmiCyclesStandalonePage() {
 
       {/* PAY EMI MODAL */}
       <Dialog open={!!payEmiModal} onOpenChange={() => setPayEmiModal(null)}>
-        <DialogContent className="max-w-xl p-0 rounded-2xl shadow-2xl border-none overflow-hidden">
+        <DialogContent className="max-w-xl p-0 rounded-2xl shadow-2xl border-none overflow-y-auto">
           <div className="bg-gradient-to-r from-[#1B2537] via-[#243753] to-[#1B2537] text-white p-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">

@@ -440,7 +440,7 @@ export default function StoreProfilePage() {
 
       {/* ─── ADD / EDIT BANK ACCOUNT MODAL ─── */}
       <Dialog open={isBankModalOpen} onOpenChange={setIsBankModalOpen}>
-        <DialogContent className="max-w-md p-0 rounded-2xl shadow-2xl border-none overflow-hidden">
+        <DialogContent className="max-w-md p-0 rounded-2xl shadow-2xl border-none overflow-y-auto">
           <div className="bg-gradient-to-r from-[#1B2537] via-[#243753] to-[#1B2537] text-white p-5 pr-12 flex items-center justify-between">
             <div className="flex items-center gap-3 min-w-0">
               <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center shrink-0">

@@ -5,9 +5,15 @@ import Item from "@/models/Item";
 import Expense from "@/models/Expense";
 import PurchaseEntry from "@/models/PurchaseEntry";
 import { buildCatalogLookup, lineUnitCost } from "@/lib/sale-cost";
+import { getActor } from "@/lib/requirePermission";
 
 export async function GET(req: Request) {
   try {
+    // Profit figures are for Admin, Accounts and Manager only.
+    const actor = await getActor();
+    if (!actor || !["admin", "superadmin", "accounts", "manager"].includes(actor.role)) {
+      return NextResponse.json({ success: false, error: "You are not allowed to see profit and loss." }, { status: 403 });
+    }
     await connectToDatabase();
     const { searchParams } = new URL(req.url);
     const startDate = searchParams.get("startDate");

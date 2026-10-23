@@ -17,6 +17,7 @@ import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/s
 import { toast } from "sonner";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { ExportMenu } from "@/components/shared/ExportMenu";
+import { todayInIndia } from "@/lib/today";
 
 const FINANCE_PROVIDERS = [
   "Bajaj Finance Limited",
@@ -45,7 +46,7 @@ export default function BankDisbursementsStandalonePage() {
     actualReceivedAmount: 0,
     transactionRef: "",
     bankAccountRef: "",
-    paymentReceivedDate: new Date().toISOString().split("T")[0],
+    paymentReceivedDate: todayInIndia(),
     approvedBy: "Aditya Saini (Finance Desk / Admin)",
     remarks: "",
   });
@@ -142,7 +143,7 @@ export default function BankDisbursementsStandalonePage() {
       actualReceivedAmount: rec.actualReceivedAmount || defaultAmount,
       transactionRef: rec.transactionRef || "",
       bankAccountRef: defaultBank || "HDFC Bank - Current A/C (A/C: 50200084920193)",
-      paymentReceivedDate: rec.paymentReceivedDate || new Date().toISOString().split("T")[0],
+      paymentReceivedDate: rec.paymentReceivedDate || todayInIndia(),
       approvedBy: rec.approvedBy || "Aditya Saini (Finance Desk / Admin)",
       remarks: rec.remarks || `Disbursement credited for DO ${rec.doId}`,
     });
@@ -271,7 +272,7 @@ export default function BankDisbursementsStandalonePage() {
               "Settlement Date": r.paymentReceivedDate || "N/A",
               "Credited Bank A/C": r.bankAccountRef || "N/A",
             }))}
-            filename={`ValuePlus_Bank_Payouts_${new Date().toISOString().split("T")[0]}`}
+            filename={`ValuePlus_Bank_Payouts_${todayInIndia()}`}
           />
           <Button onClick={() => window.print()} variant="outline" size="sm" className="text-xs font-bold gap-1 shadow-xs">
             <Printer className="w-3.5 h-3.5" /> Print Payout Sheet
@@ -496,7 +497,7 @@ export default function BankDisbursementsStandalonePage() {
 
       {/* ─── RECORD BANK PAYOUT / UTR MODAL ─── */}
       <Dialog open={!!payoutModal} onOpenChange={() => setPayoutModal(null)}>
-        <DialogContent className="max-w-lg p-0 rounded-2xl shadow-2xl border-none overflow-hidden">
+        <DialogContent className="max-w-lg p-0 rounded-2xl shadow-2xl border-none overflow-y-auto">
           <div className="bg-gradient-to-r from-[#1B2537] via-[#243753] to-[#1B2537] text-white p-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -646,7 +647,7 @@ export default function BankDisbursementsStandalonePage() {
 
       {/* ─── DYNAMIC ADD NEW BANK ACCOUNT MODAL ─── */}
       <Dialog open={isAddBankModalOpen} onOpenChange={setIsAddBankModalOpen}>
-        <DialogContent className="max-w-md p-0 rounded-2xl shadow-2xl border-none overflow-hidden">
+        <DialogContent className="max-w-md p-0 rounded-2xl shadow-2xl border-none overflow-y-auto">
           <div className="bg-gradient-to-r from-[#1B2537] via-[#243753] to-[#1B2537] text-white p-5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">

@@ -403,9 +403,9 @@ function SalesInvoicesContent() {
         </div>
       )}
       <Tabs defaultValue="customers" className="w-full">
-        <TabsList className="mb-6 grid w-full max-w-md grid-cols-2">
-          <TabsTrigger value="customers">Customers Ledger & Billing</TabsTrigger>
-          <TabsTrigger value="suppliers">Suppliers Ledger & Bills</TabsTrigger>
+        <TabsList className="mb-6 grid h-auto w-full max-w-md grid-cols-2">
+          <TabsTrigger value="customers" className="whitespace-normal text-xs sm:text-sm">Customers Ledger & Billing</TabsTrigger>
+          <TabsTrigger value="suppliers" className="whitespace-normal text-xs sm:text-sm">Suppliers Ledger & Bills</TabsTrigger>
         </TabsList>
 
         <TabsContent value="customers" className="space-y-6">
@@ -521,6 +521,14 @@ function SalesInvoicesContent() {
                               <FileText className="w-3 h-3 text-muted-foreground" />
                             </button>
                             <BillingEntityBadge entity={entityOf(inv)} className="ml-1" />
+                            {inv.backdateStatus === "pending" && (
+                              <span
+                                className="ml-1 font-mono text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-300"
+                                title={`Back-dated by ${inv.backdateRequestedBy || "Store Manager"} on ${inv.backdateMadeOn || ""} — waiting for Admin approval`}
+                              >
+                                ⏳ Back-dated · approval pending
+                              </span>
+                            )}
                             {inv.expectedDeliveryDate && inv.deliveryStatus !== "delivered" && inv.status !== "cancelled" && (
                               <span
                                 className="ml-1 font-mono text-[9px] font-bold px-1.5 py-0.5 rounded bg-orange-50 text-orange-800 border border-orange-300"
@@ -956,7 +964,7 @@ function SalesInvoicesContent() {
 
       {/* CUSTOMER LEDGER MODAL */}
       <Dialog open={isCustomerLedgerOpen} onOpenChange={setIsCustomerLedgerOpen}>
-        <DialogContent className="max-w-4xl p-0 overflow-hidden rounded-2xl border-none shadow-2xl">
+        <DialogContent className="max-w-4xl p-0 overflow-y-auto rounded-2xl border-none shadow-2xl">
           {selectedCustomerForLedger && (() => {
             const c = selectedCustomerForLedger;
             const custInvoices = invoices.filter((inv: any) => inv.customerName === c.name || inv.customerId === c._id);
@@ -1046,7 +1054,7 @@ function SalesInvoicesContent() {
 
       {/* SUPPLIER LEDGER MODAL */}
       <Dialog open={isSupplierLedgerOpen} onOpenChange={setIsSupplierLedgerOpen}>
-        <DialogContent className="max-w-4xl p-0 overflow-hidden rounded-2xl border-none shadow-2xl">
+        <DialogContent className="max-w-4xl p-0 overflow-y-auto rounded-2xl border-none shadow-2xl">
           {selectedSupplierForLedger && (() => {
             const sup = selectedSupplierForLedger;
             const supBills = purchaseEntries.filter((b: any) => b.supplier === sup.name || b.supplierId === sup._id);

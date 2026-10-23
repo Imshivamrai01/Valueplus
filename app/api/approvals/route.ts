@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/db";
 import StoreActivityApproval from "@/models/StoreActivityApproval";
 import { notifyAdmins, notifyEmail } from "@/lib/notify";
+import { getActor } from "@/lib/requirePermission";
 
 export async function GET(req: Request) {
   try {
@@ -71,6 +72,12 @@ export async function PUT(req: Request) {
     const body = await req.json();
     const { activityId, action, notes } = body;
 
+    // Only an Admin approves or rejects.
+    const approver = await getActor();
+    if (!approver || !["admin", "superadmin"].includes(approver.role)) {
+      return NextResponse.json({ success: false, error: "Only the Admin can approve or reject requests." }, { status: 403 });
+    }
+
     if (!activityId || !action) {
       return NextResponse.json({ success: false, error: "activityId and action (approve/reject) are required" }, { status: 400 });
     }
@@ -86,6 +93,22 @@ export async function PUT(req: Request) {
     existing.superAdminActionAt = new Date();
     existing.superAdminNotes = notes || (action === "approve" ? "Approved by Super Admin" : "Rejected by Super Admin");
     await existing.save();
+
+    // A back-dated bill: approved, it keeps its date; rejected, it moves back to
+    // the day it was actually made.
+    if (existing.payload?.kind === "backdated_invoice" && existing.payload?.invoiceNumber) {
+      try {
+        const Invoice = (await import("@/models/Invoice")).default;
+        await Invoice.updateOne(
+          { invoiceNumber: existing.payload.invoiceNumber },
+          action === "approve"
+            ? { $set: { backdateStatus: "approved" } }
+            : { $set: { backdateStatus: "rejected", date: existing.payload.madeOn || existing.payload.date } }
+        );
+      } catch (err) {
+        console.error("Back-dated bill decision:", err);
+      }
+    }
 
     // If approved, execute relevant side-effects if needed
     if (action === "approve" && existing.activityType === "expense_approval" && existing.payload) {

@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useSession } from "next-auth/react";
 import { TableShimmer } from "@/components/shared/shimmer-skeleton";
+import { todayInIndia } from "@/lib/today";
 
 export default function StaffTasksPage() {
   const queryClient = useQueryClient();
@@ -35,7 +36,7 @@ export default function StaffTasksPage() {
   const [selectedTaskForDone, setSelectedTaskForDone] = useState<any | null>(null);
   const [completionRemarks, setCompletionRemarks] = useState("");
 
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = todayInIndia();
 
   const [form, setForm] = useState({
     taskTitle: "",

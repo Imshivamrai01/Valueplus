@@ -229,7 +229,7 @@ export default function CategoriesPage() {
 
       {/* Add / Edit Dialog */}
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent className="max-w-2xl p-0 rounded-2xl border-none shadow-2xl overflow-hidden">
+        <DialogContent className="max-w-2xl p-0 rounded-2xl border-none shadow-2xl overflow-y-auto">
           <DialogHeader className="sr-only">
             <DialogTitle>
               {editingCategory ? "Edit Product Category" : "Add Product Category"}

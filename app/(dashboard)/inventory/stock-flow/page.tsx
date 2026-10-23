@@ -48,6 +48,7 @@ import { ExportMenu } from "@/components/shared/ExportMenu";
 import { DateRangeFilter } from "@/components/shared/date-range-filter";
 import { BrandLogo } from "@/components/shared/brand-logo";
 import { useBranch } from "@/context/BranchContext";
+import { todayInIndia } from "@/lib/today";
 
 export default function StockFlowPage() {
   const { activeLocation } = useBranch();
@@ -166,7 +167,7 @@ export default function StockFlowPage() {
 
   const exportPeriodTag = dateRange.start && dateRange.end
     ? `${dateRange.start}_to_${dateRange.end}`
-    : new Date().toISOString().split("T")[0];
+    : todayInIndia();
   const exportMovementTag = movementFilter === "all" ? "" : `_${movementFilter}`;
   const exportFilename = `Stock_Flow_Report${exportMovementTag}_${exportPeriodTag}`;
 
@@ -647,7 +648,7 @@ export default function StockFlowPage() {
 
       {/* ─── FULL ITEM MOVEMENT LEDGER MODAL ────────────────────────────── */}
       <Dialog open={isLedgerOpen} onOpenChange={setIsLedgerOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-0 overflow-hidden">
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-0 overflow-y-auto">
           {selectedItem && (
             <>
               {/* Header */}

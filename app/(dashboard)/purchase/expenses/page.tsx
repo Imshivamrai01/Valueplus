@@ -20,6 +20,7 @@ import { DateRangeFilter, resolveDateRange, isDateInRange } from "@/components/s
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { TableShimmer, MetricCardsShimmer } from "@/components/shared/shimmer-skeleton";
 import { ExportMenu } from "@/components/shared/ExportMenu";
+import { todayInIndia } from "@/lib/today";
 
 interface ExpenseItem {
   _id?: string;
@@ -82,7 +83,7 @@ function ExpensesContent() {
     description: "",
     amount: "",
     paymentMode: "UPI" as "UPI" | "Bank Transfer" | "Cash" | "Card",
-    date: new Date().toISOString().split("T")[0],
+    date: todayInIndia(),
   });
 
   const { data: expenses = [], isLoading: loading } = useQuery({
@@ -228,7 +229,7 @@ function ExpensesContent() {
         description: "",
         amount: "",
         paymentMode: "UPI",
-        date: new Date().toISOString().split("T")[0],
+        date: todayInIndia(),
       });
     },
     onError: (error: any) => {
@@ -264,7 +265,7 @@ function ExpensesContent() {
       category: formData.category,
       description: formData.description,
       amount: Number(formData.amount) || 0,
-      date: formData.date || new Date().toISOString().split("T")[0],
+      date: formData.date || todayInIndia(),
       paymentMode: formData.paymentMode,
       status: "paid",
     };
@@ -575,7 +576,7 @@ function ExpensesContent() {
 
       {/* ─── RECORD EXPENSE MODAL ───────────────────────────────────────── */}
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent className="max-w-2xl p-0 rounded-2xl border-none shadow-2xl overflow-hidden">
+        <DialogContent className="max-w-2xl p-0 rounded-2xl border-none shadow-2xl overflow-y-auto">
           <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-6 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/20">
@@ -692,7 +693,7 @@ function ExpensesContent() {
 
       {/* ─── PRINT / VOUCHER PREVIEW MODAL ─────────────────────────────── */}
       <Dialog open={!!selectedVoucherForPrint} onOpenChange={(open) => !open && setSelectedVoucherForPrint(null)}>
-        <DialogContent className="max-w-xl p-0 rounded-2xl border-none shadow-2xl overflow-hidden bg-white">
+        <DialogContent className="max-w-xl p-0 rounded-2xl border-none shadow-2xl overflow-y-auto bg-white">
           {selectedVoucherForPrint && (
             <div className="p-8 space-y-6">
               {/* Header */}

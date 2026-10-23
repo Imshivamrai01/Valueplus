@@ -10,6 +10,7 @@ import { WalletCards, Banknote, CreditCard, Send, XCircle, X } from "lucide-reac
 import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
+import { todayInIndia } from "@/lib/today";
 
 export function PaymentModal({ isOpen, onClose, onSuccess, defaultPartyType = "Customer", initialPartyId }: { isOpen: boolean; onClose: () => void; onSuccess?: () => void; defaultPartyType?: "Customer" | "Supplier"; initialPartyId?: string }) {
   const queryClient = useQueryClient();
@@ -37,7 +38,7 @@ export function PaymentModal({ isOpen, onClose, onSuccess, defaultPartyType = "C
     partyName: "",
     amount: "",
     paymentMode: "Cash",
-    date: new Date().toISOString().split("T")[0],
+    date: todayInIndia(),
     referenceId: "",
     notes: "",
     type: defaultPartyType === "Supplier" ? "paid" : "received",
@@ -51,7 +52,7 @@ export function PaymentModal({ isOpen, onClose, onSuccess, defaultPartyType = "C
         partyName: "",
         amount: "",
         paymentMode: "Cash",
-        date: new Date().toISOString().split("T")[0],
+        date: todayInIndia(),
         referenceId: "",
         notes: "",
         type: defaultPartyType === "Supplier" ? "paid" : "received",
@@ -146,7 +147,7 @@ export function PaymentModal({ isOpen, onClose, onSuccess, defaultPartyType = "C
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl p-0 rounded-2xl border-none shadow-2xl overflow-hidden">
+      <DialogContent className="max-w-2xl p-0 rounded-2xl border-none shadow-2xl overflow-y-auto">
         <div className="bg-gradient-to-r from-[#1B2537] via-[#2C3E5A] to-[#1B2537] text-white p-6 flex items-center gap-3">
           <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/20">
             <WalletCards className="w-6 h-6 text-[#76C043]" />

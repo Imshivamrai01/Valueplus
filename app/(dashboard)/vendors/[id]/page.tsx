@@ -598,7 +598,7 @@ function VendorDetailInner() {
       />
 
       <Dialog open={ledgerOpen} onOpenChange={setLedgerOpen}>
-        <DialogContent className="max-w-5xl p-0 overflow-hidden rounded-2xl border-none shadow-2xl">
+        <DialogContent className="max-w-5xl p-0 overflow-y-auto rounded-2xl border-none shadow-2xl">
           <PartyLedgerPanel party="vendor" partyId={vendorId} />
         </DialogContent>
       </Dialog>

@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import Link from "next/link";
 import { ExportMenu } from "@/components/shared/ExportMenu";
+import { todayInIndia } from "@/lib/today";
 
 const FINANCE_PROVIDERS = [
   "Bajaj Finance Limited",
@@ -235,7 +236,7 @@ export default function FinanceLedgerStandalonePage() {
               "Net Disbursement": r.netDisbursement || 0,
               "Status": r.approvalStatus || "Approved",
             }))}
-            filename={`ValuePlus_Finance_Ledger_${new Date().toISOString().split("T")[0]}`}
+            filename={`ValuePlus_Finance_Ledger_${todayInIndia()}`}
           />
           <Button onClick={() => window.print()} variant="outline" size="sm" className="text-xs font-bold gap-1 shadow-xs">
             <Printer className="w-3.5 h-3.5" /> Print Ledger

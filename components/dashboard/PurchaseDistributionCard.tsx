@@ -247,7 +247,7 @@ export function PurchaseDistributionCard({
       </div>
 
       <Dialog open={Boolean(ledgerFor)} onOpenChange={(o) => !o && setLedgerFor(null)}>
-        <DialogContent className="max-w-5xl p-0 overflow-hidden rounded-2xl border-none shadow-2xl">
+        <DialogContent className="max-w-5xl p-0 overflow-y-auto rounded-2xl border-none shadow-2xl">
           {ledgerFor && <PartyLedgerPanel party="supplier" partyId={ledgerFor.id} />}
         </DialogContent>
       </Dialog>

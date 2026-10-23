@@ -387,7 +387,7 @@ function SuppliersPageInner() {
       />
 
       <Dialog open={Boolean(ledgerSupplier)} onOpenChange={(o) => !o && setLedgerSupplier(null)}>
-        <DialogContent className="max-w-5xl p-0 overflow-hidden rounded-2xl border-none shadow-2xl">
+        <DialogContent className="max-w-5xl p-0 overflow-y-auto rounded-2xl border-none shadow-2xl">
           {ledgerSupplier && (
             <PartyLedgerPanel
               party="supplier"

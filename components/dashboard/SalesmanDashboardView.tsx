@@ -19,6 +19,7 @@ import { useBranch } from "@/context/BranchContext";
 import { toast } from "sonner";
 import ValueplusInvoice from "@/app/invoice/page";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { todayInIndia } from "@/lib/today";
 
 export function SalesmanDashboardView({ session }: { session: any }) {
   const { activeLocation } = useBranch();
@@ -27,7 +28,7 @@ export function SalesmanDashboardView({ session }: { session: any }) {
 
   // Period / Date Filtering State
   const [periodTab, setPeriodTab] = useState<"today" | "yesterday" | "week" | "month" | "all" | "custom">("today");
-  const [customDate, setCustomDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [customDate, setCustomDate] = useState(() => todayInIndia());
   const [viewInvoice, setViewInvoice] = useState<any | null>(null);
 
   // 1. Fetch Invoices from MongoDB
@@ -593,7 +594,7 @@ export function SalesmanDashboardView({ session }: { session: any }) {
 
       {/* INVOICE PREVIEW MODAL */}
       <Dialog open={!!viewInvoice} onOpenChange={() => setViewInvoice(null)}>
-        <DialogContent className="max-w-4xl p-0 overflow-hidden rounded-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl p-0 overflow-y-auto rounded-2xl max-h-[90vh] overflow-y-auto">
           {viewInvoice && <ValueplusInvoice invoiceData={viewInvoice} onBack={() => setViewInvoice(null)} />}
         </DialogContent>
       </Dialog>
